@@ -280,7 +280,10 @@ def _fit_blocks(blocks: List[List[_Token]], budget: int) -> List[_Token]:
 def cat_batches(batches: Sequence[TensorBatch]) -> TensorBatch:
     if not batches:
         raise ValueError("cat_batches received no batches")
-    keys = ("token_ids", "type_ids", "numeric", "pad_mask", "legal_mask")
+    keys = tuple(batches[0].keys())
+    for batch in batches[1:]:
+        if tuple(batch.keys()) != keys:
+            raise ValueError("cat_batches received batches with different keys")
     return {key: torch.cat([batch[key] for batch in batches], dim=0) for key in keys}
 
 

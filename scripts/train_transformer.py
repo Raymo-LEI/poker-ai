@@ -7,6 +7,7 @@ Does not train unless you run it. ``--dry-run`` only prints the model size.
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json
     python scripts/train_transformer.py --config configs/transformer/colab_l4.json --entropy-coef 0.02
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume   # newest ckpt
+    python scripts/train_transformer.py --config configs/transformer/laptop_8gb_conv.json --init-weights runs/bc_conv/bc.pt
 """
 
 from __future__ import annotations
@@ -43,6 +44,18 @@ def main() -> None:
     parser.add_argument("--no-amp", dest="amp", action="store_false")
     parser.add_argument("--checkpoint-dir", type=str, default=None, help="Override train.checkpoint_dir")
     parser.add_argument("--checkpoint-every", type=int, default=None, help="Override train.checkpoint_every (updates)")
+    parser.add_argument(
+        "--encoder",
+        choices=("transformer", "alphanl_conv"),
+        default=None,
+        help="Override config encoder. alphanl_conv is the TF NlHoldemNet control group.",
+    )
+    parser.add_argument(
+        "--init-weights",
+        type=str,
+        default=None,
+        help="Load model weights from a BC checkpoint, then start PPO at update 0.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the model summary and exit")
     args = parser.parse_args()
 
@@ -56,11 +69,12 @@ def main() -> None:
         amp=args.amp,
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_every=args.checkpoint_every,
+        encoder=args.encoder,
     )
     print(describe_run(cfg))
     if args.dry_run:
         return
-    out_dir = run_training(cfg, resume=args.resume)
+    out_dir = run_training(cfg, resume=args.resume, init_weights=args.init_weights)
     print(f"wrote {out_dir}")
 
 

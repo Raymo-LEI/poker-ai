@@ -83,6 +83,10 @@ class ExperimentConfig:
     seed: int = 1
     device: str = "auto"
     rollout_device: str = "cpu"
+    # ``transformer`` is the step-3 token encoder. ``alphanl_conv`` is the
+    # PyTorch port of TF1.15 ``NlHoldemNet`` (the control group). PPO, the
+    # 5-way mask, and this training script stay the same either way.
+    encoder: str = "transformer"
     model: ModelConfig = None  # type: ignore[assignment]
     ppo: PPOConfig = None  # type: ignore[assignment]
     pool: PoolConfig = None  # type: ignore[assignment]
@@ -110,7 +114,9 @@ class ExperimentConfig:
             self.env = EnvConfig()
         elif isinstance(self.env, Mapping):
             self.env = _fill(EnvConfig, self.env)
-        if self.model.d_model % self.model.nhead != 0:
+        if self.encoder not in ("transformer", "alphanl_conv"):
+            raise ValueError("encoder must be 'transformer' or 'alphanl_conv'")
+        if self.encoder == "transformer" and self.model.d_model % self.model.nhead != 0:
             raise ValueError("model.d_model must be divisible by model.nhead")
         if self.env.backend not in ("rlcard", "pokerkit"):
             raise ValueError("env.backend must be 'rlcard' or 'pokerkit'")
@@ -146,7 +152,12 @@ class ExperimentConfig:
         amp: Optional[bool] = None,
         checkpoint_dir: Optional[str] = None,
         checkpoint_every: Optional[int] = None,
+        encoder: Optional[str] = None,
     ) -> "ExperimentConfig":
+        if encoder is not None:
+            self.encoder = str(encoder)
+            if self.encoder not in ("transformer", "alphanl_conv"):
+                raise ValueError("encoder must be 'transformer' or 'alphanl_conv'")
         if amp is not None:
             self.train.amp = bool(amp)
         if checkpoint_dir is not None:

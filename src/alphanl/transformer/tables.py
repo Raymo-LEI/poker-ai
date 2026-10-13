@@ -487,6 +487,37 @@ class PokerkitTable:
             for record in self._records
         )
 
+    def wrapper_history(self) -> List[list]:
+        """``NlHoldemEnvWrapper``-shaped history for the conv encoder."""
+
+        history: List[list] = [[], [], [], []]
+        for record in self._records:
+            if 0 <= int(record.street) <= 3:
+                history[int(record.street)].append(
+                    [int(record.actor_seat), int(record.action_id), list(record.legal_action_ids)]
+                )
+        return history
+
+    def rlcard_raw_obs(self, me_seat: int) -> Dict[str, Any]:
+        """Fields ``encode_observation`` expects, for the seat about to act."""
+
+        self._require_hand()
+        seat = int(me_seat)
+        if int(self.current_player()) != seat:
+            raise RuntimeError("rlcard_raw_obs requires the acting seat")
+        snap = self.snapshot(seat)
+        bets = [int(bet) for bet in self.state.bets]
+        return {
+            "hand": list(snap.hole_cards),
+            "public_cards": list(snap.board_cards),
+            "stakes": [int(self.state.stacks[0]), int(self.state.stacks[1])],
+            "all_chips": bets,
+            "pot": float(self.state.total_pot_amount),
+            "stage": int(snap.street),
+            "legal_actions": list(self.legal_action_ids()),
+            "current_player": seat,
+        }
+
     def payoffs(self) -> Tuple[float, float]:
         if not self.is_over():
             raise RuntimeError("payoffs are available after the hand ends")

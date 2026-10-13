@@ -5,9 +5,9 @@ street and does not store chip amounts. This module replays the rlcard 1.1.0
 heads-up chip rules (including ``int(pot / 2)`` and the cumulative ``in_chips``
 pot) so bet sizes become pot fractions.
 
-A pokerkit backend should not reuse the replay. It should call
-``make_action_event`` with the real chip delta and pass the resulting events
-to ``HandSnapshot`` directly. The tokenizer only reads that snapshot.
+``PokerkitTable`` does not reuse the replay. It calls ``make_action_event``
+with the real chip delta and passes the resulting events to ``HandSnapshot``.
+The tokenizer only reads that snapshot.
 """
 
 from __future__ import annotations

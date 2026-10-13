@@ -1,6 +1,6 @@
 """Backend-neutral hand state for the betting-history tokenizer.
 
-rlcard (AlphaNLHoldem's env) and a future pokerkit adapter both produce
+rlcard (AlphaNLHoldem's env) and ``PokerkitTable`` both produce
 ``HandSnapshot`` values. Chip amounts are in chips, not big blinds.
 """
 

@@ -245,11 +245,6 @@ def run_training(
     ``update_*.pt`` in ``cfg.train.checkpoint_dir`` (starts fresh if none).
     """
 
-    if cfg.env.backend != "rlcard":
-        raise NotImplementedError(
-            "env.backend 'pokerkit' is reserved. Training still uses rlcard 1.1.0 "
-            "so the 5-action head matches AlphaNLHoldem. See docs/step3_transformer.md."
-        )
     set_seed(cfg.seed)
     train_device = torch.device(resolve_device(cfg.device))
     rollout_name = cfg.rollout_device
@@ -422,5 +417,6 @@ def describe_run(cfg: ExperimentConfig) -> str:
         f"seq={cfg.model.max_seq_len}, envs={cfg.ppo.num_envs}, "
         f"rollout={cfg.ppo.rollout_steps} ({batch} hero decisions/update), "
         f"minibatch={cfg.ppo.minibatch_size}, entropy_coef={cfg.ppo.entropy_coef}, "
-        f"device={cfg.device}, rollout_device={cfg.rollout_device}"
+        f"device={cfg.device}, rollout_device={cfg.rollout_device}, "
+        f"env={cfg.env.backend} {cfg.env.starting_stack / cfg.env.big_blind:g}bb"
     )

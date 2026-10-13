@@ -11,3 +11,5 @@ pytest>=7
 
 # Same no-limit game AlphaNLHoldem wraps (5 actions, 50bb, blinds 1/2).
 rlcard==1.1.0
+# Heads-up rules for env.backend=pokerkit. Imported only when that backend is used.
+pokerkit==0.7.7

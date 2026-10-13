@@ -118,11 +118,14 @@ class OpponentPool:
             "selfplay_prob": self.selfplay_prob,
             "random_prob": self.random_prob,
             "sampling": self.sampling,
+            "rng": self.rng.bit_generator.state,
         }
 
     def load_state_dict(self, blob: Dict[str, Any]) -> None:
         self._next_id = int(blob["next_id"])
         self._order = [int(pid) for pid in blob["order"]]
+        if blob.get("rng") is not None:
+            self.rng.bit_generator.state = blob["rng"]
         self._entries = {}
         for pid, entry in blob["entries"].items():
             self._entries[int(pid)] = {

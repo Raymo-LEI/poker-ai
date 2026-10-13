@@ -146,8 +146,7 @@ python3 scripts/train_transformer.py --config configs/transformer/laptop_8gb.jso
 python3 scripts/train_transformer.py --config configs/transformer/colab_l4.json --entropy-coef 0.02
 
 # 从 checkpoint 接着训
-python3 scripts/train_transformer.py --config configs/transformer/laptop_8gb.json \
-    --resume runs/transformer_laptop/checkpoints/final.pt
+python3 scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume
 ```
 
 输出目录（默认 `runs/transformer_laptop/` 或 `runs/transformer_colab/`）：
@@ -156,8 +155,7 @@ python3 scripts/train_transformer.py --config configs/transformer/laptop_8gb.jso
 |------|------|
 | `metrics.csv` | 每次更新一行：policy/value/entropy、KL、clip 比例、平均 bb、池大小、对随机对手的贪心 bb |
 | `tb/` | 同一批标量的 TensorBoard。没装 `tensorboard` 时只写 CSV |
-| `checkpoints/update_XXXXXXX.pt` | 模型、优化器、对手池、更新步数、配置 |
-| `checkpoints/final.pt` | 跑完时再存一次 |
+| `train.checkpoint_dir/update_XXXXXXX.pt` | 模型、优化器、GradScaler、对手池、更新步数、配置、全部 RNG 状态和牌桌状态；只保留最近 `keep_last`（默认 3）个，跑完时最后一步也会存。详见 `docs/training.md` |
 
 `--updates` 可以先改成很小的数做冒烟。`pytest` 里有一次「1 个环境、2 步 rollout、1 次 PPO 更新」的接线测试，会写出 CSV 和 checkpoint。那不是训练结果。
 

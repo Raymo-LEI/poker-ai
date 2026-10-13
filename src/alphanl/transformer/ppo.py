@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Dict
 
+from typing import Optional
+
 import torch
 
 from .model import PokerTransformer, entropy_from_probs, masked_log_probs
@@ -105,6 +107,16 @@ def ppo_losses(
     return loss, metrics
 
 
+def amp_enabled(amp: bool, device) -> bool:
+    """AMP only on CUDA; silently off on CPU."""
+    return bool(amp) and torch.device(device).type == "cuda"
+
+
+def make_grad_scaler(amp: bool, device) -> "torch.amp.GradScaler":
+    """A GradScaler that is a no-op (enabled=False) when AMP is off. Its state is checkpointed."""
+    return torch.amp.GradScaler("cuda", enabled=amp_enabled(amp, device))
+
+
 def ppo_update(
     model: PokerTransformer,
     optimizer: torch.optim.Optimizer,
@@ -122,6 +134,7 @@ def ppo_update(
     minibatch_size: int,
     max_grad_norm: float,
     amp: bool = False,
+    scaler: "Optional[torch.amp.GradScaler]" = None,
 ) -> Dict[str, float]:
     """Several epochs of minibatch PPO. Storage stays on ``batch``'s device.
 
@@ -136,8 +149,9 @@ def ppo_update(
         raise ValueError("empty PPO batch")
     advantages = (advantages - advantages.mean()) / advantages.std().clamp_min(1e-8)
     device = actions.device
-    use_amp = bool(amp and device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if use_amp else None
+    use_amp = amp_enabled(amp, device)
+    if use_amp and scaler is None:
+        scaler = make_grad_scaler(True, device)
 
     totals = {
         "loss": 0.0,

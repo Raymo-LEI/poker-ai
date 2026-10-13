@@ -64,6 +64,12 @@ class PolicyActor:
         self.tokenizer = tokenizer
         self.rng = rng
 
+    def rng_state(self):
+        return self.rng.bit_generator.state
+
+    def set_rng_state(self, state) -> None:
+        self.rng.bit_generator.state = state
+
     def prepare_pool(self, weights: Dict[str, torch.Tensor]) -> None:
         device = next(self.shadow.parameters()).device
         self.shadow.load_state_dict({key: value.to(device) for key, value in weights.items()})
@@ -129,6 +135,24 @@ class SelfPlayEnv:
         self.hero = 0
         self.sb_seat = 0
         self.choice: Dict[str, Any] = {"kind": "random", "policy_id": None, "weights": None}
+
+    _STATE_FIELDS = ("history", "state", "player", "hero", "sb_seat", "choice", "passive_rewards_bb", "force_opponent")
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Everything needed to continue this table bit-for-bit: our RNG, the rlcard env
+        (its game, dealer deck and np_random) and the hand in progress."""
+        import pickle
+
+        blob = {name: getattr(self, name) for name in self._STATE_FIELDS}
+        return {"rng": self.rng.bit_generator.state, "rl": pickle.dumps(self.rl), "fields": pickle.dumps(blob)}
+
+    def load_state_dict(self, blob: Dict[str, Any]) -> None:
+        import pickle
+
+        self.rng.bit_generator.state = blob["rng"]
+        self.rl = pickle.loads(blob["rl"])
+        for name, value in pickle.loads(blob["fields"]).items():
+            setattr(self, name, value)
 
     def reset(self) -> TensorBatch:
         for _ in range(1000):

@@ -65,6 +65,8 @@ class TrainConfig:
     eval_hands: int = 20
     out_dir: str = "runs/transformer_laptop"
     amp: bool = False
+    checkpoint_dir: str = "runs/ckpt"
+    keep_last: int = 3
 
 
 @dataclass
@@ -141,7 +143,16 @@ class ExperimentConfig:
         out_dir: Optional[str] = None,
         device: Optional[str] = None,
         seed: Optional[int] = None,
+        amp: Optional[bool] = None,
+        checkpoint_dir: Optional[str] = None,
+        checkpoint_every: Optional[int] = None,
     ) -> "ExperimentConfig":
+        if amp is not None:
+            self.train.amp = bool(amp)
+        if checkpoint_dir is not None:
+            self.train.checkpoint_dir = str(checkpoint_dir)
+        if checkpoint_every is not None:
+            self.train.checkpoint_every = int(checkpoint_every)
         if entropy_coef is not None:
             self.ppo.entropy_coef = float(entropy_coef)
         if num_updates is not None:

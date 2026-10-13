@@ -33,11 +33,15 @@ def masked_log_probs(
     finite. Callers that build observations should not produce that row.
     """
 
+    # Always fp32: ILLEGAL_LOGIT (-1e9) overflows fp16 to -inf and an all -inf row
+    # gives NaN after softmax. This also runs outside autocast.
+    logits = logits.float()
     legal = legal_mask > 0.5
     none_legal = ~legal.any(dim=-1, keepdim=True)
     legal = legal | none_legal
     masked = logits.masked_fill(~legal, ILLEGAL_LOGIT)
-    log_probs = F.log_softmax(masked, dim=-1)
+    with torch.autocast(device_type=logits.device.type, enabled=False):
+        log_probs = F.log_softmax(masked, dim=-1)
     probs = log_probs.exp()
     return masked, log_probs, probs, legal
 
@@ -141,8 +145,11 @@ class PokerTransformer(nn.Module):
             batch["token_ids"], batch["type_ids"], batch["numeric"], batch["pad_mask"]
         )
         features = self.trunk(cls)
-        logits = self.policy_head(features)
-        value = self.value_head(features).squeeze(-1)
+        # Policy/value heads in fp32 even under AMP (encoder stays in autocast dtype).
+        with torch.autocast(device_type=features.device.type, enabled=False):
+            features = features.float()
+            logits = self.policy_head(features)
+            value = self.value_head(features).squeeze(-1)
         if mask_illegal:
             logits, _, _, _ = masked_log_probs(logits, batch["legal_mask"])
         return logits, value

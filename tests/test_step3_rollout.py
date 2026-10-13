@@ -118,11 +118,12 @@ def test_one_ppo_update_writes_logs(tmp_path: Path):
     cfg.pool.snapshot_every = 1
     cfg.pool.max_size = 2
     cfg.train.out_dir = str(tmp_path)
+    cfg.train.checkpoint_dir = str(tmp_path / "ckpt")
     run_training(cfg)
     text = (tmp_path / "metrics.csv").read_text()
     assert "entropy_coef" in text.splitlines()[0]
     assert "policy_loss" in text
-    assert (tmp_path / "checkpoints" / "final.pt").is_file()
+    assert (tmp_path / "ckpt" / "update_0000000.pt").is_file()
 
 
 def test_dry_run_cli():

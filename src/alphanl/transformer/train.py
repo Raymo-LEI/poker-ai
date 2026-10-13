@@ -10,12 +10,12 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 import torch
 
-from .checkpoint import load_checkpoint, save_checkpoint
+from .checkpoint import checkpoint_path, latest_checkpoint, load_checkpoint, save_checkpoint
 from .config import ExperimentConfig, resolve_device
 from .env import PolicyActor, SelfPlayEnv
 from .model import PokerTransformer, count_parameters
 from .pool import OpponentPool
-from .ppo import compute_gae, ppo_update
+from .ppo import amp_enabled, compute_gae, make_grad_scaler, ppo_update
 from .tokenizer import BettingHistoryTokenizer, batch_to_device, cat_batches
 
 
@@ -239,7 +239,11 @@ def run_training(
     *,
     resume: Optional[Path | str] = None,
 ) -> Path:
-    """Run ``cfg.train.num_updates`` PPO updates. Returns the output directory."""
+    """Run ``cfg.train.num_updates`` PPO updates. Returns the output directory.
+
+    ``resume`` is a checkpoint path, or ``"latest"`` to pick the newest
+    ``update_*.pt`` in ``cfg.train.checkpoint_dir`` (starts fresh if none).
+    """
 
     if cfg.env.backend != "rlcard":
         raise NotImplementedError(
@@ -258,6 +262,12 @@ def run_training(
     tokenizer = BettingHistoryTokenizer(max_seq_len=cfg.model.max_seq_len)
     learner = build_model(cfg).to(train_device)
     optimizer = build_optimizer(learner, cfg)
+    use_amp = amp_enabled(cfg.train.amp, train_device)  # auto-off on CPU
+    scaler = make_grad_scaler(use_amp, train_device)
+    ckpt_dir = Path(cfg.train.checkpoint_dir)
+    if resume is not None and str(resume) == "latest":
+        resume = latest_checkpoint(ckpt_dir)
+        print(f"[resume] {'starting fresh, no checkpoint in ' + str(ckpt_dir) if resume is None else resume}")
     pool = OpponentPool(
         max_size=cfg.pool.max_size,
         selfplay_prob=cfg.pool.selfplay_prob,
@@ -267,7 +277,10 @@ def run_training(
     )
     start_update = 0
     if resume is not None:
-        blob = load_checkpoint(resume, learner, optimizer, pool, map_location=str(train_device))
+        # RNG states are restored after the tables are built (building them consumes RNG).
+        blob = load_checkpoint(
+            resume, learner, optimizer, pool, map_location=str(train_device), scaler=scaler, restore_rng=False
+        )
         start_update = int(blob["update"]) + 1
     if len(pool) == 0:
         pool.add(learner.state_dict())
@@ -293,12 +306,39 @@ def run_training(
         )
         for index in range(cfg.ppo.num_envs)
     ]
-    obs = [env.reset() for env in envs]
-    for env in envs:
-        env.drain_passive_rewards()
+    resumed_tables = resume is not None and blob.get("envs") is not None and len(blob["envs"]) == len(envs)
+    if resumed_tables:
+        for env, env_state in zip(envs, blob["envs"]):
+            env.load_state_dict(env_state)
+        if blob.get("actor_rng") is not None:
+            actor.set_rng_state(blob["actor_rng"])
+        obs = [env.observe() for env in envs]
+    else:
+        obs = [env.reset() for env in envs]
+        for env in envs:
+            env.drain_passive_rewards()
+    if resume is not None:
+        from .checkpoint import restore_rng_state
+
+        restore_rng_state(blob.get("rng"))
     writer = _make_writer(out_dir / "tb")
     csv_path = out_dir / "metrics.csv"
-    ckpt_dir = out_dir / "checkpoints"
+
+    def _save(update: int) -> None:
+        save_checkpoint(
+            checkpoint_path(ckpt_dir, update),
+            model=learner,
+            optimizer=optimizer,
+            update=update,
+            config=cfg.to_dict(),
+            pool=pool,
+            scaler=scaler,
+            envs=envs,
+            actor_rng=actor.rng_state(),
+            keep_last=cfg.train.keep_last,
+        )
+
+    last_saved = None
 
     for update in range(start_update, cfg.train.num_updates):
         started = time.perf_counter()
@@ -323,7 +363,8 @@ def run_training(
             epochs=cfg.ppo.epochs,
             minibatch_size=min(cfg.ppo.minibatch_size, int(flat["actions"].shape[0])),
             max_grad_norm=cfg.ppo.max_grad_norm,
-            amp=cfg.train.amp,
+            amp=use_amp,
+            scaler=scaler,
         )
         if cfg.pool.snapshot_every > 0 and (update + 1) % cfg.pool.snapshot_every == 0:
             pool.add(learner.state_dict())
@@ -361,22 +402,11 @@ def run_training(
                         writer.add_scalar(key, value, update)
                 writer.flush()
         if cfg.train.checkpoint_every > 0 and (update + 1) % cfg.train.checkpoint_every == 0:
-            save_checkpoint(
-                ckpt_dir / f"update_{update:07d}.pt",
-                model=learner,
-                optimizer=optimizer,
-                update=update,
-                config=cfg.to_dict(),
-                pool=pool,
-            )
-    save_checkpoint(
-        ckpt_dir / "final.pt",
-        model=learner,
-        optimizer=optimizer,
-        update=cfg.train.num_updates - 1,
-        config=cfg.to_dict(),
-        pool=pool,
-    )
+            _save(update)
+            last_saved = update
+    final_update = cfg.train.num_updates - 1
+    if final_update >= start_update and last_saved != final_update:
+        _save(final_update)
     if writer is not None:
         writer.close()
     return out_dir

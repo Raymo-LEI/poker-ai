@@ -6,6 +6,7 @@ Does not train unless you run it. ``--dry-run`` only prints the model size.
     export PYTHONPATH=src
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json
     python scripts/train_transformer.py --config configs/transformer/colab_l4.json --entropy-coef 0.02
+    python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume   # newest ckpt
 """
 
 from __future__ import annotations
@@ -34,7 +35,14 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default=None, help="Override train.out_dir")
     parser.add_argument("--device", type=str, default=None, help="auto, cpu, or cuda")
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--resume", type=Path, default=None, help="Checkpoint to resume from")
+    parser.add_argument(
+        "--resume", nargs="?", const="latest", default=None,
+        help="Resume. Bare --resume picks the newest checkpoint in train.checkpoint_dir; or pass a path.",
+    )
+    parser.add_argument("--amp", dest="amp", action="store_true", default=None, help="Mixed precision (CUDA only; ignored on CPU)")
+    parser.add_argument("--no-amp", dest="amp", action="store_false")
+    parser.add_argument("--checkpoint-dir", type=str, default=None, help="Override train.checkpoint_dir")
+    parser.add_argument("--checkpoint-every", type=int, default=None, help="Override train.checkpoint_every (updates)")
     parser.add_argument("--dry-run", action="store_true", help="Print the model summary and exit")
     args = parser.parse_args()
 
@@ -45,6 +53,9 @@ def main() -> None:
         out_dir=args.out_dir,
         device=args.device,
         seed=args.seed,
+        amp=args.amp,
+        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_every=args.checkpoint_every,
     )
     print(describe_run(cfg))
     if args.dry_run:

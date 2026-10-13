@@ -1,0 +1,13 @@
+# Step-3 training stack. Separate from requirements-alphanl.txt (TF 1.15 / Py 3.7).
+# Use Python 3.10+ . On a GPU machine install the CUDA wheel that matches the
+# driver; a CPU wheel is enough to run the unit tests.
+#
+#   pip install -r requirements-transformer.txt
+
+torch>=2.2
+numpy>=1.23
+tensorboard>=2.14
+pytest>=7
+
+# Same no-limit game AlphaNLHoldem wraps (5 actions, 50bb, blinds 1/2).
+rlcard==1.1.0

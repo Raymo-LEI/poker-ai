@@ -30,3 +30,5 @@ htmlcov/
 .ipynb_checkpoints/
 *.log
 .miniconda/
+runs/
+events.out.tfevents*

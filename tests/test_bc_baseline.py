@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from alphanl.nl_obs import encode_observation, masked_softmax_tf

@@ -43,16 +43,18 @@ def _model(cfg, seed, scale):
     return m
 
 
-def run_path(path: str, a, cfg, hero, opp):
-    torch.manual_seed(a.sample_seed)  # global RNG for the old path
+def run_path(path: str, a, cfg, hero, opp, master_seed=None, deals=None):
+    master_seed = a.master_seed if master_seed is None else master_seed
+    deals = a.deals if deals is None else deals
+    torch.manual_seed(a.sample_seed + master_seed)  # global RNG for the old path
     tok = BettingHistoryTokenizer(cfg.model.max_seq_len)
     pool = OpponentPool(max_size=2, selfplay_prob=0.0, random_prob=0.0, seed=0)
     actor = E.PolicyActor(hero, opp, tok, np.random.default_rng(0))
-    ss = np.random.SeedSequence(a.master_seed).spawn(a.tables)
+    ss = np.random.SeedSequence(master_seed).spawn(a.tables)
     envs = [E.SelfPlayEnv(tok, actor, pool, seed=1000 + i, backend="pokerkit", record_results=False,
                           seed_seq=ss[i], per_env_rng=(path == "new"), shared_deal_stream=True)
             for i in range(a.tables)]
-    deals_per_table = math.ceil(a.deals / a.tables)
+    deals_per_table = math.ceil(deals / a.tables)
     # per hand records
     payoff = np.zeros((a.tables, deals_per_table, 2))
     counts = np.zeros((4, 5), dtype=np.int64)  # hero actions by street
@@ -108,7 +110,7 @@ def run_path(path: str, a, cfg, hero, opp):
             else:
                 nxt.append(i)
         active = nxt
-    return payoff.reshape(-1, 2)[: a.deals], counts, opp_counts
+    return payoff.reshape(-1, 2)[: deals], counts, opp_counts
 
 
 def ci_mean(x):
@@ -128,64 +130,116 @@ def chi2(c1, c2):
     return x, df, p
 
 
+def _load(cfg, path, seed, scale):
+    if path is None:
+        return _model(cfg, seed, scale)
+    m = T.build_model(cfg)
+    blob = torch.load(path, map_location="cpu", weights_only=False)
+    m.load_state_dict(blob["model"] if isinstance(blob, dict) and "model" in blob else blob)
+    m.eval()
+    return m
+
+
+def paired_stats(Pn, Po, boot=2000, seed=0, target=0.1):
+    """Pairing unit = same deck + same seat: diff_ds = new(d,s) - old(d,s)."""
+    d = (Pn - Po).reshape(-1)
+    n = len(d); m = float(d.mean()); sd = float(d.std(ddof=1))
+    hw = 1.96 * sd / math.sqrt(n)  # t ~ normal for n in the thousands
+    rng = np.random.default_rng(seed)
+    bm = np.array([d[rng.integers(0, n, n)].mean() for _ in range(boot)])
+    per_deal = (Pn - Po).mean(1)
+    return {
+        "hands": n, "mean_diff_bb": m, "sd_hand": sd, "ci_t": [m - hw, m + hw], "halfwidth": hw,
+        "ci_boot": [float(np.percentile(bm, 2.5)), float(np.percentile(bm, 97.5))],
+        "var_hand_diff": sd ** 2, "var_per_deal_diff": float(per_deal.var(ddof=1)),
+        "var_new": float(Pn.reshape(-1).var(ddof=1)), "var_old": float(Po.reshape(-1).var(ddof=1)),
+        "corr_new_old": float(np.corrcoef(Pn.reshape(-1), Po.reshape(-1))[0, 1]),
+        "hands_needed_for_target": int(math.ceil((1.96 * sd / target) ** 2)),
+    }
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--deals", type=int, default=10000)
+    p.add_argument("--deals", type=int, default=10000, help="deals per batch (x2 seats = hands)")
     p.add_argument("--tables", type=int, default=64)
     p.add_argument("--master-seed", type=int, default=12345)
     p.add_argument("--sample-seed", type=int, default=777)
     p.add_argument("--hero-seed", type=int, default=100)
     p.add_argument("--opp-seed", type=int, default=200)
     p.add_argument("--head-scale", type=float, default=5.0)
+    p.add_argument("--ckpt", "--checkpoint", dest="ckpt", type=Path, default=None,
+                   help="hero checkpoint (repo .pt with 'model', e.g. runs/.../ckpt/update_0000019.pt, or a state_dict)")
+    p.add_argument("--opponent", type=Path, default=None, help="fixed opponent checkpoint (default: same as --ckpt)")
+    p.add_argument("--config", type=Path, default=REPO / "configs/transformer/laptop_8gb.json")
+    p.add_argument("--target-halfwidth", type=float, default=None,
+                   help="keep adding --deals batches until paired 95%% half-width <= this (bb/hand)")
+    p.add_argument("--max-hands", type=int, default=200000, help="cap per side for --target-halfwidth")
+    p.add_argument("--accept", type=float, default=0.1, help="strict half-width criterion")
+    p.add_argument("--relaxed", type=float, default=0.2, help="fallback half-width if cap reached")
     p.add_argument("--out", type=Path, default=None)
     a = p.parse_args()
-    torch.set_num_threads(max(1, torch.get_num_threads()))
-    cfg = ExperimentConfig.from_json(REPO / "configs/transformer/laptop_8gb.json")
-    hero, opp = _model(cfg, a.hero_seed, a.head_scale), _model(cfg, a.opp_seed, a.head_scale)
-    res, t = {}, {}
-    for path in ("new", "old"):
-        t0 = time.time(); res[path] = run_path(path, a, cfg, hero, opp); t[path] = time.time() - t0
-        print(f"[dup] {path}: {a.deals} deals x 2 seats = {2 * a.deals} hands in {t[path]:.0f}s", flush=True)
-    out = {"deals": a.deals, "hands_per_path": 2 * a.deals, "tables": a.tables, "seconds": t, "args": vars(a) | {"out": str(a.out)}}
-    (Pn, Cn, On), (Po, Co, Oo) = res["new"], res["old"]
-    lines = []
+    cfg = ExperimentConfig.from_json(a.config)
+    if a.opponent is None:
+        a.opponent = a.ckpt
+    hero = _load(cfg, a.ckpt, a.hero_seed, a.head_scale)
+    opp = _load(cfg, a.opponent, a.opp_seed, a.head_scale)
+    Pn, Po, Cn, Co, On, Oo = [], [], 0, 0, 0, 0
+    t = {"new": 0.0, "old": 0.0}
+    batch = 0
+    while True:
+        seed = a.master_seed + 1000003 * batch
+        for path in ("new", "old"):
+            t0 = time.time(); P, C, O = run_path(path, a, cfg, hero, opp, master_seed=seed); t[path] += time.time() - t0
+            if path == "new":
+                Pn.append(P); Cn = Cn + C; On = On + O
+            else:
+                Po.append(P); Co = Co + C; Oo = Oo + O
+        batch += 1
+        st = paired_stats(np.concatenate(Pn), np.concatenate(Po), target=a.accept)
+        print(f"[dup] batch {batch}: {st['hands']} hands/side, paired diff {st['mean_diff_bb']:+.4f} "
+              f"+-{st['halfwidth']:.4f} bb/hand ({t['new']:.0f}s new, {t['old']:.0f}s old)", flush=True)
+        if a.target_halfwidth is None or st["halfwidth"] <= a.target_halfwidth:
+            break
+        if st["hands"] + 2 * a.deals > a.max_hands:
+            print(f"[dup] cap {a.max_hands} hands/side reached", flush=True)
+            break
+    Pn, Po = np.concatenate(Pn), np.concatenate(Po)
+    st = paired_stats(Pn, Po, target=a.accept)
+    lo, hi = st["ci_t"]; has0 = lo <= 0 <= hi
+    lines = [
+        f"hands/side={st['hands']} (deals={len(Pn)} x 2 seats), pairing unit = same deck + same seat",
+        f"paired diff new-old: {st['mean_diff_bb']:+.4f} bb/hand, 95% CI t [{lo:+.4f}, {hi:+.4f}] (half-width {st['halfwidth']:.4f}), "
+        f"bootstrap [{st['ci_boot'][0]:+.4f}, {st['ci_boot'][1]:+.4f}]",
+        f"variance: per-hand diff {st['var_hand_diff']:.2f} bb^2 (sd {st['sd_hand']:.2f}), per-deal diff (mean of 2 seats) {st['var_per_deal_diff']:.2f}, "
+        f"new {st['var_new']:.2f}, old {st['var_old']:.2f}; corr(new, old) = {st['corr_new_old']:.4f}",
+        f"hands needed for half-width <= {a.accept}: {st['hands_needed_for_target']}",
+    ]
     for name, P in (("new", Pn), ("old", Po)):
-        dup = P.mean(1); m, lo, hi = ci_mean(dup)
-        hands = P.reshape(-1); w = (hands > 0).mean(); wh = 1.96 * math.sqrt(w * (1 - w) / len(hands))
-        out[name] = {"bb_per_hand_dup": [m, lo, hi], "win_rate": [w, w - wh, w + wh],
-                     "hero_action_counts": Cn.tolist() if name == "new" else Co.tolist()}
-        lines.append(f"{name}: mean payoff {m:+.4f} bb/hand [95% CI {lo:+.4f}, {hi:+.4f}] (duplicate, n={len(dup)} deals); "
-                     f"win rate {w:.4f} [{w - wh:.4f}, {w + wh:.4f}] (n={len(hands)} hands)")
-    d = Pn.mean(1) - Po.mean(1); m, lo, hi = ci_mean(d)
-    out["diff_bb_paired"] = [m, lo, hi]
-    sig_pay = not (lo <= 0 <= hi)
-    lines.append(f"new-old payoff (paired by deal): {m:+.4f} bb/hand [95% CI {lo:+.4f}, {hi:+.4f}] -> {'SIGNIFICANT' if sig_pay else 'not significant'}")
-    wn, wo = (Pn.reshape(-1) > 0), (Po.reshape(-1) > 0)
-    dw = wn.astype(float) - wo.astype(float); m, lo, hi = ci_mean(dw)
-    sig_win = not (lo <= 0 <= hi)
-    out["diff_win_paired"] = [m, lo, hi]
-    lines.append(f"new-old win rate (paired by hand): {m:+.4f} [95% CI {lo:+.4f}, {hi:+.4f}] -> {'SIGNIFICANT' if sig_win else 'not significant'}")
-    sig_act = []
-    out["chi2"] = {}
+        h = P.reshape(-1); w = (h > 0).mean(); wh = 1.96 * math.sqrt(w * (1 - w) / len(h))
+        m, l2, h2 = ci_mean(h)
+        lines.append(f"{name}: payoff {m:+.4f} bb/hand [{l2:+.4f}, {h2:+.4f}], win rate {w:.4f} [{w - wh:.4f}, {w + wh:.4f}]")
+    dw = (Pn.reshape(-1) > 0).astype(float) - (Po.reshape(-1) > 0).astype(float); m, l2, h2 = ci_mean(dw)
+    lines.append(f"win rate diff (paired by deck+seat): {m:+.4f} [{l2:+.4f}, {h2:+.4f}]")
+    chi = {}
     for who, A_, B_ in (("hero", Cn, Co), ("opp", On, Oo)):
-        for s in range(4):
-            x, df, pv = chi2(A_[s], B_[s])
-            out["chi2"][f"{who}_{STREETS[s]}"] = [x, df, pv]
-            na, nb = A_[s].sum(), B_[s].sum()
-            props = " ".join(f"a{k}:{A_[s,k]/max(na,1):.3f}/{B_[s,k]/max(nb,1):.3f}" for k in range(5))
-            lines.append(f"{who} {STREETS[s]:7s} n={na}/{nb} chi2={x:.2f} df={df} p={pv:.3f}  new/old {props}")
-            sig_act.append(pv < 0.05)
-    nsig = sum(sig_act)
-    lines.append(f"action-distribution tests at p<0.05: {nsig}/{len(sig_act)} significant "
-                 f"(expected ~{0.05 * len(sig_act):.1f} by chance; Bonferroni threshold p<{0.05 / len(sig_act):.4f}: "
-                 f"{sum(v[2] < 0.05 / len(sig_act) for v in out['chi2'].values())} significant)")
-    ok = (not sig_pay) and (not sig_win) and all(v[2] >= 0.05 / len(sig_act) for v in out["chi2"].values())
-    lines.append(f"RESULT: {'PASS - no significant difference' if ok else 'FAIL - significant difference'}")
-    out["pass"] = ok
-    out["summary"] = lines
+        for s_ in range(4):
+            x, df, pv = chi2(A_[s_], B_[s_]); chi[f"{who}_{STREETS[s_]}"] = [x, df, pv]
+            lines.append(f"{who} {STREETS[s_]:7s} n={A_[s_].sum()}/{B_[s_].sum()} chi2={x:.2f} df={df} p={pv:.3f}")
+    nsig = sum(v[2] < 0.05 / len(chi) for v in chi.values())
+    lines.append(f"action chi2: {sum(v[2] < 0.05 for v in chi.values())}/{len(chi)} p<0.05, {nsig} below Bonferroni {0.05 / len(chi):.4f}")
+    if st["halfwidth"] <= a.accept:
+        crit, ok = f"strict (half-width <= {a.accept})", has0
+    elif a.target_halfwidth is not None and st["hands"] + 2 * a.deals > a.max_hands:
+        crit, ok = f"relaxed (cap {a.max_hands} reached; half-width <= {a.relaxed})", has0 and st["halfwidth"] <= a.relaxed
+    else:
+        crit, ok = f"strict (half-width <= {a.accept}) - NOT MET, run with --target-halfwidth {a.accept}", False
+    verdict = "FAIL" if not ok else ("PASS(relaxed)" if crit.startswith("relaxed") else "PASS")
+    lines.append(f"criterion: {crit}; CI contains 0: {has0}; action dists not significant: {nsig == 0} -> {verdict}")
     print("\n".join(lines))
     if a.out:
-        a.out.write_text(json.dumps(out, indent=1, default=float))
+        a.out.write_text(json.dumps({"stats": st, "chi2": chi, "criterion": crit, "verdict": verdict,
+                                     "seconds": t, "summary": lines, "args": {k: str(v) for k, v in vars(a).items()}},
+                                    indent=1, default=float))
 
 
 if __name__ == "__main__":

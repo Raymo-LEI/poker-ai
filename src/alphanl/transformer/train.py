@@ -77,6 +77,22 @@ def _batching(envs: Sequence[Any]) -> bool:
     return all(getattr(env, "actor", None) is actor and hasattr(env, "begin_step") for env in envs)
 
 
+def _per_env_sampling(envs: Sequence[Any]) -> bool:
+    return bool(envs) and all(getattr(env, "per_env_rng", False) for env in envs)
+
+
+@torch.no_grad()
+def _hero_act_streams(model: torch.nn.Module, stacked, envs: Sequence[Any]):
+    """T-C1c: one batched forward, then each env samples its row from its own stream."""
+    from .model import masked_log_probs
+
+    logits, values = model(stacked, mask_illegal=True)
+    _, log_probs, probs, _ = masked_log_probs(logits, stacked["legal_mask"])
+    acts = torch.tensor([env.streams.sample_action(probs[e]) for e, env in enumerate(envs)], dtype=torch.long)
+    logp = log_probs.gather(1, acts.to(log_probs.device).unsqueeze(1)).squeeze(1)
+    return acts, logp, values
+
+
 def collect_rollout(
     envs: Sequence[Any],
     obs: List[Dict[str, torch.Tensor]],
@@ -114,8 +130,11 @@ def collect_rollout(
     model.eval()
     for t in range(rollout_steps):
         stacked = batch_to_device(cat_batches(obs), device)
-        with torch.no_grad():
-            act, logp, values, _ = model.act(stacked, deterministic=False)
+        if _per_env_sampling(envs):
+            act, logp, values = _hero_act_streams(model, stacked, envs)
+        else:
+            with torch.no_grad():
+                act, logp, values, _ = model.act(stacked, deterministic=False)
         act = act.cpu()
         logp = logp.cpu()
         values = values.cpu()
@@ -323,6 +342,10 @@ def run_training(
     shadow = build_model(cfg).to(rollout_device)
     actor_rng = np.random.default_rng(cfg.seed + 17)
     actor = PolicyActor(rollout_model, shadow, tokenizer, actor_rng)
+    # T-C1c: per-table streams spawned from the master seed.
+    env_seed_seqs = None
+    if getattr(cfg.env, "per_env_rng", False) or getattr(cfg.env, "shared_deal_stream", False):
+        env_seed_seqs = np.random.SeedSequence(int(cfg.seed)).spawn(cfg.ppo.num_envs)
     envs = [
         SelfPlayEnv(
             tokenizer,
@@ -334,6 +357,9 @@ def run_training(
             starting_stack=cfg.env.starting_stack,
             backend=cfg.env.backend,
             observer=observer_for(cfg),
+            seed_seq=env_seed_seqs[index] if env_seed_seqs else None,
+            per_env_rng=bool(getattr(cfg.env, "per_env_rng", False)),
+            shared_deal_stream=bool(getattr(cfg.env, "shared_deal_stream", False)),
         )
         for index in range(cfg.ppo.num_envs)
     ]

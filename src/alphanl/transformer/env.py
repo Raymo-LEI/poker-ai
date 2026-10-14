@@ -34,6 +34,48 @@ from .tables import make_table
 from .tokenizer import BettingHistoryTokenizer, TensorBatch, batch_to_device, cat_batches
 
 
+_SUITS = "SHDC"
+_RANKS = "23456789TJQKA"
+CANONICAL_DECK = tuple(su + r for su in _SUITS for r in _RANKS)
+
+
+class EnvStreams:
+    """T-C1c: one table's private RNG streams, spawned from a SeedSequence.
+
+    ``deal`` (numpy): deck permutation, hero seat, opponent pick.
+    ``sample`` (numpy + cpu torch.Generator): every action sampled for this
+    table (hero in the rollout, opponent, random opponent).
+    """
+
+    def __init__(self, seed_seq: np.random.SeedSequence) -> None:
+        deal_ss, sample_ss = seed_seq.spawn(2)
+        self.deal = np.random.default_rng(deal_ss)
+        self.sample_np = np.random.default_rng(sample_ss)
+        torch_seed = int(sample_ss.generate_state(1, np.uint64)[0]) & ((1 << 63) - 1)
+        self.sample_torch = torch.Generator(device="cpu")
+        self.sample_torch.manual_seed(torch_seed)
+
+    def draw_deck(self) -> list:
+        return [CANONICAL_DECK[i] for i in self.deal.permutation(52)]
+
+    def sample_action(self, probs_row: torch.Tensor) -> int:
+        """Sample one index from a [A] or [1, A] probability row with this table's generator."""
+        row = probs_row.detach().reshape(-1).to("cpu", torch.float64)
+        return int(torch.multinomial(row, 1, generator=self.sample_torch).item())
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "deal": self.deal.bit_generator.state,
+            "sample_np": self.sample_np.bit_generator.state,
+            "sample_torch": self.sample_torch.get_state(),
+        }
+
+    def load_state_dict(self, blob: Dict[str, Any]) -> None:
+        self.deal.bit_generator.state = blob["deal"]
+        self.sample_np.bit_generator.state = blob["sample_np"]
+        self.sample_torch.set_state(blob["sample_torch"])
+
+
 class PolicyActor:
     """Stochastic legal actions for the opponent during a rollout."""
 
@@ -167,10 +209,13 @@ class PolicyActor:
     def act(self, snapshot, choice: Dict[str, Any]) -> int:
         return self.act_batch(self.tokenizer.encode(snapshot), choice)
 
-    def act_batch(self, batch: TensorBatch, choice: Dict[str, Any], logits: Optional[torch.Tensor] = None) -> int:
+    def act_batch(self, batch: TensorBatch, choice: Dict[str, Any], logits: Optional[torch.Tensor] = None,
+                  streams: Optional[EnvStreams] = None) -> int:
         legal = [index for index, flag in enumerate(batch["legal_mask"][0].tolist()) if flag > 0.5]
         if not legal:
             raise RuntimeError("opponent saw no legal actions")
+        if streams is not None:
+            return self._act_streams(batch, choice, legal, logits, streams)
         if choice["kind"] == "random":
             return int(self.rng.choice(legal))
         if logits is not None:
@@ -200,6 +245,27 @@ class PolicyActor:
         return action
 
 
+    def _act_streams(self, batch, choice, legal, logits, streams: EnvStreams) -> int:
+        """T-C1c: sample from the table's own streams; no global / actor RNG."""
+        if choice["kind"] == "random":
+            return int(legal[int(streams.sample_np.integers(0, len(legal)))])
+        if logits is None:
+            model = self._model_for(choice)
+            device = next(model.parameters()).device
+            was_training = model.training
+            model.eval()
+            with torch.no_grad():
+                logits, _ = model(batch_to_device(batch, device), mask_illegal=True)
+            if was_training:
+                model.train()
+        from .model import masked_log_probs
+        _, _, probs, _ = masked_log_probs(logits, batch["legal_mask"].to(logits.device))
+        action = streams.sample_action(probs[0])
+        if action not in legal:
+            return int(legal[0])
+        return action
+
+
 class SelfPlayEnv:
     """One heads-up table. ``reset`` / ``step`` speak in hero decisions."""
 
@@ -216,6 +282,9 @@ class SelfPlayEnv:
         backend: str = "rlcard",
         record_results: bool = True,
         observer: Optional[Any] = None,
+        seed_seq: Optional[np.random.SeedSequence] = None,
+        per_env_rng: bool = False,
+        shared_deal_stream: bool = False,
     ) -> None:
         self.tokenizer = tokenizer
         self.actor = actor
@@ -239,6 +308,16 @@ class SelfPlayEnv:
         self.hero = 0
         self.choice: Dict[str, Any] = {"kind": "random", "policy_id": None, "weights": None}
         self._prefetched = None
+        # T-C1c. per_env_rng: deals AND sampling from this table's streams.
+        # shared_deal_stream: deals from the stream, sampling stays global (old path).
+        self.per_env_rng = bool(per_env_rng)
+        self.shared_deal_stream = bool(shared_deal_stream) or self.per_env_rng
+        self.streams: Optional[EnvStreams] = None
+        if self.shared_deal_stream:
+            if seed_seq is None:
+                seed_seq = np.random.SeedSequence(int(seed))
+            self.streams = EnvStreams(seed_seq)
+        self.force_hero: Optional[int] = None
         if isinstance(actor, PolicyActor):
             actor._tables.append(self)
 
@@ -267,6 +346,7 @@ class SelfPlayEnv:
             "backend": self.backend,
             "table": self.table.state_dict(),
             "fields": pickle.dumps(blob),
+            "streams": None if self.streams is None else self.streams.state_dict(),
         }
 
     def load_state_dict(self, blob: Dict[str, Any]) -> None:
@@ -282,6 +362,8 @@ class SelfPlayEnv:
             )
         self.rng.bit_generator.state = blob["rng"]
         self.table.load_state_dict(blob["table"])
+        if self.streams is not None and blob.get("streams") is not None:
+            self.streams.load_state_dict(blob["streams"])
         for name, value in pickle.loads(blob["fields"]).items():
             setattr(self, name, value)
 
@@ -373,12 +455,21 @@ class SelfPlayEnv:
         return rewards
 
     def _deal(self, deck: Optional[Sequence[str]]) -> None:
-        self.table.reset(deck)
-        self.hero = int(self.rng.integers(0, 2))
+        if self.streams is not None:
+            # Fixed draw order per hand: deck, seat, opponent pick.
+            drawn = self.streams.draw_deck()
+            self.table.reset(drawn if deck is None else deck)
+            hero = int(self.streams.deal.integers(0, 2))
+            self.hero = hero if self.force_hero is None else int(self.force_hero)
+            roll_rng = self.streams.deal
+        else:
+            self.table.reset(deck)
+            self.hero = int(self.rng.integers(0, 2))
+            roll_rng = None
         if self.force_opponent is not None:
             self.choice = dict(self.force_opponent)
         else:
-            self.choice = self.pool.sample()
+            self.choice = self.pool.sample(rng=roll_rng) if roll_rng is not None else self.pool.sample()
         if self.choice["kind"] == "pool":
             if isinstance(self.actor, PolicyActor):
                 self.actor.prepare_pool(
@@ -391,10 +482,15 @@ class SelfPlayEnv:
 
     def _actor_choose(self, seat: int) -> int:
         pre, self._prefetched = self._prefetched, None
+        streams = self.streams if self.per_env_rng else None
         if pre is not None:
+            if streams is not None:
+                return self.actor.act_batch(pre[0], self.choice, logits=pre[1], streams=streams)
             return self.actor.act_batch(pre[0], self.choice, logits=pre[1])
         batch = self._observe_seat(seat)
         if hasattr(self.actor, "act_batch"):
+            if streams is not None:
+                return self.actor.act_batch(batch, self.choice, streams=streams)
             return self.actor.act_batch(batch, self.choice)
         return self.actor.act(self.table.snapshot(int(seat)), self.choice)
 

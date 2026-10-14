@@ -151,6 +151,8 @@ def main() -> int:
                    help="T-C1a off: one shared shadow reloaded before every opponent move (pre-T-C1a timing)")
     p.add_argument("--no-batch-rollout", action="store_true",
                    help="T-C1b off: opponent forward one move at a time (T-C1a timing)")
+    p.add_argument("--per-env-rng", action="store_true",
+                   help="T-C1c: env.per_env_rng=true (per-table deal + sample streams)")
     p.add_argument("--rollout-device", choices=("cpu", "cuda", "auto"), default=None,
                    help="override rollout_device (where learner/opponent inference runs during rollout)")
     p.add_argument("--profile-rollout", action="store_true",
@@ -173,6 +175,8 @@ def main() -> int:
         num_updates=a.steps, out_dir=str(out), device=a.device, seed=a.seed, amp=a.amp,
         checkpoint_dir=str(out / "ckpt"), checkpoint_every=a.steps,
     )
+    if a.per_env_rng:
+        cfg.env.per_env_rng = True
     if a.num_envs:
         cfg.ppo.num_envs = a.num_envs
     if a.rollout_steps:

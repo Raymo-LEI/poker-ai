@@ -75,6 +75,13 @@ class EnvConfig:
     big_blind: float = 2.0
     small_blind: float = 1.0
     starting_stack: float = 100.0
+    # T-C1c: each table gets its own RNG streams spawned from SeedSequence(seed):
+    # a DEAL stream (deck, hero seat, opponent pick) and a SAMPLE stream (hero and
+    # opponent action sampling). Draw order then no longer depends on batching.
+    per_env_rng: bool = False
+    # T-C1c: old global-RNG sampling, but decks / seats / opponent picks from the
+    # per-table deal stream (identical cards to per_env_rng, for duplicate eval).
+    shared_deal_stream: bool = False
 
 
 @dataclass

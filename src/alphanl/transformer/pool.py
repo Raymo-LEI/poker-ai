@@ -70,7 +70,7 @@ class OpponentPool:
             return 0.5
         return float(entry["wins"] / entry["games"])
 
-    def sample(self) -> Dict[str, Any]:
+    def sample(self, rng: Optional[np.random.Generator] = None) -> Dict[str, Any]:
         """Return kind ``random``, ``self``, or ``pool``.
 
         ``policy_id`` is stable across later evictions: ``record`` ignores an
@@ -78,12 +78,14 @@ class OpponentPool:
         into a frozen opponent, and are ``None`` unless kind is ``pool``.
         """
 
-        roll = float(self.rng.random())
+        # T-C1c: ``rng`` = a table's own deal stream (per_env_rng); default the shared pool RNG.
+        rng = self.rng if rng is None else rng
+        roll = float(rng.random())
         if roll < self.random_prob or not self._order:
             return {"kind": "random", "policy_id": None, "weights": None}
         if roll < self.random_prob + self.selfplay_prob:
             return {"kind": "self", "policy_id": None, "weights": None}
-        policy_id = self._sample_pool_id()
+        policy_id = self._sample_pool_id(rng)
         return {
             "kind": "pool",
             "policy_id": policy_id,
@@ -137,16 +139,17 @@ class OpponentPool:
                 "games": float(entry["games"]),
             }
 
-    def _sample_pool_id(self) -> int:
+    def _sample_pool_id(self, rng: Optional[np.random.Generator] = None) -> int:
+        rng = self.rng if rng is None else rng
         ids = list(self._order)
         if self.sampling == "uniform":
-            return int(self.rng.choice(ids))
+            return int(rng.choice(ids))
         weights = []
         for pid in ids:
             rate = min(self.win_rate(pid), 0.95)
             weights.append((1.0 - rate) ** 2)
         total = float(sum(weights))
         if total <= 1e-12:
-            return int(self.rng.choice(ids))
+            return int(rng.choice(ids))
         probs = [w / total for w in weights]
-        return int(self.rng.choice(ids, p=np.asarray(probs)))
+        return int(rng.choice(ids, p=np.asarray(probs)))

@@ -24,7 +24,7 @@ TF 1.15 没有可维护的 Transformer 实现，也装不到当前的 Python / �
 
 代价：
 
-- **不能**把 `c_1048.pkl` 加载进新网络。结构不同。
+- **不能**把 `c_1048.pkl` 加载进 Transformer。结构不同。控制组卷积网可以装这份权重，见 [docs/bc_and_baseline.md](bc_and_baseline.md)。
 - Step 1 的评测环境（Python 3.7 + `requirements-alphanl.txt`）和 Step 3（Python 3.10+ + `requirements-transformer.txt`）分开。不要把两份依赖装进同一个环境。
 - 新训练循环不经过 Ray league。对手池是进程内的 PFSP，见下文。
 
@@ -211,7 +211,7 @@ python3 -m pytest -q
 3. **策略头锁在 5 个动作上。** pokerkit 后端已经把 fold / check-call / 半池 / 一倍池 / all-in 映射回这 5 个动作，历史里用真实比例。半池和一倍池沿用 rlcard 的「加上 int(底池/2) 或整个底池」，不是标准的底池比例加注公式；不够最小加注的会被掩掉。若要更细的下注，policy head 和 `legal_mask` 的宽度要一起改。
 4. **rlcard 的底池记账和翻牌后行动顺序仍然是错的。** pokerkit 后端修正了行动顺序和最小加注。在 rlcard 上训出来的权重不能直接拿去打 pokerkit。
 5. **对手池是 PFSP，不是上游的 K-best Ray league，也没有单独的 exploiter。**
-6. **没有从 `c_1048.pkl` 做行为克隆。** 热启动要另做数据管线。
+6. **行为克隆和卷积控制组**见 [docs/bc_and_baseline.md](bc_and_baseline.md)。Transformer 仍然不能直接装 `c_1048.pkl`；控制组卷积网可以。本环境没有 TF 1.15，和 TF 模型的概率对照脚本还没在真机上对过。
 7. **价值头预测的是 bb 回报（大约 ±50），没有 PopArt / 回报归一化。** 开局 value loss 会比 policy loss 大，梯度有 `max_grad_norm = 0.5` 截断。
 8. **GPU 路径没在 3070 或 Colab 上跑过。** `device=auto` 在有 CUDA 时把 PPO 更新放到 GPU；单测和本环境的冒烟都是 CPU。
 9. **评估只对随机合法对手，贪心出牌，手数很少，只用于看有没有塌。** 不是 Step 1 那种带置信区间的 mbb/hand，也没有接 RuleBot（那个机器人在 TF 环境里）。

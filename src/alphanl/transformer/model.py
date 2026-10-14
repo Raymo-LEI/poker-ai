@@ -53,6 +53,35 @@ def entropy_from_probs(probs: torch.Tensor, log_probs: torch.Tensor, legal: torc
     return -(probs * safe_log).sum(dim=-1)
 
 
+@torch.no_grad()
+def policy_act(
+    model: nn.Module,
+    batch: TensorBatch,
+    *,
+    deterministic: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Sample (or argmax) a legal action from any encoder that returns logits and value.
+
+    Returns actions, log-probs, values, and per-row entropy. All detached.
+    Both the Transformer and the AlphaNL conv control net use this so the
+    action distribution, the mask, and the PPO storage stay the same.
+    """
+
+    was_training = model.training
+    model.eval()
+    logits, value = model(batch, mask_illegal=True)
+    _, log_probs, probs, legal = masked_log_probs(logits, batch["legal_mask"])
+    if deterministic:
+        actions = torch.argmax(logits, dim=-1)
+    else:
+        actions = torch.distributions.Categorical(probs=probs).sample()
+    chosen_logp = log_probs.gather(1, actions.unsqueeze(1)).squeeze(1)
+    ent = entropy_from_probs(probs, log_probs, legal)
+    if was_training:
+        model.train()
+    return actions, chosen_logp, value, ent
+
+
 class PokerTransformer(nn.Module):
     def __init__(
         self,
@@ -154,29 +183,11 @@ class PokerTransformer(nn.Module):
             logits, _, _, _ = masked_log_probs(logits, batch["legal_mask"])
         return logits, value
 
-    @torch.no_grad()
     def act(
         self,
         batch: TensorBatch,
         *,
         deterministic: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Sample (or argmax) a legal action.
-
-        Returns actions, log-probs, values, and per-row entropy. All detached.
-        """
-
-        was_training = self.training
-        self.eval()
-        logits, value = self.forward(batch, mask_illegal=True)
-        _, log_probs, probs, legal = masked_log_probs(logits, batch["legal_mask"])
-        if deterministic:
-            actions = torch.argmax(logits, dim=-1)
-        else:
-            actions = torch.distributions.Categorical(probs=probs).sample()
-        chosen_logp = log_probs.gather(1, actions.unsqueeze(1)).squeeze(1)
-        ent = entropy_from_probs(probs, log_probs, legal)
-        if was_training:
-            self.train()
-        return actions, chosen_logp, value, ent
+        return policy_act(self, batch, deterministic=deterministic)
 

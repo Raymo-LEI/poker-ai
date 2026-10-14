@@ -14,7 +14,7 @@ from typing import Optional
 
 import torch
 
-from .model import PokerTransformer, entropy_from_probs, masked_log_probs
+from .model import entropy_from_probs, masked_log_probs
 from .tokenizer import TensorBatch, slice_batch
 
 
@@ -55,7 +55,7 @@ def explained_variance(values: torch.Tensor, returns: torch.Tensor) -> float:
 
 
 def ppo_losses(
-    model: PokerTransformer,
+    model: torch.nn.Module,
     batch: TensorBatch,
     *,
     actions: torch.Tensor,
@@ -118,7 +118,7 @@ def make_grad_scaler(amp: bool, device) -> "torch.amp.GradScaler":
 
 
 def ppo_update(
-    model: PokerTransformer,
+    model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     batch: TensorBatch,
     *,

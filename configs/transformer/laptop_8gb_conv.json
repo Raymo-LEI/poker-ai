@@ -1,0 +1,53 @@
+{
+  "name": "laptop_8gb_conv",
+  "seed": 1,
+  "device": "auto",
+  "rollout_device": "cpu",
+  "encoder": "alphanl_conv",
+  "model": {
+    "d_model": 128,
+    "nhead": 4,
+    "num_layers": 4,
+    "dim_feedforward": 256,
+    "dropout": 0.1,
+    "max_seq_len": 64
+  },
+  "ppo": {
+    "lr": 0.0003,
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "clip_eps": 0.2,
+    "entropy_coef": 0.01,
+    "value_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "epochs": 4,
+    "minibatch_size": 256,
+    "rollout_steps": 128,
+    "num_envs": 8,
+    "adam_eps": 1e-05
+  },
+  "pool": {
+    "max_size": 8,
+    "selfplay_prob": 0.25,
+    "random_prob": 0.1,
+    "snapshot_every": 10,
+    "sampling": "pfsp"
+  },
+  "train": {
+    "num_updates": 100000,
+    "checkpoint_every": 50,
+    "log_every": 1,
+    "eval_every": 25,
+    "eval_hands": 20,
+    "out_dir": "runs/conv_laptop",
+    "amp": true,
+    "checkpoint_dir": "runs/ckpt_conv",
+    "keep_last": 3
+  },
+  "env": {
+    "backend": "rlcard",
+    "big_blind": 2,
+    "small_blind": 1,
+    "starting_stack": 100
+  }
+}

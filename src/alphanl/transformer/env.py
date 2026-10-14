@@ -25,9 +25,9 @@ from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from .history import BIG_BLIND_CHIPS, SMALL_BLIND_CHIPS, STARTING_STACK
-from .model import PokerTransformer
 from .pool import OpponentPool
 from .tables import make_table
 from .tokenizer import BettingHistoryTokenizer, TensorBatch, batch_to_device
@@ -38,8 +38,8 @@ class PolicyActor:
 
     def __init__(
         self,
-        rollout_model: PokerTransformer,
-        shadow: PokerTransformer,
+        rollout_model: nn.Module,
+        shadow: nn.Module,
         tokenizer: BettingHistoryTokenizer,
         rng: np.random.Generator,
     ) -> None:
@@ -59,7 +59,10 @@ class PolicyActor:
         self.shadow.load_state_dict({key: value.to(device) for key, value in weights.items()})
 
     def act(self, snapshot, choice: Dict[str, Any]) -> int:
-        legal = list(snapshot.legal_action_ids)
+        return self.act_batch(self.tokenizer.encode(snapshot), choice)
+
+    def act_batch(self, batch: TensorBatch, choice: Dict[str, Any]) -> int:
+        legal = [index for index, flag in enumerate(batch["legal_mask"][0].tolist()) if flag > 0.5]
         if not legal:
             raise RuntimeError("opponent saw no legal actions")
         if choice["kind"] == "random":
@@ -72,8 +75,8 @@ class PolicyActor:
         else:
             model = self.rollout_model
         device = next(model.parameters()).device
-        batch = batch_to_device(self.tokenizer.encode(snapshot), device)
-        actions, _, _, _ = model.act(batch, deterministic=False)
+        moved = batch_to_device(batch, device)
+        actions, _, _, _ = model.act(moved, deterministic=False)
         action = int(actions.item())
         if action not in legal:
             return int(legal[0])
@@ -86,7 +89,7 @@ class SelfPlayEnv:
     def __init__(
         self,
         tokenizer: BettingHistoryTokenizer,
-        actor: PolicyActor,
+        actor: Any,
         pool: OpponentPool,
         *,
         seed: int,
@@ -95,11 +98,13 @@ class SelfPlayEnv:
         starting_stack: float = STARTING_STACK,
         backend: str = "rlcard",
         record_results: bool = True,
+        observer: Optional[Any] = None,
     ) -> None:
         self.tokenizer = tokenizer
         self.actor = actor
         self.pool = pool
         self.backend = str(backend)
+        self.observer = observer
         self.big_blind = float(big_blind)
         self.small_blind = int(small_blind)
         self.starting_stack = float(starting_stack)
@@ -210,11 +215,21 @@ class SelfPlayEnv:
         if ended:
             self._record(reward)
         info = {"policy_id": self.choice.get("policy_id"), "kind": self.choice.get("kind")}
-        obs = self.tokenizer.blank() if ended else self.observe()
+        obs = self._blank() if ended else self.observe()
         return obs, float(reward), bool(ended), info
 
     def observe(self) -> TensorBatch:
-        return self.tokenizer.encode(self.table.snapshot(self.hero))
+        return self._observe_seat(self.hero)
+
+    def _observe_seat(self, seat: int) -> TensorBatch:
+        if self.observer is not None:
+            return self.observer.observe_table(self.table, int(seat))
+        return self.tokenizer.encode(self.table.snapshot(int(seat)))
+
+    def _blank(self) -> TensorBatch:
+        if self.observer is not None:
+            return self.observer.blank()
+        return self.tokenizer.blank()
 
     def drain_passive_rewards(self) -> list:
         rewards = list(self.passive_rewards_bb)
@@ -231,13 +246,19 @@ class SelfPlayEnv:
         if self.choice["kind"] == "pool":
             self.actor.prepare_pool(self.choice["weights"])
 
+    def _actor_choose(self, seat: int) -> int:
+        batch = self._observe_seat(seat)
+        if hasattr(self.actor, "act_batch"):
+            return self.actor.act_batch(batch, self.choice)
+        return self.actor.act(self.table.snapshot(int(seat)), self.choice)
+
     def _play_until_hero(self) -> bool:
         for _ in range(64):
             if self.table.is_over():
                 return True
             if int(self.table.current_player()) == int(self.hero):
                 return False
-            action = self.actor.act(self.table.snapshot(int(self.table.current_player())), self.choice)
+            action = self._actor_choose(int(self.table.current_player()))
             self._push_and_step(action)
         raise RuntimeError("opponent played more than 64 actions in one hand")
 

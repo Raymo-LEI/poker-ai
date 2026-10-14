@@ -18,6 +18,8 @@ from .pool import OpponentPool
 from .ppo import amp_enabled, compute_gae, make_grad_scaler, ppo_update
 from .tokenizer import BettingHistoryTokenizer, batch_to_device, cat_batches
 
+_PPO_SKIP = {"actions", "old_logp", "old_values", "advantages", "returns", "rewards", "dones"}
+
 
 def set_seed(seed: int) -> None:
     import random
@@ -29,7 +31,13 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def build_model(cfg: ExperimentConfig) -> PokerTransformer:
+def build_model(cfg: ExperimentConfig) -> torch.nn.Module:
+    if cfg.encoder == "alphanl_conv":
+        from .conv_net import AlphaNLConvNet
+
+        return AlphaNLConvNet()
+    if cfg.encoder != "transformer":
+        raise ValueError("encoder must be 'transformer' or 'alphanl_conv'")
     model_cfg = cfg.model
     return PokerTransformer(
         d_model=model_cfg.d_model,
@@ -41,7 +49,17 @@ def build_model(cfg: ExperimentConfig) -> PokerTransformer:
     )
 
 
-def build_optimizer(model: PokerTransformer, cfg: ExperimentConfig) -> torch.optim.Adam:
+def observer_for(cfg: ExperimentConfig):
+    """Conv runs see the TF card/history tensors. The transformer keeps tokens."""
+
+    if cfg.encoder == "alphanl_conv":
+        from .conv_obs import AlphaNLObserver
+
+        return AlphaNLObserver()
+    return None
+
+
+def build_optimizer(model: torch.nn.Module, cfg: ExperimentConfig) -> torch.optim.Adam:
     return torch.optim.Adam(model.parameters(), lr=cfg.ppo.lr, eps=cfg.ppo.adam_eps)
 
 
@@ -55,7 +73,7 @@ def _sync_weights(src: torch.nn.Module, dst: torch.nn.Module) -> None:
 def collect_rollout(
     envs: Sequence[Any],
     obs: List[Dict[str, torch.Tensor]],
-    model: PokerTransformer,
+    model: torch.nn.Module,
     device: torch.device,
     rollout_steps: int,
 ) -> tuple:
@@ -70,13 +88,14 @@ def collect_rollout(
     if len(obs) != num_envs:
         raise ValueError("obs and envs length mismatch")
     sample = obs[0]
-    seq_len = int(sample["token_ids"].shape[-1])
-    num_actions = int(sample["legal_mask"].shape[-1])
-    token_ids = torch.zeros(num_envs, rollout_steps, seq_len, dtype=torch.long)
-    type_ids = torch.zeros(num_envs, rollout_steps, seq_len, dtype=torch.long)
-    numeric = torch.zeros(num_envs, rollout_steps, seq_len, sample["numeric"].shape[-1])
-    pad_mask = torch.ones(num_envs, rollout_steps, seq_len, dtype=torch.bool)
-    legal_mask = torch.zeros(num_envs, rollout_steps, num_actions)
+    obs_keys = list(sample.keys())
+    columns = {
+        key: torch.zeros(
+            (num_envs, rollout_steps, *sample[key].shape[1:]),
+            dtype=sample[key].dtype,
+        )
+        for key in obs_keys
+    }
     actions = torch.zeros(num_envs, rollout_steps, dtype=torch.long)
     old_logp = torch.zeros(num_envs, rollout_steps)
     old_values = torch.zeros(num_envs, rollout_steps)
@@ -94,11 +113,8 @@ def collect_rollout(
         logp = logp.cpu()
         values = values.cpu()
         for e, env in enumerate(envs):
-            token_ids[e, t] = obs[e]["token_ids"][0]
-            type_ids[e, t] = obs[e]["type_ids"][0]
-            numeric[e, t] = obs[e]["numeric"][0]
-            pad_mask[e, t] = obs[e]["pad_mask"][0]
-            legal_mask[e, t] = obs[e]["legal_mask"][0]
+            for key in obs_keys:
+                columns[key][e, t] = obs[e][key][0]
             actions[e, t] = act[e]
             old_logp[e, t] = logp[e]
             old_values[e, t] = values[e]
@@ -114,19 +130,17 @@ def collect_rollout(
     bootstrap_batch = batch_to_device(cat_batches(obs), device)
     with torch.no_grad():
         _, bootstrap = model(bootstrap_batch, mask_illegal=True)
-    storage = {
-        "token_ids": token_ids,
-        "type_ids": type_ids,
-        "numeric": numeric,
-        "pad_mask": pad_mask,
-        "legal_mask": legal_mask,
-        "actions": actions,
-        "old_logp": old_logp,
-        "old_values": old_values,
-        "rewards": rewards,
-        "dones": dones,
-        "bootstrap": bootstrap.detach().cpu(),
-    }
+    storage = dict(columns)
+    storage.update(
+        {
+            "actions": actions,
+            "old_logp": old_logp,
+            "old_values": old_values,
+            "rewards": rewards,
+            "dones": dones,
+            "bootstrap": bootstrap.detach().cpu(),
+        }
+    )
     terminal = dones > 0.5
     if int(terminal.sum()) == 0:
         mean_reward = 0.0
@@ -155,18 +169,12 @@ def flatten_rollout(storage: Dict[str, torch.Tensor], gamma: float, gae_lambda: 
     def flat(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(num_envs * steps, *tensor.shape[2:])
 
-    return {
-        "token_ids": flat(storage["token_ids"]),
-        "type_ids": flat(storage["type_ids"]),
-        "numeric": flat(storage["numeric"]),
-        "pad_mask": flat(storage["pad_mask"]),
-        "legal_mask": flat(storage["legal_mask"]),
-        "actions": flat(storage["actions"]),
-        "old_logp": flat(storage["old_logp"]),
-        "old_values": flat(storage["old_values"]),
-        "advantages": flat(advantages),
-        "returns": flat(returns),
+    flat_storage = {
+        key: flat(tensor) for key, tensor in storage.items() if key != "bootstrap"
     }
+    flat_storage["advantages"] = flat(advantages)
+    flat_storage["returns"] = flat(returns)
+    return flat_storage
 
 
 def _append_csv(path: Path, row: Dict[str, Any]) -> None:
@@ -190,7 +198,7 @@ def _make_writer(log_dir: Path):
 
 @torch.no_grad()
 def evaluate_vs_random(
-    model: PokerTransformer,
+    model: torch.nn.Module,
     tokenizer: BettingHistoryTokenizer,
     pool: OpponentPool,
     cfg: ExperimentConfig,
@@ -212,6 +220,7 @@ def evaluate_vs_random(
         starting_stack=cfg.env.starting_stack,
         backend=cfg.env.backend,
         record_results=False,
+        observer=observer_for(cfg),
     )
     env.force_opponent = {"kind": "random", "policy_id": None, "weights": None}
     total = 0.0
@@ -238,6 +247,7 @@ def run_training(
     cfg: ExperimentConfig,
     *,
     resume: Optional[Path | str] = None,
+    init_weights: Optional[Path | str] = None,
 ) -> Path:
     """Run ``cfg.train.num_updates`` PPO updates. Returns the output directory.
 
@@ -271,17 +281,25 @@ def run_training(
         seed=cfg.seed,
     )
     start_update = 0
+    if resume is not None and init_weights is not None:
+        raise ValueError("pass only one of resume and init_weights")
     if resume is not None:
         # RNG states are restored after the tables are built (building them consumes RNG).
         blob = load_checkpoint(
             resume, learner, optimizer, pool, map_location=str(train_device), scaler=scaler, restore_rng=False
         )
         start_update = int(blob["update"]) + 1
+    elif init_weights is not None:
+        # BC warm start: model weights only. Fresh Adam, fresh tables, update 0.
+        blob = load_checkpoint(
+            init_weights, learner, optimizer=None, pool=None, map_location=str(train_device), restore_rng=False
+        )
+        print(f"[init-weights] loaded {init_weights}")
     if len(pool) == 0:
         pool.add(learner.state_dict())
 
     if rollout_device == train_device:
-        rollout_model: PokerTransformer = learner
+        rollout_model: torch.nn.Module = learner
     else:
         rollout_model = build_model(cfg).to(rollout_device)
         _sync_weights(learner, rollout_model)
@@ -298,6 +316,7 @@ def run_training(
             small_blind=cfg.env.small_blind,
             starting_stack=cfg.env.starting_stack,
             backend=cfg.env.backend,
+            observer=observer_for(cfg),
         )
         for index in range(cfg.ppo.num_envs)
     ]
@@ -346,7 +365,7 @@ def run_training(
         metrics = ppo_update(
             learner,
             optimizer,
-            {key: flat[key] for key in ("token_ids", "type_ids", "numeric", "pad_mask", "legal_mask")},
+            {key: value for key, value in flat.items() if key not in _PPO_SKIP},
             actions=flat["actions"],
             old_logp=flat["old_logp"],
             old_values=flat["old_values"],
@@ -411,10 +430,16 @@ def describe_run(cfg: ExperimentConfig) -> str:
     model = build_model(cfg)
     params = count_parameters(model)
     batch = cfg.ppo.num_envs * cfg.ppo.rollout_steps
+    if cfg.encoder == "alphanl_conv":
+        body = "alphanl_conv (NlHoldemNet port, fixed 16/32/64 channels)"
+    else:
+        body = (
+            f"transformer d_model={cfg.model.d_model}, layers={cfg.model.num_layers}, "
+            f"seq={cfg.model.max_seq_len}"
+        )
     return (
-        f"{cfg.name}: {params:,} parameters, "
-        f"d_model={cfg.model.d_model}, layers={cfg.model.num_layers}, "
-        f"seq={cfg.model.max_seq_len}, envs={cfg.ppo.num_envs}, "
+        f"{cfg.name}: encoder={cfg.encoder}, {params:,} parameters, {body}, "
+        f"envs={cfg.ppo.num_envs}, "
         f"rollout={cfg.ppo.rollout_steps} ({batch} hero decisions/update), "
         f"minibatch={cfg.ppo.minibatch_size}, entropy_coef={cfg.ppo.entropy_coef}, "
         f"device={cfg.device}, rollout_device={cfg.rollout_device}, "

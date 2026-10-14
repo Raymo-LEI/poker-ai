@@ -24,6 +24,7 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 import time
+import sys
 import traceback
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -47,6 +48,16 @@ def split_envs(num_envs: int, workers: int) -> List[List[int]]:
         out.append(list(range(start, start + n)))
         start += n
     return out
+
+
+def uneven_split_warning(num_envs: int, workers: int) -> Optional[str]:
+    """T-C2b: message when envs don't divide evenly over workers (None if they do)."""
+    if workers < 1 or num_envs % workers == 0:
+        return None
+    sizes = sorted({len(s) for s in split_envs(num_envs, workers)}, reverse=True)
+    return (f"[rollout_workers] WARNING: num_envs={num_envs} is not divisible by rollout_workers={workers}; "
+            f"envs per worker uneven ({'/'.join(map(str, sizes))}); rollout step time is bound by the slowest "
+            f"(largest) worker. Prefer num_envs a multiple of rollout_workers.")
 
 
 def sd_to_numpy(state_dict) -> Dict[str, np.ndarray]:
@@ -173,6 +184,9 @@ class RolloutWorkers:
         if str(cfg.rollout_device) not in ("cpu", "auto") and torch.device(cfg.rollout_device).type != "cpu":
             raise ValueError("ppo.rollout_workers > 0 runs rollouts on cpu; set rollout_device cpu")
         self.slices = split_envs(int(cfg.ppo.num_envs), n)
+        msg = uneven_split_warning(int(cfg.ppo.num_envs), n)
+        if msg:
+            print(msg, file=sys.stderr, flush=True)
         self.timeout = float(timeout_s if timeout_s is not None else cfg.ppo.rollout_worker_timeout_s)
         if deterministic is None:
             deterministic = torch.are_deterministic_algorithms_enabled()

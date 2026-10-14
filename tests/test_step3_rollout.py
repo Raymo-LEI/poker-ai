@@ -80,17 +80,6 @@ def test_collect_rollout_shapes_and_gae():
     assert torch.isfinite(flat["returns"]).all()
 
 
-def test_pokerkit_backend_is_rejected():
-    from alphanl.transformer.env import PolicyActor, SelfPlayEnv
-
-    tokenizer = BettingHistoryTokenizer(max_seq_len=16)
-    model = _model()
-    actor = PolicyActor(model, _model(), tokenizer, __import__("numpy").random.default_rng(0))
-    pool = OpponentPool(max_size=1, selfplay_prob=0.0, random_prob=1.0, seed=0)
-    with pytest.raises(NotImplementedError):
-        SelfPlayEnv(tokenizer, actor, pool, seed=0, backend="pokerkit")
-
-
 @pytest.mark.skipif(__import__("importlib").util.find_spec("rlcard") is None, reason="rlcard is not installed")
 def test_one_ppo_update_writes_logs(tmp_path: Path):
     from alphanl.transformer.config import ExperimentConfig

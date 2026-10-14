@@ -8,7 +8,7 @@ python -m venv .venv && . .venv/bin/activate         # Windows: .venv\Scripts\ac
 pip install -r requirements-transformer.txt
 # GPU：换成和驱动匹配的 CUDA 版 torch，例如
 pip install torch --index-url https://download.pytorch.org/whl/cu121
-pytest                                                # 25 个测试，CPU 即可
+pytest                                                # CPU 即可，含 pokerkit 单测
 ```
 
 ## AMP（混合精度）
@@ -20,7 +20,7 @@ pytest                                                # 25 个测试，CPU 即�
 ## Checkpoint
 - 目录是 `train.checkpoint_dir`：本地配置默认 `runs/ckpt`，Colab 配置默认 `/content/drive/MyDrive/poker-ai/ckpt`。可用 `--checkpoint-dir` 覆盖。
 - 每 `train.checkpoint_every` 次更新存一份 `update_XXXXXXX.pt`（可用 `--checkpoint-every` 覆盖），跑完时最后一步也会存。只保留最近 `train.keep_last`（默认 3）份。
-- 内容：模型、优化器、GradScaler、步数、配置、对手池（含它的 RNG），以及 Python random、NumPy、torch CPU/CUDA 的 RNG 状态。另外还有每张牌桌的完整状态：牌桌 RNG、rlcard 环境（含发牌 RNG 和打到一半的手）和对手 actor 的 RNG。所以续训后，自博弈 rollout 和不中断时一模一样。CPU 上逐位一致已经测过；GPU 不保证逐位一致。
+- 内容：模型、优化器、GradScaler、步数、配置、对手池（含它的 RNG），以及 Python random、NumPy、torch CPU/CUDA 的 RNG 状态。另外还有每张牌桌的完整状态：牌桌 RNG、打到一半的手，和对手 actor 的 RNG。rlcard 牌桌 pickle 的是 rlcard 环境（含发牌 RNG）；pokerkit 牌桌 pickle 的是 PokerKit `State`、已发生的动作，以及这张牌桌自己的发牌 RNG。blob 里有 `backend`，不能把一份 checkpoint 载进另一个后端。旧的 rlcard blob（只有 `rl` 和 `fields`）仍能载入 rlcard 环境。所以同一后端续训后，自博弈 rollout 和不中断时一模一样。CPU 上逐位一致已经测过；GPU 不保证逐位一致。
 - 写入是原子的：先写 `.tmp`，fsync，再 rename。中途断电只会留下 `.tmp`，不会损坏已有的 checkpoint。
 - `--resume`（不带参数）会挑 `checkpoint_dir` 里最新的一份；目录为空时从头开始，所以可以一直带着它启动。也可以 `--resume path/to/update_XXXXXXX.pt` 指定某一份。
 - `--updates` 是总步数，不是“再跑多少步”。例如之前跑到 100，想跑到 200，就写 `--updates 200 --resume`。
@@ -54,4 +54,4 @@ drive.mount('/content/drive')
 
 1. **GPU 验证**：在 RTX 3070 笔记本上实测 AMP 训练路径（`train.amp: true` / `--amp`）和 `--resume` 续训；确认 loss 有限、checkpoint 能写读、显存占用可接受。CPU 单测不能代替 CUDA 上的 GradScaler 行为。
 2. **Colab 拉代码**：由仓库主在 GitHub 创建 **fine-grained、只读** 的 Personal Access Token，权限仅覆盖本仓库（`poker-ai`），用于 Colab 里 `git clone` 私有仓；不要把 token 写进仓库或 checkpoint。
-3. **技术债（换 pokerkit 时再做）**：checkpoint 格式（v2）和 rlcard 牌桌 pickle 强绑定，切到 pokerkit 后端时要重做序列化；对手池目前存完整 `state_dict` 副本，后续可改为按 id 引用磁盘上的权重以省内存和 checkpoint 体积。
+3. **对手池的体积**：checkpoint 已经能分别序列化 rlcard 和 pokerkit 牌桌（见上文）。对手池仍存完整 `state_dict` 副本，后续可改为按 id 引用磁盘上的权重以省内存和 checkpoint 体积。

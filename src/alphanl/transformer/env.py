@@ -1,52 +1,36 @@
-"""Heads-up self-play on the same rlcard 1.1.0 game AlphaNLHoldem wraps.
+"""Heads-up self-play for the PyTorch trainer.
 
 The learning agent sees one decision at a time. The opponent (random, the
 current net, or a frozen pool checkpoint) plays its own seat until the hero
-is to act again or the hand ends. Observations are ``HandSnapshot`` values,
-so a pokerkit env can replace ``make_rlcard_env`` later without touching the
-tokenizer or the policy head.
+is to act again or the hand ends. Observations are ``HandSnapshot`` values.
 
-This module does not import TensorFlow or Ray. rlcard is imported only when
-a hand is actually started.
+``backend`` selects the table:
+
+- ``rlcard`` — rlcard 1.1.0, the AlphaNLHoldem game (small blind acts first
+  on every street).
+- ``pokerkit`` — PokerKit heads-up no-limit. The button / small blind acts
+  first preflop and the big blind acts first postflop.
+
+The gym methods (``reset``, ``step``, ``observe``, ``drain_passive_rewards``,
+``state_dict`` / ``load_state_dict``) are the same for both. Rules live in
+``tables.py``; this module only runs the hero / opponent loop.
+
+This module does not import TensorFlow or Ray. rlcard and pokerkit are
+imported only when a hand is actually started.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 import torch
 
-from .history import (
-    BIG_BLIND_CHIPS,
-    SMALL_BLIND_CHIPS,
-    STARTING_STACK,
-    build_snapshot,
-    infer_sb_seat,
-    legal_action_ids,
-    stage_value,
-)
+from .history import BIG_BLIND_CHIPS, SMALL_BLIND_CHIPS, STARTING_STACK
 from .model import PokerTransformer
 from .pool import OpponentPool
+from .tables import make_table
 from .tokenizer import BettingHistoryTokenizer, TensorBatch, batch_to_device
-
-
-def make_rlcard_env(seed: int, starting_stack: int):
-    try:
-        import rlcard
-    except ImportError as exc:
-        raise ImportError(
-            "rlcard is required for self-play. Install requirements-transformer.txt "
-            "(rlcard==1.1.0 matches AlphaNLHoldem's 5-action 50bb game)."
-        ) from exc
-    return rlcard.make(
-        "no-limit-holdem",
-        config={
-            "seed": int(seed),
-            "game_num_players": 2,
-            "chips_for_each": int(starting_stack),
-        },
-    )
 
 
 class PolicyActor:
@@ -112,51 +96,102 @@ class SelfPlayEnv:
         backend: str = "rlcard",
         record_results: bool = True,
     ) -> None:
-        if backend != "rlcard":
-            raise NotImplementedError(
-                "Only the rlcard backend is implemented. A pokerkit backend should "
-                "emit HandSnapshot events via make_action_event and reuse SelfPlayEnv's "
-                "hero/opponent loop. See docs/step3_transformer.md."
-            )
         self.tokenizer = tokenizer
         self.actor = actor
         self.pool = pool
+        self.backend = str(backend)
         self.big_blind = float(big_blind)
         self.small_blind = int(small_blind)
         self.starting_stack = float(starting_stack)
         self.record_results = record_results
         self.rng = np.random.default_rng(seed)
-        self.rl = make_rlcard_env(seed, int(starting_stack))
+        self.table = make_table(
+            self.backend,
+            seed=int(seed),
+            starting_stack=starting_stack,
+            small_blind=small_blind,
+            big_blind=big_blind,
+        )
         self.force_opponent: Optional[Dict[str, Any]] = None
         self.passive_rewards_bb: list = []
-        self.history: list = [[], [], [], []]
-        self.state: Dict[str, Any] = {}
-        self.player = 0
         self.hero = 0
-        self.sb_seat = 0
         self.choice: Dict[str, Any] = {"kind": "random", "policy_id": None, "weights": None}
 
-    _STATE_FIELDS = ("history", "state", "player", "hero", "sb_seat", "choice", "passive_rewards_bb", "force_opponent")
+    _STATE_FIELDS = ("hero", "choice", "passive_rewards_bb", "force_opponent")
+
+    @property
+    def sb_seat(self) -> int:
+        return int(self.table.sb_seat)
 
     def state_dict(self) -> Dict[str, Any]:
-        """Everything needed to continue this table bit-for-bit: our RNG, the rlcard env
-        (its game, dealer deck and np_random) and the hand in progress."""
+        """RNG, the in-progress hand, and who the hero is.
+
+        The table blob is backend-specific. An rlcard checkpoint still
+        unpickles the rlcard env; a pokerkit checkpoint unpickles the
+        PokerKit ``State`` plus that table's deck RNG. Loading one into
+        the other raises ``ValueError``. A checkpoint written before the
+        table wrapper (keys ``rl`` and ``fields`` only) still loads into
+        an rlcard env.
+        """
+
         import pickle
 
         blob = {name: getattr(self, name) for name in self._STATE_FIELDS}
-        return {"rng": self.rng.bit_generator.state, "rl": pickle.dumps(self.rl), "fields": pickle.dumps(blob)}
+        return {
+            "rng": self.rng.bit_generator.state,
+            "backend": self.backend,
+            "table": self.table.state_dict(),
+            "fields": pickle.dumps(blob),
+        }
 
     def load_state_dict(self, blob: Dict[str, Any]) -> None:
         import pickle
 
+        if "table" not in blob and "rl" in blob:
+            self._load_legacy_rlcard(blob)
+            return
+        backend = blob.get("backend")
+        if backend != self.backend:
+            raise ValueError(
+                f"checkpoint backend is {backend!r}, this env is {self.backend!r}"
+            )
         self.rng.bit_generator.state = blob["rng"]
-        self.rl = pickle.loads(blob["rl"])
+        self.table.load_state_dict(blob["table"])
         for name, value in pickle.loads(blob["fields"]).items():
             setattr(self, name, value)
 
-    def reset(self) -> TensorBatch:
+    def _load_legacy_rlcard(self, blob: Dict[str, Any]) -> None:
+        import pickle
+
+        if self.backend != "rlcard":
+            raise ValueError("legacy checkpoint is an rlcard table and cannot load into pokerkit")
+        self.rng.bit_generator.state = blob["rng"]
+        fields = pickle.loads(blob["fields"])
+        self.table.load_state_dict(
+            {
+                "version": 1,
+                "rl": blob["rl"],
+                "history": fields["history"],
+                "state": fields["state"],
+                "player": fields["player"],
+                "sb_seat": fields["sb_seat"],
+            }
+        )
+        for name in self._STATE_FIELDS:
+            setattr(self, name, fields[name])
+
+    def reset(self, deck: Optional[Sequence[str]] = None) -> TensorBatch:
+        """Start a hand and return the hero's first decision.
+
+        ``deck`` is the deal order for that first hand only. Later hands
+        in the same call (when the hero was dealt out without a decision)
+        are shuffled normally.
+        """
+
+        first = True
         for _ in range(1000):
-            self._deal()
+            self._deal(deck if first else None)
+            first = False
             if not self._play_until_hero():
                 return self.observe()
             reward = self._hero_bb()
@@ -165,12 +200,12 @@ class SelfPlayEnv:
         raise RuntimeError("hero received no decision in 1000 hands")
 
     def step(self, action: int):
-        if self.rl.game.is_over():
+        if self.table.is_over():
             raise RuntimeError("step() called on a finished hand")
-        if int(self.player) != int(self.hero):
+        if int(self.table.current_player()) != int(self.hero):
             raise RuntimeError("step() called off the hero's turn")
         self._push_and_step(int(action))
-        ended = bool(self.rl.game.is_over()) or self._play_until_hero()
+        ended = bool(self.table.is_over()) or self._play_until_hero()
         reward = self._hero_bb() if ended else 0.0
         if ended:
             self._record(reward)
@@ -179,19 +214,15 @@ class SelfPlayEnv:
         return obs, float(reward), bool(ended), info
 
     def observe(self) -> TensorBatch:
-        return self.tokenizer.encode(self._snapshot(self.hero))
+        return self.tokenizer.encode(self.table.snapshot(self.hero))
 
     def drain_passive_rewards(self) -> list:
         rewards = list(self.passive_rewards_bb)
         self.passive_rewards_bb.clear()
         return rewards
 
-    def _deal(self) -> None:
-        self.state, self.player = self.rl.reset()
-        self.player = int(self.player)
-        self.history = [[], [], [], []]
-        raw = self.state["raw_obs"]
-        self.sb_seat = infer_sb_seat(raw["all_chips"], small_blind=self.small_blind)
+    def _deal(self, deck: Optional[Sequence[str]]) -> None:
+        self.table.reset(deck)
         self.hero = int(self.rng.integers(0, 2))
         if self.force_opponent is not None:
             self.choice = dict(self.force_opponent)
@@ -202,41 +233,24 @@ class SelfPlayEnv:
 
     def _play_until_hero(self) -> bool:
         for _ in range(64):
-            if self.rl.game.is_over():
+            if self.table.is_over():
                 return True
-            if int(self.player) == int(self.hero):
+            if int(self.table.current_player()) == int(self.hero):
                 return False
-            action = self.actor.act(self._snapshot(int(self.player)), self.choice)
+            action = self.actor.act(self.table.snapshot(int(self.table.current_player())), self.choice)
             self._push_and_step(action)
         raise RuntimeError("opponent played more than 64 actions in one hand")
 
     def _push_and_step(self, action: int) -> None:
-        raw = self.state["raw_obs"]
-        stage = stage_value(raw["stage"])
-        legal = legal_action_ids(raw["legal_actions"])
-        actor = int(raw["current_player"])
+        legal = self.table.legal_action_ids()
         if action not in legal:
             if not legal:
                 raise RuntimeError("no legal action to push")
             action = int(legal[0])
-        if stage <= 3:
-            self.history[stage].append([actor, int(action), list(legal)])
-        self.state, self.player = self.rl.step(int(action))
-        self.player = int(self.player)
-
-    def _snapshot(self, me_seat: int):
-        return build_snapshot(
-            self.history,
-            self.state["raw_obs"],
-            int(me_seat),
-            int(self.sb_seat),
-            big_blind=self.big_blind,
-            small_blind=self.small_blind,
-            starting_stack=self.starting_stack,
-        )
+        self.table.step(int(action))
 
     def _hero_bb(self) -> float:
-        payoffs = self.rl.get_payoffs()
+        payoffs = self.table.payoffs()
         return float(payoffs[int(self.hero)]) / self.big_blind
 
     def _record(self, reward_bb: float) -> None:

@@ -1,4 +1,4 @@
-"""Pot-fraction buckets shared by the rlcard replay and a future pokerkit adapter.
+"""Pot-fraction buckets shared by the rlcard replay and the pokerkit table.
 
 Bucket 0 is a zero-size action (check or fold). The remaining buckets are
 right-closed intervals on ``chips_added / pot_before``.

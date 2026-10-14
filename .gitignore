@@ -29,3 +29,4 @@ env/
 htmlcov/
 .ipynb_checkpoints/
 *.log
+.miniconda/

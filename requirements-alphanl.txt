@@ -1,0 +1,24 @@
+# Pinned stack for AlphaNLHoldem inference (TF 1.15 / Ray 0.8.3).
+# Original upstream: third_party/AlphaNLHoldem/requirements.txt
+# Extra pins fix protobuf/gym/importlib-metadata drift on fresh pip installs (2026).
+
+tensorflow==1.15.2
+tensorboard==1.15.0
+tensorflow-estimator==1.15.1
+h5py==2.10.0
+numpy==1.19.4
+pandas==1.1.5
+scipy==1.5.1
+requests==2.24.0
+tabulate==0.8.7
+tqdm==4.54.1
+ray==0.8.3
+rlcard==1.1.0
+protobuf==3.20.3
+gym==0.18.3
+importlib-metadata<5
+dm-tree==0.1.8
+lz4==4.3.2
+torch==1.4.0
+# Upstream listed but not required for headless eval:
+# Flask, SuperSuit, pandocfilters, etc.

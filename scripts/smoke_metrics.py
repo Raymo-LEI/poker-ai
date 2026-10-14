@@ -153,6 +153,8 @@ def main() -> int:
                    help="T-C1b off: opponent forward one move at a time (T-C1a timing)")
     p.add_argument("--per-env-rng", action="store_true",
                    help="T-C1c: env.per_env_rng=true (per-table deal + sample streams)")
+    p.add_argument("--torch-threads", type=int, default=None,
+                   help="torch.set_num_threads(N) (+ set_num_interop_threads(N) when still allowed) before training")
     p.add_argument("--rollout-device", choices=("cpu", "cuda", "auto"), default=None,
                    help="override rollout_device (where learner/opponent inference runs during rollout)")
     p.add_argument("--profile-rollout", action="store_true",
@@ -170,6 +172,13 @@ def main() -> int:
     if a.no_batch_rollout:
         from alphanl.transformer import env as _E
         _E.PolicyActor.batch_rollout = False
+    if a.torch_threads:
+        torch.set_num_threads(int(a.torch_threads))
+        try:
+            torch.set_num_interop_threads(int(a.torch_threads))
+        except RuntimeError:
+            pass  # interop pool already started; intra-op count still applies
+    print(f"[smoke] torch threads intra={torch.get_num_threads()} interop={torch.get_num_interop_threads()}", flush=True)
     cfg = ExperimentConfig.from_json(a.config)
     cfg.apply_overrides(
         num_updates=a.steps, out_dir=str(out), device=a.device, seed=a.seed, amp=a.amp,
@@ -210,6 +219,25 @@ def main() -> int:
     def _sync():
         if cuda:
             torch.cuda.synchronize()
+
+    # weight_sync_s: learner -> rollout model copy (state_dict transfer), only when devices differ.
+    orig_wsync = T._sync_weights
+    cur["weight_sync_s"] = 0.0
+    def wsync(src, dst):
+        _sync(); t = time.perf_counter()
+        orig_wsync(src, dst)
+        _sync(); cur["weight_sync_s"] += time.perf_counter() - t
+    T._sync_weights = wsync
+    # opp_batchable_frac: model opponent moves served from a batched prefetch / all model opponent moves.
+    from alphanl.transformer import env as _E2
+    orig_ab = _E2.PolicyActor.act_batch
+    cur["opp_model"] = 0; cur["opp_batched"] = 0
+    def act_batch(self, batch, choice, logits=None, **kw):
+        if choice["kind"] != "random":
+            cur["opp_model"] += 1
+            cur["opp_batched"] += logits is not None
+        return orig_ab(self, batch, choice, logits=logits, **kw)
+    _E2.PolicyActor.act_batch = act_batch
 
     def rollout(*args, **kw):
         if prof is not None:
@@ -262,7 +290,10 @@ def main() -> int:
                 "opp_load_count": int(pr.get("opp_load_count", 0)),
                 "opp_load_s": pr.get("opp_load_s", 0.0),
                 "opp_calls": int(pr.get("opp_calls", 0)),
+                "weight_sync_s": cur.get("weight_sync_s", 0.0),
+                "opp_batchable_frac": cur["opp_batched"] / max(1, cur["opp_model"]),
             }
+            cur["weight_sync_s"] = 0.0; cur["opp_model"] = 0; cur["opp_batched"] = 0
             rec.update({k: v for k, v in prow.items() if k != "step"})
             orig_csv(prof_csv, prow)
         rows.append(rec)
@@ -287,6 +318,8 @@ def main() -> int:
         T.collect_rollout, T.ppo_update, T.make_grad_scaler, T._append_csv = orig_rollout, orig_update, orig_scaler, orig_csv
         if prof is not None:
             prof.uninstall()
+        T._sync_weights = orig_wsync
+        _E2.PolicyActor.act_batch = orig_ab
     wall = time.perf_counter() - started
     return _finish(rows, a, out, cuda, error, wall, dev, cfg)
 
@@ -308,6 +341,7 @@ def _window(chunk, end):
             "env_step_s": m("env_step_s"), "net_infer_s": m("net_infer_s"), "opp_infer_s": m("opp_infer_s"),
             "other_s": m("other_s"), "pool_size": chunk[-1]["pool_size"],
             "opp_load_count": m("opp_load_count"), "opp_load_s": m("opp_load_s"),
+            "weight_sync_s": m("weight_sync_s"), "opp_batchable_frac": m("opp_batchable_frac"),
         } if "env_step_s" in chunk[0] else {}),
     }
 
@@ -320,7 +354,8 @@ def _report(chunk, n):
     if "env_step_s" in w:
         print(f"[profile] steps {w['steps']}: env {w['env_step_s']:.3f}s, net {w['net_infer_s']:.3f}s, "
               f"opp {w['opp_infer_s']:.3f}s, other {w['other_s']:.3f}s, pool {w['pool_size']}, "
-              f"opp loads {w['opp_load_count']:.1f}/step in {w['opp_load_s']:.3f}s", flush=True)
+              f"opp loads {w['opp_load_count']:.1f}/step in {w['opp_load_s']:.3f}s, "
+              f"weight_sync {w['weight_sync_s']:.4f}s, opp batchable {100 * w['opp_batchable_frac']:.1f}%", flush=True)
 
 
 def _finish(rows, a, out, cuda, error, wall, dev, cfg) -> int:

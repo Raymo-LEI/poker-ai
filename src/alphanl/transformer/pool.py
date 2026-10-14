@@ -43,6 +43,9 @@ class OpponentPool:
         self._next_id = 0
         self._order: List[int] = []
         self._entries: Dict[int, Dict[str, Any]] = {}
+        # T-C2: when True, record() accumulates into _pending until flush_records().
+        self.defer_record = False
+        self._pending: Dict[int, List[float]] = {}
 
     def __len__(self) -> int:
         return len(self._order)
@@ -104,8 +107,37 @@ class OpponentPool:
             score = 0.0
         else:
             score = 0.5
+        if self.defer_record:
+            acc = self._pending.setdefault(int(policy_id), [0.0, 0.0])
+            acc[0] += score
+            acc[1] += 1.0
+            return
         entry["games"] += 1.0
         entry["wins"] += score
+
+    # --- T-C2: deferred records / stat sync for multiprocess rollout ---
+    def take_pending(self) -> Dict[int, List[float]]:
+        pending, self._pending = self._pending, {}
+        return pending
+
+    def apply_deltas(self, deltas: Dict[int, List[float]]) -> None:
+        for pid, (wins, games) in deltas.items():
+            entry = self._entries.get(int(pid))
+            if entry is not None:
+                entry["wins"] += wins
+                entry["games"] += games
+
+    def flush_records(self) -> None:
+        self.apply_deltas(self.take_pending())
+
+    def stats(self) -> Dict[int, List[float]]:
+        return {pid: [e["wins"], e["games"]] for pid, e in self._entries.items()}
+
+    def set_stats(self, stats: Dict[int, List[float]]) -> None:
+        for pid, (wins, games) in stats.items():
+            if int(pid) in self._entries:
+                self._entries[int(pid)]["wins"] = float(wins)
+                self._entries[int(pid)]["games"] = float(games)
 
     def state_dict(self) -> Dict[str, Any]:
         return {

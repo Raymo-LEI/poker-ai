@@ -155,6 +155,8 @@ def main() -> int:
                    help="T-C1c: env.per_env_rng=true (per-table deal + sample streams)")
     p.add_argument("--torch-threads", type=int, default=None,
                    help="torch.set_num_threads(N) (+ set_num_interop_threads(N) when still allowed) before training")
+    p.add_argument("--rollout-workers", type=int, default=None,
+                   help="T-C2: ppo.rollout_workers (spawn processes, 1 thread each; needs --per-env-rng)")
     p.add_argument("--rollout-device", choices=("cpu", "cuda", "auto"), default=None,
                    help="override rollout_device (where learner/opponent inference runs during rollout)")
     p.add_argument("--profile-rollout", action="store_true",
@@ -186,6 +188,8 @@ def main() -> int:
     )
     if a.per_env_rng:
         cfg.env.per_env_rng = True
+    if a.rollout_workers is not None:
+        cfg.ppo.rollout_workers = int(a.rollout_workers)
     if a.num_envs:
         cfg.ppo.num_envs = a.num_envs
     if a.rollout_steps:
@@ -249,6 +253,16 @@ def main() -> int:
             cur["prof"] = dict(prof.acc, opp_load_count=prof.opp_load_count, opp_calls=prof.opp_calls)
         return r
 
+    orig_rollout_mp = T.collect_rollout_workers
+
+    def rollout_mp(*args, **kw):
+        _sync(); t = time.perf_counter()
+        r = orig_rollout_mp(*args, **kw)
+        cur["rollout_s"] = time.perf_counter() - t
+        if prof is not None:
+            cur["prof"] = {}  # breakdown happens inside workers; not measured here
+        return r
+
     def update(*args, **kw):
         _sync(); t = time.perf_counter()
         r = orig_update(*args, **kw)
@@ -293,6 +307,14 @@ def main() -> int:
                 "weight_sync_s": cur.get("weight_sync_s", 0.0),
                 "opp_batchable_frac": cur["opp_batched"] / max(1, cur["opp_model"]),
             }
+            W = T.ACTIVE_WORKERS
+            prow["rollout_workers"] = 0 if W is None else len(W.procs)
+            prow["worker_startup_s"] = (W.startup_s if (W is not None and not cur.get("startup_logged")) else 0.0)
+            cur["startup_logged"] = True
+            prow["weight_broadcast_s"] = 0.0 if W is None else W.last["weight_broadcast_s"]
+            prow["pool_sync_s"] = 0.0 if W is None else W.last["pool_sync_s"]
+            if W is not None:
+                prow["weight_sync_s"] = prow["weight_broadcast_s"]
             cur["weight_sync_s"] = 0.0; cur["opp_model"] = 0; cur["opp_batched"] = 0
             rec.update({k: v for k, v in prow.items() if k != "step"})
             orig_csv(prof_csv, prow)
@@ -302,6 +324,7 @@ def main() -> int:
             _report(rows[-(((n - 1) % a.log_every) + 1):], n)
 
     T.collect_rollout, T.ppo_update, T.make_grad_scaler, T._append_csv = rollout, update, scaler, append_csv
+    T.collect_rollout_workers = rollout_mp
     if prof is not None:
         prof.install()
     error = ""
@@ -319,6 +342,7 @@ def main() -> int:
         if prof is not None:
             prof.uninstall()
         T._sync_weights = orig_wsync
+        T.collect_rollout_workers = orig_rollout_mp
         _E2.PolicyActor.act_batch = orig_ab
     wall = time.perf_counter() - started
     return _finish(rows, a, out, cuda, error, wall, dev, cfg)
@@ -342,6 +366,9 @@ def _window(chunk, end):
             "other_s": m("other_s"), "pool_size": chunk[-1]["pool_size"],
             "opp_load_count": m("opp_load_count"), "opp_load_s": m("opp_load_s"),
             "weight_sync_s": m("weight_sync_s"), "opp_batchable_frac": m("opp_batchable_frac"),
+            "rollout_total_s": m("rollout_total_s"), "rollout_workers": chunk[0].get("rollout_workers", 0),
+            "worker_startup_s": max(r.get("worker_startup_s", 0.0) for r in chunk),
+            "weight_broadcast_s": m("weight_broadcast_s"), "pool_sync_s": m("pool_sync_s"),
         } if "env_step_s" in chunk[0] else {}),
     }
 
@@ -356,6 +383,10 @@ def _report(chunk, n):
               f"opp {w['opp_infer_s']:.3f}s, other {w['other_s']:.3f}s, pool {w['pool_size']}, "
               f"opp loads {w['opp_load_count']:.1f}/step in {w['opp_load_s']:.3f}s, "
               f"weight_sync {w['weight_sync_s']:.4f}s, opp batchable {100 * w['opp_batchable_frac']:.1f}%", flush=True)
+        if w.get("rollout_workers"):
+            print(f"[workers] steps {w['steps']}: workers={w['rollout_workers']} rollout_total {w['rollout_total_s']:.3f}s, "
+                  f"weight_broadcast {w['weight_broadcast_s']:.4f}s, pool_sync {w['pool_sync_s']:.4f}s, "
+                  f"startup {w['worker_startup_s']:.2f}s (env/net/opp breakdown runs inside workers: not split)", flush=True)
 
 
 def _finish(rows, a, out, cuda, error, wall, dev, cfg) -> int:

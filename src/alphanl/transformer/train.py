@@ -187,8 +187,19 @@ def collect_rollout(
         "mean_reward_bb": mean_reward,
         "passive_hands": len(passive_bb),
         "passive_mean_bb": float(np.mean(passive_bb)) if passive_bb else 0.0,
+        "passive_list": passive_bb,
     }
     return storage, stats
+
+
+# T-C2: the live RolloutWorkers of the current run (None in the single-process path);
+# read by scripts/smoke_metrics.py for worker_startup_s / weight_broadcast_s / pool_sync_s.
+ACTIVE_WORKERS = None
+
+
+def collect_rollout_workers(workers, pool) -> tuple:
+    """T-C2: one rollout across worker processes; buffers come back in env order."""
+    return workers.collect(pool)
 
 
 def flatten_rollout(storage: Dict[str, torch.Tensor], gamma: float, gae_lambda: float) -> Dict[str, torch.Tensor]:
@@ -333,6 +344,11 @@ def run_training(
         print(f"[init-weights] loaded {init_weights}")
     if len(pool) == 0:
         pool.add(learner.state_dict())
+    n_workers = int(getattr(cfg.ppo, "rollout_workers", 0) or 0)
+    if n_workers > 0 or getattr(cfg.pool, "defer_record", False):
+        pool.defer_record = True  # T-C2: PFSP stats frozen within a rollout
+    if n_workers > 0 and not getattr(cfg.env, "per_env_rng", False):
+        raise ValueError("ppo.rollout_workers > 0 requires env.per_env_rng: true")
 
     if rollout_device == train_device:
         rollout_model: torch.nn.Module = learner
@@ -370,10 +386,24 @@ def run_training(
         if blob.get("actor_rng") is not None:
             actor.set_rng_state(blob["actor_rng"])
         obs = [env.observe() for env in envs]
+    elif n_workers > 0:
+        obs = None  # tables are reset inside the workers
     else:
         obs = [env.reset() for env in envs]
         for env in envs:
             env.drain_passive_rewards()
+    global ACTIVE_WORKERS
+    workers = None
+    if n_workers > 0:
+        from .env import PolicyActor as _PA
+        from .rollout_workers import RolloutWorkers
+
+        workers = RolloutWorkers(
+            cfg, learner.state_dict(), pool,
+            env_states=blob["envs"] if resumed_tables else None,
+            actor_flags={"cache_opponents": _PA.cache_opponents, "batch_rollout": _PA.batch_rollout},
+        )
+        ACTIVE_WORKERS = workers
     if resume is not None:
         from .checkpoint import restore_rng_state
 
@@ -382,6 +412,9 @@ def run_training(
     csv_path = out_dir / "metrics.csv"
 
     def _save(update: int) -> None:
+        if workers is not None:
+            for env, state in zip(envs, workers.env_states()):
+                env.load_state_dict(state)
         save_checkpoint(
             checkpoint_path(ckpt_dir, update),
             model=learner,
@@ -397,11 +430,32 @@ def run_training(
 
     last_saved = None
 
+    try:
+        _train_loop(locals())
+    finally:
+        if workers is not None:
+            workers.close()
+            ACTIVE_WORKERS = None
+    return out_dir
+
+
+def _train_loop(L: Dict[str, Any]) -> None:
+    cfg, learner, rollout_model, envs, obs, pool = L["cfg"], L["learner"], L["rollout_model"], L["envs"], L["obs"], L["pool"]
+    optimizer, scaler, use_amp, workers = L["optimizer"], L["scaler"], L["use_amp"], L["workers"]
+    train_device, rollout_device, tokenizer = L["train_device"], L["rollout_device"], L["tokenizer"]
+    writer, csv_path, _save, start_update = L["writer"], L["csv_path"], L["_save"], L["start_update"]
+    last_saved = None
     for update in range(start_update, cfg.train.num_updates):
         started = time.perf_counter()
-        _sync_weights(learner, rollout_model)
-        rollout_model.eval()
-        storage, stats = collect_rollout(envs, obs, rollout_model, rollout_device, cfg.ppo.rollout_steps)
+        if workers is not None:
+            workers.last["pool_sync_s"] = 0.0
+            storage, stats = collect_rollout_workers(workers, pool)
+        else:
+            _sync_weights(learner, rollout_model)
+            rollout_model.eval()
+            storage, stats = collect_rollout(envs, obs, rollout_model, rollout_device, cfg.ppo.rollout_steps)
+            if pool.defer_record:
+                pool.flush_records()
         flat = flatten_rollout(storage, cfg.ppo.gamma, cfg.ppo.gae_lambda)
         flat = {key: value.to(train_device) for key, value in flat.items()}
         learner.train()
@@ -425,6 +479,10 @@ def run_training(
         )
         if cfg.pool.snapshot_every > 0 and (update + 1) % cfg.pool.snapshot_every == 0:
             pool.add(learner.state_dict())
+            if workers is not None:
+                workers.pool_add(learner.state_dict())
+        if workers is not None and update + 1 < cfg.train.num_updates:
+            workers.broadcast_weights(learner.state_dict())
         row = {
             "update": update,
             "timesteps": (update + 1) * cfg.ppo.num_envs * cfg.ppo.rollout_steps,
@@ -466,7 +524,6 @@ def run_training(
         _save(final_update)
     if writer is not None:
         writer.close()
-    return out_dir
 
 
 def describe_run(cfg: ExperimentConfig) -> str:

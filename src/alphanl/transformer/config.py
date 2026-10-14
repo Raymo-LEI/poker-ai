@@ -45,6 +45,11 @@ class PPOConfig:
     rollout_steps: int = 128
     num_envs: int = 8
     adam_eps: float = 1.0e-5
+    # T-C2: >0 = multiprocess rollout ('spawn'), each worker owns a contiguous slice of
+    # envs with 1 torch thread. 0 = single-process path (unchanged). Needs env.per_env_rng.
+    rollout_workers: int = 0
+    # T-C2: seconds to wait for any single worker reply before raising (never hang).
+    rollout_worker_timeout_s: float = 600.0
 
 
 @dataclass
@@ -54,6 +59,10 @@ class PoolConfig:
     random_prob: float = 0.1
     snapshot_every: int = 10
     sampling: str = "pfsp"
+    # T-C2: buffer pool.record() during a rollout, apply after it (PFSP win rates frozen
+    # within one rollout). Implied by ppo.rollout_workers > 0; set it with
+    # rollout_workers=0 for the single-process reference of the workers path.
+    defer_record: bool = False
 
 
 @dataclass

@@ -219,6 +219,8 @@ def evaluate_vs_random(
         small_blind=cfg.env.small_blind,
         starting_stack=cfg.env.starting_stack,
         backend=cfg.env.backend,
+        rules=cfg.env.rules,
+        action_order=cfg.env.action_order,
         record_results=False,
         observer=observer_for(cfg),
     )
@@ -316,6 +318,8 @@ def run_training(
             small_blind=cfg.env.small_blind,
             starting_stack=cfg.env.starting_stack,
             backend=cfg.env.backend,
+            rules=cfg.env.rules,
+            action_order=cfg.env.action_order,
             observer=observer_for(cfg),
         )
         for index in range(cfg.ppo.num_envs)

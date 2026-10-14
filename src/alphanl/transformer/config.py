@@ -75,6 +75,11 @@ class EnvConfig:
     big_blind: float = 2.0
     small_blind: float = 1.0
     starting_stack: float = 100.0
+    # "standard" (default, unchanged behaviour) or "botzone" (Botzone TexasHoldem2p
+    # betting rules; requires backend "pokerkit"). action_order is botzone-only:
+    # "sb_first" (Botzone: SB acts first on every street) or "standard".
+    rules: str = "standard"
+    action_order: Optional[str] = None
 
 
 @dataclass
@@ -120,6 +125,10 @@ class ExperimentConfig:
             raise ValueError("model.d_model must be divisible by model.nhead")
         if self.env.backend not in ("rlcard", "pokerkit"):
             raise ValueError("env.backend must be 'rlcard' or 'pokerkit'")
+        if self.env.rules not in ("standard", "botzone"):
+            raise ValueError("env.rules must be 'standard' or 'botzone'")
+        if self.env.rules == "botzone" and self.env.backend != "pokerkit":
+            raise ValueError("env.rules='botzone' requires env.backend='pokerkit'")
         if self.ppo.minibatch_size < 1:
             raise ValueError("minibatch_size must be >= 1")
         if self.ppo.num_envs < 1 or self.ppo.rollout_steps < 1:

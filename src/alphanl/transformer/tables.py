@@ -627,8 +627,33 @@ def make_table(
     big_blind: float = BIG_BLIND_CHIPS,
     dealer_id: Optional[int] = None,
     stacks: Optional[Sequence[float]] = None,
+    rules: str = "standard",
+    action_order: Optional[str] = None,
 ):
-    """Build the table ``SelfPlayEnv`` drives. ``backend`` is ``rlcard`` or ``pokerkit``."""
+    """Build the table ``SelfPlayEnv`` drives. ``backend`` is ``rlcard`` or ``pokerkit``.
+
+    ``rules="botzone"`` (pokerkit backend only) returns ``BotzoneTable``:
+    Botzone TexasHoldem2p betting rules. ``action_order`` (botzone only):
+    ``sb_first`` (Botzone, default) or ``standard`` (BB first postflop).
+    """
+
+    if rules not in ("standard", "botzone"):
+        raise ValueError("rules must be 'standard' or 'botzone'")
+    if rules == "botzone":
+        if backend != "pokerkit":
+            raise ValueError("rules='botzone' requires backend='pokerkit'")
+        from .botzone_table import BotzoneTable
+
+        return BotzoneTable(
+            seed=seed,
+            starting_stack=starting_stack,
+            small_blind=small_blind,
+            big_blind=big_blind,
+            stacks=stacks,
+            action_order=action_order or "sb_first",
+        )
+    if action_order is not None:
+        raise ValueError("action_order is only configurable with rules='botzone'")
 
     if backend == "rlcard":
         if stacks is not None:

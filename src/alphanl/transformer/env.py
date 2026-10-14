@@ -157,6 +157,8 @@ class SelfPlayEnv:
         backend: str = "rlcard",
         record_results: bool = True,
         observer: Optional[Any] = None,
+        rules: str = "standard",
+        action_order: Optional[str] = None,
     ) -> None:
         self.tokenizer = tokenizer
         self.actor = actor
@@ -174,7 +176,10 @@ class SelfPlayEnv:
             starting_stack=starting_stack,
             small_blind=small_blind,
             big_blind=big_blind,
+            rules=rules,
+            action_order=action_order,
         )
+        self.rules = str(rules)
         self.force_opponent: Optional[Dict[str, Any]] = None
         self.passive_rewards_bb: list = []
         self.hero = 0
@@ -205,6 +210,7 @@ class SelfPlayEnv:
         return {
             "rng": self.rng.bit_generator.state,
             "backend": self.backend,
+            "rules": self.rules,
             "table": self.table.state_dict(),
             "fields": pickle.dumps(blob),
         }
@@ -220,6 +226,8 @@ class SelfPlayEnv:
             raise ValueError(
                 f"checkpoint backend is {backend!r}, this env is {self.backend!r}"
             )
+        if blob.get("rules", "standard") != self.rules:
+            raise ValueError(f"checkpoint rules are {blob.get('rules', 'standard')!r}, this env is {self.rules!r}")
         self.rng.bit_generator.state = blob["rng"]
         self.table.load_state_dict(blob["table"])
         for name, value in pickle.loads(blob["fields"]).items():

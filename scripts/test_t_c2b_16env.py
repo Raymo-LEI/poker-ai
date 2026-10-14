@@ -41,6 +41,7 @@ def _run_one(cfg_path: Path, device: str, out: Path) -> dict:
     cfg = ExperimentConfig.from_json(cfg_path)
     cfg.device, cfg.rollout_device = device, "cpu"
     cfg.env.per_env_rng = True
+    cfg.ppo.rollout_workers = 0  # (a)/(b) instrument the in-process path; (c) covers workers
     cfg.train.num_updates, cfg.train.eval_every, cfg.train.checkpoint_every = 1, 0, 0
     cfg.train.out_dir, cfg.train.checkpoint_dir = str(out / "run"), str(out / "ckpt")
     rec = {"mb": [], "boot_err": None}

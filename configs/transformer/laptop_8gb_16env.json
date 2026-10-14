@@ -23,7 +23,8 @@
     "minibatch_size": 256,
     "rollout_steps": 64,
     "num_envs": 16,
-    "adam_eps": 1e-05
+    "adam_eps": 1e-05,
+    "rollout_workers": 8
   },
   "pool": {
     "max_size": 8,
@@ -47,6 +48,7 @@
     "backend": "rlcard",
     "big_blind": 2,
     "small_blind": 1,
-    "starting_stack": 100
+    "starting_stack": 100,
+    "per_env_rng": true
   }
 }

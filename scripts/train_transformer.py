@@ -4,9 +4,9 @@
 Does not train unless you run it. ``--dry-run`` only prints the model size.
 
     export PYTHONPATH=src
-    python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json
+    python scripts/train_transformer.py --config configs/transformer/laptop_8gb_16env.json
     python scripts/train_transformer.py --config configs/transformer/colab_l4.json --entropy-coef 0.02
-    python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume   # newest ckpt
+    python scripts/train_transformer.py --config configs/transformer/laptop_8gb_16env.json --resume   # newest ckpt
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb_conv.json --init-weights runs/bc_conv/bc.pt
 """
 
@@ -28,8 +28,8 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        default=REPO_ROOT / "configs" / "transformer" / "laptop_8gb.json",
-        help="JSON experiment config. Default is the 8GB laptop preset.",
+        default=REPO_ROOT / "configs" / "transformer" / "laptop_8gb_16env.json",
+        help="JSON experiment config. Default is the 8GB laptop preset (16 envs x 64 steps, 8 rollout workers).",
     )
     parser.add_argument("--entropy-coef", type=float, default=None, help="Override ppo.entropy_coef")
     parser.add_argument("--updates", type=int, default=None, help="Override train.num_updates")

@@ -61,6 +61,9 @@ class OpponentPool:
             self._entries.pop(evicted, None)
         return policy_id
 
+    def live_ids(self) -> List[int]:
+        return list(self._order)
+
     def win_rate(self, policy_id: int) -> float:
         entry = self._entries.get(policy_id)
         if entry is None or entry["games"] <= 0:

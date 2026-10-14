@@ -105,7 +105,11 @@ class RolloutProfiler:
         self._wrap(E.SelfPlayEnv, "step", "env_step_s")
         self._wrap(E.SelfPlayEnv, "reset", "env_step_s")
         self._wrap(E.PolicyActor, "act_batch", "opp_infer_s")
-        self._wrap(E.PolicyActor, "prepare_pool", "opp_load_s")
+        if getattr(E.PolicyActor, "cache_opponents", False):
+            # T-C1a: a load is building one frozen per-snapshot opponent.
+            self._wrap(E.PolicyActor, "_build_opponent", "opp_load_s")
+        else:
+            self._wrap(E.PolicyActor, "prepare_pool", "opp_load_s")
         classes = [PokerTransformer]
         try:
             from alphanl.transformer.conv_net import AlphaNLConvNet
@@ -136,6 +140,8 @@ def main() -> int:
     p.add_argument("--with-eval", action="store_true", help="keep the config's periodic eval vs random")
     p.add_argument("--max-peak-gb", type=float, default=7.0)
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--legacy-opponents", action="store_true",
+                   help="T-C1a off: one shared shadow reloaded before every opponent move (pre-T-C1a timing)")
     p.add_argument("--rollout-device", choices=("cpu", "cuda", "auto"), default=None,
                    help="override rollout_device (where learner/opponent inference runs during rollout)")
     p.add_argument("--profile-rollout", action="store_true",
@@ -147,6 +153,9 @@ def main() -> int:
     out = Path(a.out_dir)
     if (out / "metrics.csv").exists():
         (out / "metrics.csv").unlink()  # fresh smoke each run; never touches real runs
+    if a.legacy_opponents:
+        from alphanl.transformer import env as _E
+        _E.PolicyActor.cache_opponents = False
     cfg = ExperimentConfig.from_json(a.config)
     cfg.apply_overrides(
         num_updates=a.steps, out_dir=str(out), device=a.device, seed=a.seed, amp=a.amp,

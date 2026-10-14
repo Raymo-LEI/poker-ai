@@ -31,7 +31,7 @@ import torch.nn as nn
 from .history import BIG_BLIND_CHIPS, SMALL_BLIND_CHIPS, STARTING_STACK
 from .pool import OpponentPool
 from .tables import make_table
-from .tokenizer import BettingHistoryTokenizer, TensorBatch, batch_to_device
+from .tokenizer import BettingHistoryTokenizer, TensorBatch, batch_to_device, cat_batches
 
 
 class PolicyActor:
@@ -114,15 +114,74 @@ class PolicyActor:
             self.prune_opponents(set(live_ids) | ({int(policy_id)} if policy_id is not None else set()))
         self._opponent({"policy_id": policy_id, "weights": weights})
 
+    # T-C1b: batch the opponent forward pass across envs (one forward per
+    # opponent model). Only the logits are batched; each env still samples
+    # its own action with a [1]-shaped draw, in the original env order, so the
+    # torch RNG stream is consumed exactly as in the unbatched path. Needs
+    # ``cache_opponents`` (the legacy shared shadow changes weights per move).
+    # Set ``batch_rollout = False`` to get the T-C1a per-move forward.
+    batch_rollout: bool = True
+
+    def batching_enabled(self) -> bool:
+        return bool(self.batch_rollout and self.cache_opponents)
+
+    def _model_for(self, choice: Dict[str, Any]) -> Optional[nn.Module]:
+        if choice["kind"] == "random":
+            return None
+        if choice["kind"] == "pool":
+            return self._opponent(choice)
+        return self.rollout_model
+
+    def prefetch(self, envs: Sequence["SelfPlayEnv"]) -> int:
+        """One batched forward per opponent model for every env whose opponent
+        is to act now. Stores (obs, logits row) on the env; consumed by the
+        env's next ``_actor_choose``. Draws no random numbers. Returns rows."""
+        groups: Dict[int, list] = {}
+        models: Dict[int, nn.Module] = {}
+        for env in envs:
+            env._prefetched = None
+            seat = env.pending_opponent_seat()
+            if seat is None:
+                continue
+            model = self._model_for(env.choice)
+            if model is None:
+                continue
+            groups.setdefault(id(model), []).append((env, env._observe_seat(seat)))
+            models[id(model)] = model
+        rows = 0
+        for key, items in groups.items():
+            model = models[key]
+            device = next(model.parameters()).device
+            stacked = batch_to_device(cat_batches([b for _, b in items]), device)
+            was_training = model.training
+            model.eval()
+            with torch.no_grad():
+                logits, _ = model(stacked, mask_illegal=True)
+            if was_training:
+                model.train()
+            for i, (env, b) in enumerate(items):
+                env._prefetched = (b, logits[i:i + 1])
+            rows += len(items)
+        return rows
+
     def act(self, snapshot, choice: Dict[str, Any]) -> int:
         return self.act_batch(self.tokenizer.encode(snapshot), choice)
 
-    def act_batch(self, batch: TensorBatch, choice: Dict[str, Any]) -> int:
+    def act_batch(self, batch: TensorBatch, choice: Dict[str, Any], logits: Optional[torch.Tensor] = None) -> int:
         legal = [index for index, flag in enumerate(batch["legal_mask"][0].tolist()) if flag > 0.5]
         if not legal:
             raise RuntimeError("opponent saw no legal actions")
         if choice["kind"] == "random":
             return int(self.rng.choice(legal))
+        if logits is not None:
+            # T-C1b: same sampling as policy_act on a single row.
+            from .model import masked_log_probs
+            mask = batch["legal_mask"].to(logits.device)
+            _, _, probs, _ = masked_log_probs(logits, mask)
+            action = int(torch.distributions.Categorical(probs=probs).sample().item())
+            if action not in legal:
+                return int(legal[0])
+            return action
         if choice["kind"] == "pool":
             if self.cache_opponents:
                 model = self._opponent(choice)
@@ -179,6 +238,7 @@ class SelfPlayEnv:
         self.passive_rewards_bb: list = []
         self.hero = 0
         self.choice: Dict[str, Any] = {"kind": "random", "policy_id": None, "weights": None}
+        self._prefetched = None
         if isinstance(actor, PolicyActor):
             actor._tables.append(self)
 
@@ -265,11 +325,27 @@ class SelfPlayEnv:
         raise RuntimeError("hero received no decision in 1000 hands")
 
     def step(self, action: int):
+        self.begin_step(action)
+        return self.finish_step()
+
+    # T-C1b: ``step`` split in two so a rollout can push every env's hero
+    # action, batch the opponents' next forward pass, then finish each env in
+    # order. ``begin_step`` only advances this env's own table.
+    def begin_step(self, action: int) -> None:
         if self.table.is_over():
             raise RuntimeError("step() called on a finished hand")
         if int(self.table.current_player()) != int(self.hero):
             raise RuntimeError("step() called off the hero's turn")
+        self._prefetched = None
         self._push_and_step(int(action))
+
+    def pending_opponent_seat(self) -> Optional[int]:
+        if self.table.is_over():
+            return None
+        seat = int(self.table.current_player())
+        return None if seat == int(self.hero) else seat
+
+    def finish_step(self):
         ended = bool(self.table.is_over()) or self._play_until_hero()
         reward = self._hero_bb() if ended else 0.0
         if ended:
@@ -314,6 +390,9 @@ class SelfPlayEnv:
                 self.actor.prepare_pool(self.choice["weights"])
 
     def _actor_choose(self, seat: int) -> int:
+        pre, self._prefetched = self._prefetched, None
+        if pre is not None:
+            return self.actor.act_batch(pre[0], self.choice, logits=pre[1])
         batch = self._observe_seat(seat)
         if hasattr(self.actor, "act_batch"):
             return self.actor.act_batch(batch, self.choice)

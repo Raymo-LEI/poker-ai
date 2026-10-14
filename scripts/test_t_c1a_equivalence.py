@@ -67,6 +67,9 @@ def child(mode: str, out: Path, updates: int, device: str, resume=None, ckpt_eve
           tag: str = "") -> None:
     from alphanl.transformer import env as E, train as T
     E.PolicyActor.cache_opponents = (mode == "cached")
+    # T-C1b: this test compares T-C1a paths; batching has its own test (test_t_c1b_equivalence.py)
+    if hasattr(E.PolicyActor, "batch_rollout"):
+        E.PolicyActor.batch_rollout = os.environ.get("TC1A_BATCH", "0") == "1"
     rec = {"storage": [], "params": [], "opp": [], "builds": {}, "loads": 0}
 
     orig_collect = T.collect_rollout
@@ -85,8 +88,8 @@ def child(mode: str, out: Path, updates: int, device: str, resume=None, ckpt_eve
     T.ppo_update = update
 
     orig_act = E.PolicyActor.act_batch
-    def act_batch(self, batch, choice):
-        a = orig_act(self, batch, choice)
+    def act_batch(self, batch, choice, *a_, **k_):
+        a = orig_act(self, batch, choice, *a_, **k_)
         rec["opp"].append((choice["kind"], choice.get("policy_id"), a))
         rec["actor_rng"] = self.rng_state()
         return a

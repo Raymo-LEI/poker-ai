@@ -104,6 +104,13 @@ class RolloutProfiler:
         self._undo = []
         self._wrap(E.SelfPlayEnv, "step", "env_step_s")
         self._wrap(E.SelfPlayEnv, "reset", "env_step_s")
+        if hasattr(E.SelfPlayEnv, "begin_step"):
+            # T-C1b batched rollout calls begin_step/finish_step instead of step
+            self._wrap(E.SelfPlayEnv, "begin_step", "env_step_s")
+            self._wrap(E.SelfPlayEnv, "finish_step", "env_step_s")
+        if hasattr(E.PolicyActor, "prefetch"):
+            # T-C1b: batched opponent forward (+ encoding the opponent obs)
+            self._wrap(E.PolicyActor, "prefetch", "opp_infer_s")
         self._wrap(E.PolicyActor, "act_batch", "opp_infer_s")
         if getattr(E.PolicyActor, "cache_opponents", False):
             # T-C1a: a load is building one frozen per-snapshot opponent.
@@ -142,6 +149,8 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--legacy-opponents", action="store_true",
                    help="T-C1a off: one shared shadow reloaded before every opponent move (pre-T-C1a timing)")
+    p.add_argument("--no-batch-rollout", action="store_true",
+                   help="T-C1b off: opponent forward one move at a time (T-C1a timing)")
     p.add_argument("--rollout-device", choices=("cpu", "cuda", "auto"), default=None,
                    help="override rollout_device (where learner/opponent inference runs during rollout)")
     p.add_argument("--profile-rollout", action="store_true",
@@ -156,6 +165,9 @@ def main() -> int:
     if a.legacy_opponents:
         from alphanl.transformer import env as _E
         _E.PolicyActor.cache_opponents = False
+    if a.no_batch_rollout:
+        from alphanl.transformer import env as _E
+        _E.PolicyActor.batch_rollout = False
     cfg = ExperimentConfig.from_json(a.config)
     cfg.apply_overrides(
         num_updates=a.steps, out_dir=str(out), device=a.device, seed=a.seed, amp=a.amp,

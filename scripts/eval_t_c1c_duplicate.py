@@ -158,6 +158,74 @@ def paired_stats(Pn, Po, boot=2000, seed=0, target=0.1):
     }
 
 
+class _NoLoadActor:
+    """Deal check only: the pool pick is recorded, no opponent model is built."""
+    def prepare_pool(self, weights):
+        pass
+
+
+def _deal_records(path: str, n: int, tables: int, master_seed: int):
+    tok = BettingHistoryTokenizer(64)
+    pool = OpponentPool(max_size=4, selfplay_prob=0.25, random_prob=0.1, seed=0)
+    w = {"x": torch.zeros(1)}
+    for _ in range(4):
+        pool.add(w)
+    for pid, wins in zip(list(pool._order), (1, 5, 9, 3)):
+        for k in range(10):
+            pool.record(pid, 1.0 if k < wins else -1.0)  # uneven win rates -> pfsp picks vary
+    ss = np.random.SeedSequence(master_seed).spawn(tables)
+    envs = [E.SelfPlayEnv(tok, _NoLoadActor(), pool, seed=1000 + i, backend="pokerkit", record_results=False,
+                          seed_seq=ss[i], per_env_rng=(path == "new"), shared_deal_stream=True) for i in range(tables)]
+    recs = []
+    for d in range(n):
+        env = envs[d % tables]
+        env._deal(None)  # real deal code: deck, hero seat, pool pick from the DEAL stream
+        st = env.table.state
+        rest = [E_card(c) for c in st.deck_cards]  # undealt deck after hole cards
+        board = tuple(rest[1:4] + rest[5:6] + rest[7:8])  # burn, flop, burn, turn, burn, river
+        holes = (env.table.hole_cards(0), env.table.hole_cards(1))
+        recs.append((d, d % tables, holes, board, int(env.hero), env.choice["kind"], env.choice.get("policy_id")))
+    return recs
+
+
+def E_card(c):
+    from alphanl.transformer.tables import _card_text
+    return _card_text(c)
+
+
+def check_deals(n: int, tables: int, master_seed: int) -> int:
+    t0 = time.time()
+    A_, B_ = _deal_records("new", n, tables, master_seed), _deal_records("old", n, tables, master_seed)
+    bad = []
+    for ra, rb in zip(A_, B_):
+        d, tab, holes_a, board_a, hero_a, kind_a, pid_a = ra
+        _, _, holes_b, board_b, hero_b, kind_b, pid_b = rb
+        for s in (0, 1):  # both seat orientations: hero in seat s, opponent in 1-s
+            for what, x, y in (("hero hole", holes_a[s], holes_b[s]), ("opp hole", holes_a[1 - s], holes_b[1 - s])):
+                if x != y:
+                    bad.append(f"deal {d} table {tab} seat {s}: {what} new={x} old={y}")
+        if board_a != board_b:
+            bad.append(f"deal {d} table {tab}: board new={board_a} old={board_b}")
+        if len(board_a) != 5 or len(set(board_a) | set(holes_a[0]) | set(holes_a[1])) != 9:
+            bad.append(f"deal {d} table {tab}: malformed cards {holes_a} {board_a}")
+        if hero_a != hero_b:
+            bad.append(f"deal {d} table {tab}: hero seat new={hero_a} old={hero_b}")
+        if (kind_a, pid_a) != (kind_b, pid_b):
+            bad.append(f"deal {d} table {tab}: opponent pick new={(kind_a, pid_a)} old={(kind_b, pid_b)}")
+    picks = {}
+    for r in A_:
+        picks[(r[5], r[6])] = picks.get((r[5], r[6]), 0) + 1
+    dt = time.time() - t0
+    if bad:
+        print("\n".join(bad[:20]))
+        print(f"[check-deals] FAIL n={n} mismatches={len(bad)} ({dt:.1f}s)")
+        return 1
+    print(f"[check-deals] opponent picks: {dict(sorted(picks.items(), key=str))}; hero seat 1 share "
+          f"{sum(r[4] for r in A_) / n:.3f}")
+    print(f"[check-deals] PASS n={n} (hole cards x2 seats, 5 board cards, hero seat, opponent pick identical; {dt:.1f}s)")
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--deals", type=int, default=10000, help="deals per batch (x2 seats = hands)")
@@ -177,7 +245,11 @@ def main():
     p.add_argument("--accept", type=float, default=0.1, help="strict half-width criterion")
     p.add_argument("--relaxed", type=float, default=0.2, help="fallback half-width if cap reached")
     p.add_argument("--out", type=Path, default=None)
+    p.add_argument("--check-deals", type=int, default=None,
+                   help="only verify N deals are identical between new and old paths (no play), then exit")
     a = p.parse_args()
+    if a.check_deals:
+        sys.exit(check_deals(a.check_deals, a.tables, a.master_seed))
     cfg = ExperimentConfig.from_json(a.config)
     if a.opponent is None:
         a.opponent = a.ckpt

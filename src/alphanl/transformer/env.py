@@ -10,10 +10,13 @@ is to act again or the hand ends. Observations are ``HandSnapshot`` values.
   on every street).
 - ``pokerkit`` — PokerKit heads-up no-limit. The button / small blind acts
   first preflop and the big blind acts first postflop.
+- ``botzone`` — Botzone TexasHoldem2p simple (50 / 100, stacks of 20000).
+  The small blind acts first on every street. Policy ids are applied only
+  through ``alphanl.botzone.actions``.
 
 The gym methods (``reset``, ``step``, ``observe``, ``drain_passive_rewards``,
-``state_dict`` / ``load_state_dict``) are the same for both. Rules live in
-``tables.py``; this module only runs the hero / opponent loop.
+``state_dict`` / ``load_state_dict``) are the same for all three. Rules live
+in ``tables.py``; this module only runs the hero / opponent loop.
 
 This module does not import TensorFlow or Ray. rlcard and pokerkit are
 imported only when a hand is actually started.
@@ -28,6 +31,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .config import resolve_env_limits
 from .history import BIG_BLIND_CHIPS, SMALL_BLIND_CHIPS, STARTING_STACK
 from .pool import OpponentPool
 from .tables import make_table
@@ -217,6 +221,9 @@ class SelfPlayEnv:
         record_results: bool = True,
         observer: Optional[Any] = None,
     ) -> None:
+        small_blind, big_blind, starting_stack = resolve_env_limits(
+            backend, small_blind, big_blind, starting_stack
+        )
         self.tokenizer = tokenizer
         self.actor = actor
         self.pool = pool
@@ -253,10 +260,14 @@ class SelfPlayEnv:
 
         The table blob is backend-specific. An rlcard checkpoint still
         unpickles the rlcard env; a pokerkit checkpoint unpickles the
-        PokerKit ``State`` plus that table's deck RNG. Loading one into
-        the other raises ``ValueError``. A checkpoint written before the
-        table wrapper (keys ``rl`` and ``fields`` only) still loads into
-        an rlcard env.
+        PokerKit ``State`` plus that table's deck RNG; a botzone checkpoint
+        unpickles ``BotzoneTable`` plus the policy-id history. Loading one
+        backend into another raises ``ValueError``. Blinds and
+        ``starting_stack`` are stored beside ``backend`` and must match the
+        env that loads them. A checkpoint written before the table wrapper
+        (keys ``rl`` and ``fields`` only) still loads into an rlcard env.
+        A checkpoint written before blinds were stored (no ``small_blind``
+        key) still loads into the same non-botzone backend.
         """
 
         import pickle
@@ -265,6 +276,9 @@ class SelfPlayEnv:
         return {
             "rng": self.rng.bit_generator.state,
             "backend": self.backend,
+            "small_blind": self.small_blind,
+            "big_blind": self.big_blind,
+            "starting_stack": self.starting_stack,
             "table": self.table.state_dict(),
             "fields": pickle.dumps(blob),
         }
@@ -280,6 +294,7 @@ class SelfPlayEnv:
             raise ValueError(
                 f"checkpoint backend is {backend!r}, this env is {self.backend!r}"
             )
+        self._check_limits(blob)
         self.rng.bit_generator.state = blob["rng"]
         self.table.load_state_dict(blob["table"])
         for name, value in pickle.loads(blob["fields"]).items():
@@ -289,7 +304,9 @@ class SelfPlayEnv:
         import pickle
 
         if self.backend != "rlcard":
-            raise ValueError("legacy checkpoint is an rlcard table and cannot load into pokerkit")
+            raise ValueError(
+                f"legacy checkpoint is an rlcard table and cannot load into {self.backend}"
+            )
         self.rng.bit_generator.state = blob["rng"]
         fields = pickle.loads(blob["fields"])
         self.table.load_state_dict(
@@ -371,6 +388,28 @@ class SelfPlayEnv:
         rewards = list(self.passive_rewards_bb)
         self.passive_rewards_bb.clear()
         return rewards
+
+    def _check_limits(self, blob: Dict[str, Any]) -> None:
+        keys = ("small_blind", "big_blind", "starting_stack")
+        present = [key for key in keys if key in blob]
+        if self.backend == "botzone":
+            if len(present) != len(keys):
+                missing = [key for key in keys if key not in blob]
+                raise ValueError(f"botzone checkpoint is missing {missing}")
+        elif len(present) == 0:
+            return
+        elif len(present) != len(keys):
+            missing = [key for key in keys if key not in blob]
+            raise ValueError(f"checkpoint is missing {missing}")
+        saved = tuple(float(blob[key]) for key in keys)
+        current = (float(self.small_blind), float(self.big_blind), float(self.starting_stack))
+        if any(abs(left - right) > 1e-6 for left, right in zip(saved, current)):
+            raise ValueError(
+                "checkpoint blinds/stack "
+                f"(small_blind={saved[0]}, big_blind={saved[1]}, starting_stack={saved[2]}) "
+                "do not match this env "
+                f"(small_blind={current[0]}, big_blind={current[1]}, starting_stack={current[2]})"
+            )
 
     def _deal(self, deck: Optional[Sequence[str]]) -> None:
         self.table.reset(deck)

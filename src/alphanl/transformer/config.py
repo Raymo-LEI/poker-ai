@@ -77,6 +77,39 @@ class EnvConfig:
     starting_stack: float = 100.0
 
 
+# rlcard / the historical SelfPlayEnv signature. Botzone simple is not this game.
+_RLCARD_LIMITS = (1.0, 2.0, 100.0)
+
+
+def resolve_env_limits(
+    backend: str,
+    small_blind: float,
+    big_blind: float,
+    starting_stack: float,
+) -> tuple:
+    """Blinds and stack for ``backend``.
+
+    ``botzone`` plays the wiki simple game (50 / 100, both seats start at
+    20000). Passing that triple, or omitting it and leaving the rlcard
+    1 / 2 / 100 defaults, selects those blinds. Any other triple is an
+    error: :class:`alphanl.botzone.table.BotzoneTable` cannot post them.
+    rlcard and pokerkit are returned unchanged.
+    """
+
+    current = (float(small_blind), float(big_blind), float(starting_stack))
+    if str(backend) != "botzone":
+        return current
+    from alphanl.botzone.legal import BIG_BLIND, SMALL_BLIND, STARTING_STACK
+
+    botzone = (float(SMALL_BLIND), float(BIG_BLIND), float(STARTING_STACK))
+    if current == botzone or current == _RLCARD_LIMITS:
+        return botzone
+    raise ValueError(
+        "botzone requires small_blind=50, big_blind=100, starting_stack=20000, "
+        f"got small_blind={small_blind}, big_blind={big_blind}, starting_stack={starting_stack}"
+    )
+
+
 @dataclass
 class ExperimentConfig:
     name: str = "laptop_8gb"
@@ -118,8 +151,17 @@ class ExperimentConfig:
             raise ValueError("encoder must be 'transformer' or 'alphanl_conv'")
         if self.encoder == "transformer" and self.model.d_model % self.model.nhead != 0:
             raise ValueError("model.d_model must be divisible by model.nhead")
-        if self.env.backend not in ("rlcard", "pokerkit"):
-            raise ValueError("env.backend must be 'rlcard' or 'pokerkit'")
+        if self.env.backend not in ("rlcard", "pokerkit", "botzone"):
+            raise ValueError("env.backend must be 'rlcard', 'pokerkit', or 'botzone'")
+        small_blind, big_blind, starting_stack = resolve_env_limits(
+            self.env.backend,
+            self.env.small_blind,
+            self.env.big_blind,
+            self.env.starting_stack,
+        )
+        self.env.small_blind = small_blind
+        self.env.big_blind = big_blind
+        self.env.starting_stack = starting_stack
         if self.ppo.minibatch_size < 1:
             raise ValueError("minibatch_size must be >= 1")
         if self.ppo.num_envs < 1 or self.ppo.rollout_steps < 1:

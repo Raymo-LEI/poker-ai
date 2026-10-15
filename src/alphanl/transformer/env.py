@@ -21,7 +21,8 @@ imported only when a hand is actually started.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence
+import copy
+from typing import Any, Dict, Iterable, Optional, Sequence
 
 import numpy as np
 import torch
@@ -47,6 +48,10 @@ class PolicyActor:
         self.shadow = shadow
         self.tokenizer = tokenizer
         self.rng = rng
+        self._opponents: Dict[int, nn.Module] = {}
+        # Tables sharing this actor; a snapshot evicted from the pool stays
+        # cached while any table is still mid-hand against it.
+        self._tables: list = []
 
     def rng_state(self):
         return self.rng.bit_generator.state
@@ -54,9 +59,60 @@ class PolicyActor:
     def set_rng_state(self, state) -> None:
         self.rng.bit_generator.state = state
 
-    def prepare_pool(self, weights: Dict[str, torch.Tensor]) -> None:
-        device = next(self.shadow.parameters()).device
-        self.shadow.load_state_dict({key: value.to(device) for key, value in weights.items()})
+    # T-C1a: one frozen opponent per pool snapshot id, resident on the rollout
+    # device. Set ``cache_opponents = False`` to get the legacy behaviour (one
+    # shared shadow reloaded before every opponent move); the equivalence test
+    # uses it to compare both paths.
+    cache_opponents: bool = True
+
+    def _build_opponent(self, weights: Dict[str, torch.Tensor]) -> nn.Module:
+        """Frozen deep copy of the shadow architecture holding ``weights``.
+
+        The weights are copied (``load_state_dict`` copies into fresh
+        parameters), so the model never aliases the pool's CPU tensors or the
+        live learner.
+        """
+        model = copy.deepcopy(self.shadow)
+        device = next(model.parameters()).device
+        model.load_state_dict({key: value.detach().to(device).clone() for key, value in weights.items()})
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad_(False)
+        return model
+
+    def prune_opponents(self, live_ids: Iterable[int]) -> None:
+        """Drop cached opponents whose snapshot has left the pool."""
+        keep = {int(pid) for pid in live_ids}
+        for table in self._tables:
+            choice = getattr(table, "choice", None) or {}
+            if choice.get("kind") == "pool" and choice.get("policy_id") is not None:
+                keep.add(int(choice["policy_id"]))
+        for pid in list(self._opponents):
+            if pid not in keep:
+                del self._opponents[pid]
+
+    def _opponent(self, choice: Dict[str, Any]) -> nn.Module:
+        pid = choice.get("policy_id")
+        if pid is None:
+            # No id to key on: build a private frozen copy every time.
+            return self._build_opponent(choice["weights"])
+        model = self._opponents.get(int(pid))
+        if model is None:
+            # First sample of this snapshot (or a hand still running against a
+            # snapshot that was evicted mid-hand).
+            model = self._build_opponent(choice["weights"])
+            self._opponents[int(pid)] = model
+        return model
+
+    def prepare_pool(self, weights: Dict[str, torch.Tensor], policy_id: Optional[int] = None,
+                     live_ids: Optional[Iterable[int]] = None) -> None:
+        if not self.cache_opponents:
+            device = next(self.shadow.parameters()).device
+            self.shadow.load_state_dict({key: value.to(device) for key, value in weights.items()})
+            return
+        if live_ids is not None:
+            self.prune_opponents(set(live_ids) | ({int(policy_id)} if policy_id is not None else set()))
+        self._opponent({"policy_id": policy_id, "weights": weights})
 
     def act(self, snapshot, choice: Dict[str, Any]) -> int:
         return self.act_batch(self.tokenizer.encode(snapshot), choice)
@@ -68,10 +124,12 @@ class PolicyActor:
         if choice["kind"] == "random":
             return int(self.rng.choice(legal))
         if choice["kind"] == "pool":
-            # One shared shadow serves every table, so reload this hand's weights
-            # immediately before the forward. Copies are tiny relative to 8GB.
-            self.prepare_pool(choice["weights"])
-            model = self.shadow
+            if self.cache_opponents:
+                model = self._opponent(choice)
+            else:
+                # Legacy: one shared shadow serves every table, reloaded before each move.
+                self.prepare_pool(choice["weights"])
+                model = self.shadow
         else:
             model = self.rollout_model
         device = next(model.parameters()).device
@@ -121,6 +179,8 @@ class SelfPlayEnv:
         self.passive_rewards_bb: list = []
         self.hero = 0
         self.choice: Dict[str, Any] = {"kind": "random", "policy_id": None, "weights": None}
+        if isinstance(actor, PolicyActor):
+            actor._tables.append(self)
 
     _STATE_FIELDS = ("hero", "choice", "passive_rewards_bb", "force_opponent")
 
@@ -244,7 +304,14 @@ class SelfPlayEnv:
         else:
             self.choice = self.pool.sample()
         if self.choice["kind"] == "pool":
-            self.actor.prepare_pool(self.choice["weights"])
+            if isinstance(self.actor, PolicyActor):
+                self.actor.prepare_pool(
+                    self.choice["weights"],
+                    policy_id=self.choice.get("policy_id"),
+                    live_ids=self.pool.live_ids(),
+                )
+            else:
+                self.actor.prepare_pool(self.choice["weights"])
 
     def _actor_choose(self, seat: int) -> int:
         batch = self._observe_seat(seat)

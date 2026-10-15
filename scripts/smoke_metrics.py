@@ -43,6 +43,88 @@ from alphanl.transformer.config import ExperimentConfig, resolve_device  # noqa:
 GB = 1024 ** 3
 
 
+class RolloutProfiler:
+    """Exclusive-time breakdown of ``collect_rollout`` (measurement only).
+
+    Wraps, at class level, without changing behaviour:
+      * ``SelfPlayEnv.step`` / ``SelfPlayEnv.reset``      -> env_step_s (table rules,
+        tokenizer, pool.sample; opponent time nested inside is subtracted)
+      * ``PolicyActor.act_batch``                          -> opp_infer_s (opponent
+        forward incl. kind=self/random; nested load time subtracted)
+      * ``PolicyActor.prepare_pool``                       -> opp_load_s / opp_load_count
+        (``shadow.load_state_dict`` of a pool snapshot)
+      * learner ``forward``/``act`` outside the opponent    -> net_infer_s
+    other_s = rollout_total_s - the four buckets (batching, copies into storage).
+    """
+
+    KEYS = ("env_step_s", "net_infer_s", "opp_infer_s", "opp_load_s")
+
+    def __init__(self, cuda_sync: bool):
+        self.sync = cuda_sync and torch.cuda.is_available()
+        self.stack = []  # [category, start, child_time]
+        self.reset()
+
+    def reset(self):
+        self.acc = {k: 0.0 for k in self.KEYS}
+        self.opp_load_count = 0
+        self.opp_calls = 0
+
+    def _wrap(self, owner, name, cat):
+        orig = getattr(owner, name)
+        prof = self
+
+        def wrapped(*args, **kw):
+            if cat == "net_infer_s" and prof.stack and prof.stack[-1][0] in ("net_infer_s", "opp_infer_s", "opp_load_s"):
+                return orig(*args, **kw)  # nested call: already counted by the outer section
+            if prof.sync and cat != "env_step_s":
+                torch.cuda.synchronize()
+            prof.stack.append([cat, time.perf_counter(), 0.0])
+            try:
+                return orig(*args, **kw)
+            finally:
+                if prof.sync and cat != "env_step_s":
+                    torch.cuda.synchronize()
+                c, t0, child = prof.stack.pop()
+                total = time.perf_counter() - t0
+                prof.acc[c] += total - child
+                if c == "opp_load_s":
+                    prof.opp_load_count += 1
+                if c == "opp_infer_s":
+                    prof.opp_calls += 1
+                if prof.stack:
+                    prof.stack[-1][2] += total
+
+        setattr(owner, name, wrapped)
+        self._undo.append((owner, name, orig))
+
+    def install(self):
+        from alphanl.transformer import env as E
+        from alphanl.transformer.model import PokerTransformer
+
+        self._undo = []
+        self._wrap(E.SelfPlayEnv, "step", "env_step_s")
+        self._wrap(E.SelfPlayEnv, "reset", "env_step_s")
+        self._wrap(E.PolicyActor, "act_batch", "opp_infer_s")
+        if getattr(E.PolicyActor, "cache_opponents", False):
+            # T-C1a: a load is building one frozen per-snapshot opponent.
+            self._wrap(E.PolicyActor, "_build_opponent", "opp_load_s")
+        else:
+            self._wrap(E.PolicyActor, "prepare_pool", "opp_load_s")
+        classes = [PokerTransformer]
+        try:
+            from alphanl.transformer.conv_net import AlphaNLConvNet
+            classes.append(AlphaNLConvNet)
+        except Exception:  # pragma: no cover
+            pass
+        for cls in classes:
+            self._wrap(cls, "forward", "net_infer_s")
+            self._wrap(cls, "act", "net_infer_s")
+
+    def uninstall(self):
+        for owner, name, orig in reversed(self._undo):
+            setattr(owner, name, orig)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", type=Path, default=REPO_ROOT / "configs/transformer/laptop_8gb.json")
@@ -58,11 +140,22 @@ def main() -> int:
     p.add_argument("--with-eval", action="store_true", help="keep the config's periodic eval vs random")
     p.add_argument("--max-peak-gb", type=float, default=7.0)
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--legacy-opponents", action="store_true",
+                   help="T-C1a off: one shared shadow reloaded before every opponent move (pre-T-C1a timing)")
+    p.add_argument("--rollout-device", choices=("cpu", "cuda", "auto"), default=None,
+                   help="override rollout_device (where learner/opponent inference runs during rollout)")
+    p.add_argument("--profile-rollout", action="store_true",
+                   help="time env step / learner inference / opponent inference / opponent loads")
+    p.add_argument("--profile-csv", type=str, default=None,
+                   help="per-step profile CSV (default <out-dir>/profile_steps.csv; implies --profile-rollout)")
     a = p.parse_args()
 
     out = Path(a.out_dir)
     if (out / "metrics.csv").exists():
         (out / "metrics.csv").unlink()  # fresh smoke each run; never touches real runs
+    if a.legacy_opponents:
+        from alphanl.transformer import env as _E
+        _E.PolicyActor.cache_opponents = False
     cfg = ExperimentConfig.from_json(a.config)
     cfg.apply_overrides(
         num_updates=a.steps, out_dir=str(out), device=a.device, seed=a.seed, amp=a.amp,
@@ -77,11 +170,19 @@ def main() -> int:
     if not a.with_eval:
         cfg.train.eval_every = 0
     cfg.train.log_every = 1
+    if a.rollout_device:
+        cfg.rollout_device = a.rollout_device
+    if a.profile_csv:
+        a.profile_rollout = True
+    prof = RolloutProfiler(cuda_sync=True) if a.profile_rollout else None
+    prof_csv = Path(a.profile_csv) if a.profile_csv else out / "profile_steps.csv"
+    if prof is not None and prof_csv.exists():
+        prof_csv.unlink()
     dev = torch.device(resolve_device(cfg.device))
     cuda = dev.type == "cuda"
     print(T.describe_run(cfg))
     print(f"[smoke] device={dev} amp_requested={a.amp} amp_active={T.amp_enabled(cfg.train.amp, dev)} "
-          f"steps={a.steps} out={out}", flush=True)
+          f"steps={a.steps} out={out} rollout_device={cfg.rollout_device} profile={bool(prof)}", flush=True)
     if cuda:
         torch.cuda.reset_peak_memory_stats()
 
@@ -95,9 +196,13 @@ def main() -> int:
             torch.cuda.synchronize()
 
     def rollout(*args, **kw):
+        if prof is not None:
+            prof.reset()
         _sync(); t = time.perf_counter()
         r = orig_rollout(*args, **kw)
         _sync(); cur["rollout_s"] = time.perf_counter() - t
+        if prof is not None:
+            cur["prof"] = dict(prof.acc, opp_load_count=prof.opp_load_count, opp_calls=prof.opp_calls)
         return r
 
     def update(*args, **kw):
@@ -126,12 +231,32 @@ def main() -> int:
             "peak_mem_gb": torch.cuda.max_memory_allocated() / GB if cuda else 0.0,
             "grad_scale": float(s.get_scale()) if (s is not None and s.is_enabled()) else float("nan"),
         }
+        if prof is not None:
+            pr = cur.get("prof", {})
+            tot = rec["rollout_s"]
+            known = sum(pr.get(k, 0.0) for k in RolloutProfiler.KEYS)
+            prow = {
+                "step": rec["update"] + 1,
+                "env_step_s": pr.get("env_step_s", 0.0),
+                "net_infer_s": pr.get("net_infer_s", 0.0),
+                "opp_infer_s": pr.get("opp_infer_s", 0.0),
+                "other_s": tot - known,
+                "rollout_total_s": tot,
+                "pool_size": int(row.get("pool_size", 0)),
+                "opp_load_count": int(pr.get("opp_load_count", 0)),
+                "opp_load_s": pr.get("opp_load_s", 0.0),
+                "opp_calls": int(pr.get("opp_calls", 0)),
+            }
+            rec.update({k: v for k, v in prow.items() if k != "step"})
+            orig_csv(prof_csv, prow)
         rows.append(rec)
         n = len(rows)
         if n % a.log_every == 0 or n == a.steps:
             _report(rows[-(((n - 1) % a.log_every) + 1):], n)
 
     T.collect_rollout, T.ppo_update, T.make_grad_scaler, T._append_csv = rollout, update, scaler, append_csv
+    if prof is not None:
+        prof.install()
     error = ""
     started = time.perf_counter()
     try:
@@ -144,6 +269,8 @@ def main() -> int:
         error = f"CUDA OOM: {exc}"
     finally:
         T.collect_rollout, T.ppo_update, T.make_grad_scaler, T._append_csv = orig_rollout, orig_update, orig_scaler, orig_csv
+        if prof is not None:
+            prof.uninstall()
     wall = time.perf_counter() - started
     return _finish(rows, a, out, cuda, error, wall, dev, cfg)
 
@@ -161,6 +288,11 @@ def _window(chunk, end):
         "loss": m("loss"),
         "peak_mem_gb": max(r["peak_mem_gb"] for r in chunk),
         "grad_scale": chunk[-1]["grad_scale"],
+        **({
+            "env_step_s": m("env_step_s"), "net_infer_s": m("net_infer_s"), "opp_infer_s": m("opp_infer_s"),
+            "other_s": m("other_s"), "pool_size": chunk[-1]["pool_size"],
+            "opp_load_count": m("opp_load_count"), "opp_load_s": m("opp_load_s"),
+        } if "env_step_s" in chunk[0] else {}),
     }
 
 
@@ -169,6 +301,10 @@ def _report(chunk, n):
     print(f"[smoke] steps {w['steps']}: {w['steps_per_sec']:.3f} steps/s, rollout {w['rollout_s']:.2f}s, "
           f"update {w['update_s']:.2f}s, loss {w['loss']:.4f}, peak {w['peak_mem_gb']:.3f} GB, "
           f"scale {w['grad_scale']:g}", flush=True)
+    if "env_step_s" in w:
+        print(f"[profile] steps {w['steps']}: env {w['env_step_s']:.3f}s, net {w['net_infer_s']:.3f}s, "
+              f"opp {w['opp_infer_s']:.3f}s, other {w['other_s']:.3f}s, pool {w['pool_size']}, "
+              f"opp loads {w['opp_load_count']:.1f}/step in {w['opp_load_s']:.3f}s", flush=True)
 
 
 def _finish(rows, a, out, cuda, error, wall, dev, cfg) -> int:
@@ -189,6 +325,7 @@ def _finish(rows, a, out, cuda, error, wall, dev, cfg) -> int:
         "amp_active": T.amp_enabled(cfg.train.amp, dev), "config": str(a.config),
         "steps_requested": a.steps, "steps_done": len(rows), "wall_seconds": wall,
         "peak_mem_gb": peak, "max_peak_gb": a.max_peak_gb, "nan_steps": nan_steps[:20], "error": error,
+        "rollout_device": cfg.rollout_device,
         "batch": {"num_envs": cfg.ppo.num_envs, "rollout_steps": cfg.ppo.rollout_steps, "minibatch": cfg.ppo.minibatch_size},
         "windows": windows,
     }
@@ -209,6 +346,13 @@ def _finish(rows, a, out, cuda, error, wall, dev, cfg) -> int:
     for w in windows:
         md.append(f"| {w['steps']} | {w['steps_per_sec']:.3f} | {w['rollout_s']:.2f} | {w['update_s']:.2f} | "
                   f"{w['loss']:.4f} | {w['peak_mem_gb']:.3f} | {w['grad_scale']:g} |")
+    if windows and "env_step_s" in windows[0]:
+        md += ["", f"rollout profile (avg seconds per step; rollout_device={cfg.rollout_device})", "",
+               "| steps | env_step_s | net_infer_s | opp_infer_s | other_s | pool_size | opp_load_count | opp_load_s |",
+               "|---|---|---|---|---|---|---|---|"]
+        for w in windows:
+            md.append(f"| {w['steps']} | {w['env_step_s']:.3f} | {w['net_infer_s']:.3f} | {w['opp_infer_s']:.3f} | "
+                      f"{w['other_s']:.3f} | {w['pool_size']} | {w['opp_load_count']:.1f} | {w['opp_load_s']:.3f} |")
     md.append("")
     md.append("checks: " + ", ".join(f"{k}={'ok' if v else 'FAIL'}" for k, v in checks.items())
               + (f"; error: {error}" if error else ""))

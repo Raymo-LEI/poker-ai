@@ -232,18 +232,30 @@ def require_botzone_checkpoint(cfg: ExperimentConfig) -> None:
         )
 
 
-def load_botzone_model(ckpt_dir: Path, device: torch.device) -> tuple:
+def load_botzone_model(
+    ckpt_dir: Path,
+    device: torch.device,
+    *,
+    ckpt_path: Optional[Path] = None,
+) -> tuple:
     """Newest checkpoint in ``ckpt_dir``, built with the training helper.
 
-    Model construction is the same path as ``--dry-run`` (``build_model``
-    on the checkpoint's own config). Weights then come from
+    Pass ``ckpt_path`` to load that file instead of the newest
+    ``update_*.pt``. The collapse CLI does not pass it, so it still loads
+    the newest file. Model construction is the same path as ``--dry-run``
+    (``build_model`` on the checkpoint's own config). Weights then come from
     :func:`load_checkpoint`. RNG stored in the checkpoint is not restored,
     so ``--seed`` alone decides the eval.
     """
 
-    path = latest_checkpoint(ckpt_dir)
-    if path is None:
-        raise FileNotFoundError(f"no update_*.pt checkpoint in {ckpt_dir}")
+    if ckpt_path is None:
+        path = latest_checkpoint(ckpt_dir)
+        if path is None:
+            raise FileNotFoundError(f"no update_*.pt checkpoint in {ckpt_dir}")
+    else:
+        path = Path(ckpt_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"checkpoint file not found: {path}")
     try:
         blob = torch.load(path, map_location="cpu", weights_only=False)
     except TypeError:

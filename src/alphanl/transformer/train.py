@@ -12,7 +12,7 @@ import torch
 
 from .checkpoint import checkpoint_path, latest_checkpoint, load_checkpoint, save_checkpoint
 from .config import ExperimentConfig, resolve_device, resolve_env_limits
-from .env import PolicyActor, SelfPlayEnv
+from .env import PolicyActor, SelfPlayEnv, gae_reward_depth, logged_bb_from_reward
 from .model import PokerTransformer, count_parameters
 from .pool import OpponentPool
 from .ppo import amp_enabled, compute_gae, make_grad_scaler, ppo_update
@@ -141,7 +141,10 @@ def collect_rollout(
             if done:
                 episodes += 1
                 next_obs = env.reset()
-                passive_bb.extend(float(x) for x in env.drain_passive_rewards())
+                backend = _env_backend(env)
+                passive_bb.extend(
+                    logged_bb_from_reward(x, backend) for x in env.drain_passive_rewards()
+                )
             obs[e] = next_obs
 
     bootstrap_batch = batch_to_device(cat_batches(obs), device)
@@ -162,7 +165,12 @@ def collect_rollout(
     if int(terminal.sum()) == 0:
         mean_reward = 0.0
     else:
-        mean_reward = float(rewards[terminal].mean())
+        # ``rewards`` is the GAE scale. Botzone logs multiply by 200.
+        scales = torch.tensor(
+            [gae_reward_depth(_env_backend(env)) for env in envs],
+            dtype=rewards.dtype,
+        ).unsqueeze(1)
+        mean_reward = float((rewards * scales)[terminal].mean())
     stats = {
         "episodes": episodes,
         "mean_reward_bb": mean_reward,
@@ -170,6 +178,10 @@ def collect_rollout(
         "passive_mean_bb": float(np.mean(passive_bb)) if passive_bb else 0.0,
     }
     return storage, stats
+
+
+def _env_backend(env: Any) -> str:
+    return str(getattr(env, "backend", "") or "")
 
 
 def flatten_rollout(storage: Dict[str, torch.Tensor], gamma: float, gae_lambda: float) -> Dict[str, torch.Tensor]:
@@ -244,7 +256,8 @@ def evaluate_vs_random(
     played = 0
     while played < int(n_hands):
         env.reset()
-        passive = [float(reward) for reward in env.drain_passive_rewards()]
+        backend = cfg.env.backend
+        passive = [logged_bb_from_reward(reward, backend) for reward in env.drain_passive_rewards()]
         total += sum(passive)
         played += len(passive)
         if played >= int(n_hands):
@@ -255,7 +268,7 @@ def evaluate_vs_random(
             batch = batch_to_device(env.observe(), device)
             actions, _, _, _ = model.act(batch, deterministic=True)
             _, reward, done, _info = env.step(int(actions.item()))
-        total += float(reward)
+        total += logged_bb_from_reward(reward, backend)
         played += 1
     return total / float(played)
 

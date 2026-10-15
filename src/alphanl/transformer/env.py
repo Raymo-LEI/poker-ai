@@ -12,7 +12,10 @@ is to act again or the hand ends. Observations are ``HandSnapshot`` values.
   first preflop and the big blind acts first postflop.
 - ``botzone`` — Botzone TexasHoldem2p simple (50 / 100, stacks of 20000).
   The small blind acts first on every street. Policy ids are applied only
-  through ``alphanl.botzone.actions``.
+  through ``alphanl.botzone.actions``. The reward that enters GAE is the
+  hero's chip delta divided by the big blind and then by 200. Training logs
+  multiply that reward by 200 and report bb/hand. rlcard and pokerkit stay
+  in big blinds.
 
 The gym methods (``reset``, ``step``, ``observe``, ``drain_passive_rewards``,
 ``state_dict`` / ``load_state_dict``) are the same for all three. Rules live
@@ -36,6 +39,28 @@ from .history import BIG_BLIND_CHIPS, SMALL_BLIND_CHIPS, STARTING_STACK
 from .pool import OpponentPool
 from .tables import make_table
 from .tokenizer import BettingHistoryTokenizer, TensorBatch, batch_to_device, cat_batches
+
+# Botzone simple starts 200 big blinds deep (20000 / 100). The value head
+# fits a fraction of that depth. Other backends are not divided, so their
+# logged bb/hand stays equal to the reward.
+BOTZONE_REWARD_DEPTH = 200.0
+
+
+def gae_reward_depth(backend: str) -> float:
+    """Big blinds represented by one unit of reward entering GAE.
+
+    ``botzone`` uses 200. ``rlcard`` and ``pokerkit`` use 1.
+    """
+
+    if str(backend) == "botzone":
+        return BOTZONE_REWARD_DEPTH
+    return 1.0
+
+
+def logged_bb_from_reward(reward: float, backend: str) -> float:
+    """bb/hand for logs. Botzone multiplies the GAE reward by 200."""
+
+    return float(reward) * gae_reward_depth(backend)
 
 
 class PolicyActor:
@@ -242,6 +267,7 @@ class SelfPlayEnv:
             big_blind=big_blind,
         )
         self.force_opponent: Optional[Dict[str, Any]] = None
+        # Same units as the reward ``step`` returns (bb, or bb/200 on botzone).
         self.passive_rewards_bb: list = []
         self.hero = 0
         self.choice: Dict[str, Any] = {"kind": "random", "policy_id": None, "weights": None}
@@ -336,7 +362,7 @@ class SelfPlayEnv:
             first = False
             if not self._play_until_hero():
                 return self.observe()
-            reward = self._hero_bb()
+            reward = self._gae_reward()
             self.passive_rewards_bb.append(reward)
             self._record(reward)
         raise RuntimeError("hero received no decision in 1000 hands")
@@ -364,7 +390,7 @@ class SelfPlayEnv:
 
     def finish_step(self):
         ended = bool(self.table.is_over()) or self._play_until_hero()
-        reward = self._hero_bb() if ended else 0.0
+        reward = self._gae_reward() if ended else 0.0
         if ended:
             self._record(reward)
         info = {"policy_id": self.choice.get("policy_id"), "kind": self.choice.get("kind")}
@@ -458,6 +484,11 @@ class SelfPlayEnv:
     def _hero_bb(self) -> float:
         payoffs = self.table.payoffs()
         return float(payoffs[int(self.hero)]) / self.big_blind
+
+    def _gae_reward(self) -> float:
+        """Reward that enters GAE. Botzone is ``_hero_bb() / 200``."""
+
+        return self._hero_bb() / gae_reward_depth(self.backend)
 
     def _record(self, reward_bb: float) -> None:
         if self.record_results:

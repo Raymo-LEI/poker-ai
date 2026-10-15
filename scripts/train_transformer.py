@@ -19,8 +19,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from alphanl.transformer.config import ExperimentConfig  # noqa: E402
-from alphanl.transformer.train import describe_run, run_training  # noqa: E402
+from alphanl.transformer.config import ExperimentConfig, resolve_env_limits  # noqa: E402
+from alphanl.transformer.train import describe_run, refuse_botzone_init_weights, run_training  # noqa: E402
 
 
 def main() -> None:
@@ -54,7 +54,15 @@ def main() -> None:
         "--init-weights",
         type=str,
         default=None,
-        help="Load model weights from a BC checkpoint, then start PPO at update 0.",
+        help=(
+            "Load model weights from a BC checkpoint, then start PPO at update 0. "
+            "Refused when env.backend is botzone unless --allow-cross-backend-init is set."
+        ),
+    )
+    parser.add_argument(
+        "--allow-cross-backend-init",
+        action="store_true",
+        help="Allow --init-weights when env.backend is botzone. Off by default.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print the model summary and exit")
     args = parser.parse_args()
@@ -71,10 +79,22 @@ def main() -> None:
         checkpoint_every=args.checkpoint_every,
         encoder=args.encoder,
     )
+    small_blind, big_blind, starting_stack = resolve_env_limits(
+        cfg.env.backend, cfg.env.small_blind, cfg.env.big_blind, cfg.env.starting_stack
+    )
+    cfg.env.small_blind = small_blind
+    cfg.env.big_blind = big_blind
+    cfg.env.starting_stack = starting_stack
+    refuse_botzone_init_weights(cfg.env.backend, args.init_weights, args.allow_cross_backend_init)
     print(describe_run(cfg))
     if args.dry_run:
         return
-    out_dir = run_training(cfg, resume=args.resume, init_weights=args.init_weights)
+    out_dir = run_training(
+        cfg,
+        resume=args.resume,
+        init_weights=args.init_weights,
+        allow_cross_backend_init=args.allow_cross_backend_init,
+    )
     print(f"wrote {out_dir}")
 
 

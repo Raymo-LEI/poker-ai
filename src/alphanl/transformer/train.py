@@ -11,7 +11,7 @@ import numpy as np
 import torch
 
 from .checkpoint import checkpoint_path, latest_checkpoint, load_checkpoint, save_checkpoint
-from .config import ExperimentConfig, resolve_device
+from .config import ExperimentConfig, resolve_device, resolve_env_limits
 from .env import PolicyActor, SelfPlayEnv
 from .model import PokerTransformer, count_parameters
 from .pool import OpponentPool
@@ -260,18 +260,54 @@ def evaluate_vs_random(
     return total / float(played)
 
 
+def refuse_botzone_init_weights(
+    backend: str,
+    init_weights: Optional[Path | str],
+    allow_cross_backend_init: bool = False,
+) -> None:
+    """Reject ``--init-weights`` on the botzone backend unless opted in.
+
+    The five policy ids on botzone are not the rlcard 50bb sizes. Loading a
+    behavior-cloning checkpoint into that head is allowed only when
+    ``allow_cross_backend_init`` is true (the ``--allow-cross-backend-init``
+    flag). rlcard and pokerkit are unchanged.
+    """
+
+    if init_weights is None or allow_cross_backend_init:
+        return
+    if str(backend) == "botzone":
+        raise ValueError(
+            "refusing --init-weights when env.backend is 'botzone'. "
+            "Botzone action ids are not the rlcard 50bb sizes. "
+            "Pass --allow-cross-backend-init to load those weights anyway."
+        )
+
+
 def run_training(
     cfg: ExperimentConfig,
     *,
     resume: Optional[Path | str] = None,
     init_weights: Optional[Path | str] = None,
+    allow_cross_backend_init: bool = False,
 ) -> Path:
     """Run ``cfg.train.num_updates`` PPO updates. Returns the output directory.
 
     ``resume`` is a checkpoint path, or ``"latest"`` to pick the newest
     ``update_*.pt`` in ``cfg.train.checkpoint_dir`` (starts fresh if none).
+    ``init_weights`` loads model weights only. It is refused when
+    ``cfg.env.backend`` is ``botzone`` unless ``allow_cross_backend_init``.
     """
 
+    # A botzone config that still carries the rlcard 1/2/100 defaults is
+    # rewritten to 50/100/20000 before tables exist and before the checkpoint
+    # stores ``config``.
+    small_blind, big_blind, starting_stack = resolve_env_limits(
+        cfg.env.backend, cfg.env.small_blind, cfg.env.big_blind, cfg.env.starting_stack
+    )
+    cfg.env.small_blind = small_blind
+    cfg.env.big_blind = big_blind
+    cfg.env.starting_stack = starting_stack
+    refuse_botzone_init_weights(cfg.env.backend, init_weights, allow_cross_backend_init)
     set_seed(cfg.seed)
     train_device = torch.device(resolve_device(cfg.device))
     rollout_name = cfg.rollout_device

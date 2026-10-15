@@ -30,6 +30,11 @@ same hole cards and board.
 
 Stacks are in chips. With the default blind of 2, 50bb / 100bb / 200bb
 are 100 / 200 / 400 chips (``chips_for_depth``).
+
+``backend="botzone"`` is a third table (:class:`alphanl.transformer.botzone_table.BotzoneEnvTable`).
+It keeps these five policy ids, but the chip amount for each id comes from
+``alphanl.botzone.actions`` (safe min-raise / large raise), not from
+``int(pot / 2)``. rlcard and pokerkit sizing is unchanged.
 """
 
 from __future__ import annotations
@@ -628,8 +633,18 @@ def make_table(
     dealer_id: Optional[int] = None,
     stacks: Optional[Sequence[float]] = None,
 ):
-    """Build the table ``SelfPlayEnv`` drives. ``backend`` is ``rlcard`` or ``pokerkit``."""
+    """Build the table ``SelfPlayEnv`` drives.
 
+    ``backend`` is ``rlcard``, ``pokerkit``, or ``botzone``. Botzone blinds
+    default to 50 / 100 with a 20000 starting stack (see
+    ``resolve_env_limits``).
+    """
+
+    from .config import resolve_env_limits
+
+    small_blind, big_blind, starting_stack = resolve_env_limits(
+        backend, small_blind, big_blind, starting_stack
+    )
     if backend == "rlcard":
         if stacks is not None:
             raise ValueError("rlcard heads-up uses one starting_stack for both seats")
@@ -648,7 +663,19 @@ def make_table(
             big_blind=big_blind,
             stacks=stacks,
         )
-    raise ValueError("backend must be 'rlcard' or 'pokerkit'")
+    if backend == "botzone":
+        if stacks is not None:
+            raise ValueError("botzone heads-up resets both seats to 20000")
+        from .botzone_table import BotzoneEnvTable
+
+        return BotzoneEnvTable(
+            seed=seed,
+            starting_stack=starting_stack,
+            small_blind=small_blind,
+            big_blind=big_blind,
+            dealer=0 if dealer_id is None else int(dealer_id),
+        )
+    raise ValueError("backend must be 'rlcard', 'pokerkit', or 'botzone'")
 
 
 def _make_rlcard_env(seed: int, starting_stack: int, dealer_id: Optional[int]):

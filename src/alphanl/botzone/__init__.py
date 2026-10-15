@@ -1,8 +1,9 @@
 """Botzone TexasHoldem2p rules, kept apart from rlcard and PokerKit.
 
 M1 is betting legality. M2 deals, rotates the button, and awards the pot.
-M3 packs the five policy ids through that legality. The training loop is
-a later milestone.
+M3 packs the five policy ids through that legality. The training adapter
+that speaks ``SelfPlayEnv`` lives in ``alphanl.transformer.botzone_table``
+and does not change these rules.
 """
 
 from .actions import (

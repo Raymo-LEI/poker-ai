@@ -8,9 +8,7 @@ that update. Trinal-clip is not implemented (see docs/step3_transformer.md).
 
 from __future__ import annotations
 
-from typing import Dict
-
-from typing import Optional
+from typing import Dict, Optional
 
 import torch
 
@@ -66,12 +64,16 @@ def ppo_losses(
     clip_eps: float,
     entropy_coef: float,
     value_coef: float,
+    value_clip_eps: Optional[float] = None,
 ) -> tuple:
     """One forward and the clipped PPO objective.
 
     ``advantages`` must already be normalized by the caller when that is
     desired. Entropy is subtracted, so raising ``entropy_coef`` pushes the
     masked policy toward uniform over the legal actions.
+
+    ``value_clip_eps`` is in reward units, not a ratio. ``None`` turns value
+    clipping off and fits the value head with a plain squared error.
     """
 
     logits, values = model(batch, mask_illegal=True)
@@ -83,11 +85,13 @@ def ppo_losses(
     surr_clipped = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * advantages
     policy_loss = -torch.min(surr_unclipped, surr_clipped).mean()
 
-    value_delta = (values - old_values).clamp(-clip_eps, clip_eps)
-    value_clipped = old_values + value_delta
     value_unclipped_loss = (values - returns).pow(2)
-    value_clipped_loss = (value_clipped - returns).pow(2)
-    value_loss = 0.5 * torch.max(value_unclipped_loss, value_clipped_loss).mean()
+    if value_clip_eps is None:
+        value_loss = 0.5 * value_unclipped_loss.mean()
+    else:
+        value_delta = (values - old_values).clamp(-value_clip_eps, value_clip_eps)
+        value_clipped_loss = (old_values + value_delta - returns).pow(2)
+        value_loss = 0.5 * torch.max(value_unclipped_loss, value_clipped_loss).mean()
 
     entropy = entropy_from_probs(probs, log_probs, legal).mean()
     loss = policy_loss + value_coef * value_loss - entropy_coef * entropy
@@ -135,6 +139,7 @@ def ppo_update(
     max_grad_norm: float,
     amp: bool = False,
     scaler: "Optional[torch.amp.GradScaler]" = None,
+    value_clip_eps: Optional[float] = None,
 ) -> Dict[str, float]:
     """Several epochs of minibatch PPO. Storage stays on ``batch``'s device.
 
@@ -142,6 +147,8 @@ def ppo_update(
     caller should move the minibatch onto the model device before calling
     this if the batch is not already there. This function runs in-place on
     whatever device the tensors and the model share.
+
+    The model is left in eval mode: dropout is off for every PPO forward.
     """
 
     num_samples = int(actions.shape[0])
@@ -163,7 +170,9 @@ def ppo_update(
         "explained_variance": 0.0,
     }
     updates = 0
-    model.train()
+    # Rollouts sample in eval mode. Dropout here would make the PPO ratio
+    # differ from 1 before any step and push samples outside the clip range.
+    model.eval()
     for _ in range(int(epochs)):
         order = torch.randperm(num_samples, device=device)
         for start in range(0, num_samples, int(minibatch_size)):
@@ -183,6 +192,7 @@ def ppo_update(
                         clip_eps=clip_eps,
                         entropy_coef=entropy_coef,
                         value_coef=value_coef,
+                        value_clip_eps=value_clip_eps,
                     )
                 assert scaler is not None
                 scaler.scale(loss).backward()
@@ -202,6 +212,7 @@ def ppo_update(
                     clip_eps=clip_eps,
                     entropy_coef=entropy_coef,
                     value_coef=value_coef,
+                    value_clip_eps=value_clip_eps,
                 )
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)

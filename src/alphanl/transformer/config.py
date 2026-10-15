@@ -37,6 +37,9 @@ class PPOConfig:
     gamma: float = 1.0
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
+    # Reward units, not a ratio: 0.2 is 0.2bb on rlcard/pokerkit and 40bb on
+    # botzone. ``None`` disables value clipping.
+    value_clip_eps: Optional[float] = None
     entropy_coef: float = 0.01
     value_coef: float = 0.5
     max_grad_norm: float = 0.5

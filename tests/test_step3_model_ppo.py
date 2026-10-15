@@ -7,7 +7,7 @@ from alphanl.transformer.ppo import compute_gae, ppo_losses, ppo_update
 from alphanl.transformer.tokenizer import NUM_NUMERIC, NUM_TYPES, VOCAB_SIZE
 
 
-def _model() -> PokerTransformer:
+def _model(dropout: float = 0.0) -> PokerTransformer:
     return PokerTransformer(
         vocab_size=VOCAB_SIZE,
         num_types=NUM_TYPES,
@@ -16,7 +16,7 @@ def _model() -> PokerTransformer:
         nhead=4,
         num_layers=2,
         dim_feedforward=64,
-        dropout=0.0,
+        dropout=dropout,
         max_seq_len=16,
     )
 
@@ -179,3 +179,65 @@ def test_ppo_update_steps_are_finite_and_move_weights():
     assert metrics["entropy"] > 0
     moved = any(not torch.allclose(a, b) for a, b in zip(before, model.parameters()))
     assert moved
+
+
+def _rollout_tensors(model, batch):
+    model.eval()
+    with torch.no_grad():
+        logits, values = model(batch)
+        _, log_probs, _, _ = masked_log_probs(logits, batch["legal_mask"])
+        actions = torch.distributions.Categorical(logits=logits).sample()
+        old_logp = log_probs.gather(1, actions.unsqueeze(1)).squeeze(1)
+    return actions, old_logp, values.detach()
+
+
+def test_ppo_update_ratio_is_one_before_any_step_with_dropout():
+    torch.manual_seed(2)
+    model = _model(dropout=0.5)
+    with torch.no_grad():
+        model.policy_head.weight.mul_(200.0)
+    batch = _batch(batch_size=64)
+    actions, old_logp, old_values = _rollout_tensors(model, batch)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
+    metrics = ppo_update(
+        model,
+        optimizer,
+        batch,
+        actions=actions,
+        old_logp=old_logp,
+        old_values=old_values,
+        advantages=torch.randn(64),
+        returns=old_values + torch.randn(64),
+        clip_eps=0.2,
+        entropy_coef=0.0,
+        value_coef=0.5,
+        epochs=2,
+        minibatch_size=16,
+        max_grad_norm=0.5,
+    )
+    assert metrics["clip_fraction"] == 0.0
+    assert abs(metrics["approx_kl"]) < 1e-6
+
+
+def test_value_clip_eps_none_is_plain_squared_error():
+    torch.manual_seed(3)
+    model = _model().eval()
+    batch = _batch(batch_size=16)
+    actions, old_logp, values = _rollout_tensors(model, batch)
+    old_values = values - 5.0
+    returns = values + 10.0
+    common = dict(
+        actions=actions,
+        old_logp=old_logp,
+        old_values=old_values,
+        advantages=torch.zeros(16),
+        returns=returns,
+        clip_eps=0.2,
+        entropy_coef=0.0,
+        value_coef=0.5,
+    )
+    _, plain = ppo_losses(model, batch, value_clip_eps=None, **common)
+    _, clipped = ppo_losses(model, batch, value_clip_eps=0.2, **common)
+    assert abs(plain["value_loss"] - 50.0) < 1e-3
+    # V_clip = V_old + 0.2 = V - 4.8, so (V_clip - R)^2 = 14.8^2.
+    assert abs(clipped["value_loss"] - 0.5 * 14.8 ** 2) < 1e-2

@@ -1,7 +1,7 @@
 """BotzoneTable smoke: chips, showdown ranks, odd-chip chop.
 
-The 1000-hand conservation suite is a later check. This file plays a
-short random run and the scripted showdowns from the design.
+The 1000-hand conservation suite is ``test_botzone_conservation.py``.
+This file plays a short random run and the scripted showdowns from the design.
 """
 
 import random

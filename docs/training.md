@@ -55,3 +55,14 @@ drive.mount('/content/drive')
 1. **GPU 验证**：在 RTX 3070 笔记本上实测 AMP 训练路径（`train.amp: true` / `--amp`）和 `--resume` 续训；确认 loss 有限、checkpoint 能写读、显存占用可接受。CPU 单测不能代替 CUDA 上的 GradScaler 行为。
 2. **Colab 拉代码**：由仓库主在 GitHub 创建 **fine-grained、只读** 的 Personal Access Token，权限仅覆盖本仓库（`poker-ai`），用于 Colab 里 `git clone` 私有仓；不要把 token 写进仓库或 checkpoint。
 3. **对手池的体积**：checkpoint 已经能分别序列化 rlcard 和 pokerkit 牌桌（见上文）。对手池仍存完整 `state_dict` 副本，后续可改为按 id 引用磁盘上的权重以省内存和 checkpoint 体积。
+
+## 3070 / Colab AMP 冒烟（T-A）
+
+只做冒烟，不是正式训练。用的是 main 上原有的训练循环（`run_training`），`scripts/smoke_metrics.py` 只在外面包一层计时和显存统计，不改训练代码。输出目录是全新的，不碰正式 run 和 `runs/ckpt`。
+
+- **笔记本（Git Bash / WSL / Linux）**：`bash scripts/smoke_3070.sh`。默认用 `laptop_8gb.json`、`--amp`，跑 300 个 update，每 50 个打印一次：steps/s、rollout 耗时（CPU）、update 耗时（GPU）、loss、`torch.cuda.max_memory_allocated`（GB）、GradScaler 当前 scale。快速试跑：`STEPS=10 bash scripts/smoke_3070.sh`。
+- **PowerShell**：`$env:PYTHONPATH="src"; python scripts\smoke_metrics.py --config configs\transformer\laptop_8gb.json --steps 300 --log-every 50 --amp --out-dir runs\smoke_3070`
+- **预计耗时**：笔记本上每个 update 约 7–9 秒，主要花在 CPU rollout 上，所以 300 步大约 35–45 分钟。
+- **产出**：`runs/smoke_3070/` 下的 `smoke_summary.md`（直接贴群里的 markdown 表）、`smoke_summary.json/csv`（按 50 步一个窗口）、`smoke_steps.csv`（逐步）、`metrics.csv`、`smoke.log`、`ckpt/`。
+- **验收**：没有 NaN/inf loss、没有 OOM、峰值显存 < 7GB，就是 PASS（退出码 0），否则 FAIL（退出码 1）。默认不跑周期性 eval（要跑加 `--with-eval`）。显存吃紧可以加 `--minibatch 128`、`--num-envs`、`--rollout-steps` 调小 batch。
+- **Colab**：打开 `scripts/colab_smoke.ipynb`，选 L4，在 Colab 的 Secrets 里加 `GITHUB_TOKEN`（只读、只给本仓库）。它会挂载 Drive、用这个 token clone 私密仓库（不打印、不落盘，clone 完就从 remote URL 里去掉），然后用 `colab_l4.json --amp` 跑同样的 300 步，结果写到 `MyDrive/poker-ai/smoke_colab`，最后显示汇总表。

@@ -10,7 +10,8 @@ Sequence layout (CLS is always index 0, which the encoder reads):
 Each action token packs action type, SB/BB, whether the actor is ``me``, and
 the pot-fraction bucket. A 4-d numeric vector carries the unbucketed fraction
 and stack context so a later pokerkit backend can pass sizes the 5-way
-abstraction never used.
+abstraction never used. Chip channels are ``log1p(chips / big_blind) / log1p(200)``
+(1bb ≈ 0.131, 200bb = 1). The fraction channel stays clipped to 10 and divided by 10.
 
 Padding is on the right. If the hand is longer than ``max_seq_len``, the
 oldest actions are dropped first. CLS, hole cards, and street markers are kept
@@ -19,6 +20,7 @@ while any action from that street remains.
 
 from __future__ import annotations
 
+import math
 from typing import Dict, List, Sequence, Tuple
 
 import torch
@@ -72,10 +74,15 @@ def action_token_id(action_type: str, position: str, actor_is_me: bool, size_buc
     return ACTION_ID_BASE + packed + int(size_bucket)
 
 
-def _norm_chips(amount: float, starting_stack: float) -> float:
-    if starting_stack <= 0:
+_LOG1P_200 = math.log1p(200.0)
+
+
+def _norm_chips(amount: float, big_blind: float) -> float:
+    """``log1p(chips / big_blind) / log1p(200)``. A 200bb stack is 1."""
+
+    if big_blind <= 0:
         return 0.0
-    return float(amount) / float(starting_stack)
+    return math.log1p(float(amount) / float(big_blind)) / _LOG1P_200
 
 
 def _norm_fraction(fraction: float) -> float:
@@ -140,17 +147,17 @@ class BettingHistoryTokenizer:
         return f"UNK_{token_id}"
 
     def _tokens(self, snapshot: HandSnapshot) -> List[_Token]:
-        start = float(snapshot.starting_stack)
+        blind = float(snapshot.big_blind)
         zero = (0.0, 0.0, 0.0, 0.0)
         hole_cards = normalize_cards(snapshot.hole_cards)
         if len(hole_cards) != 2:
             raise ValueError(f"expected two hole cards, got {hole_cards}")
         board_cards = normalize_cards(snapshot.board_cards)
         cls_num = (
-            _norm_chips(snapshot.pot, start),
-            _norm_chips(snapshot.me_stack, start),
-            _norm_chips(snapshot.opp_stack, start),
-            _norm_chips(snapshot.to_call, start),
+            _norm_chips(snapshot.pot, blind),
+            _norm_chips(snapshot.me_stack, blind),
+            _norm_chips(snapshot.opp_stack, blind),
+            _norm_chips(snapshot.to_call, blind),
         )
         prefix: List[_Token] = [
             (CLS_ID, TYPE_CLS, cls_num),
@@ -178,9 +185,9 @@ class BettingHistoryTokenizer:
             )
             numeric = (
                 _norm_fraction(event.pot_fraction),
-                _norm_chips(event.pot_before, start),
-                _norm_chips(event.stack_before, start),
-                _norm_chips(event.to_call_before, start),
+                _norm_chips(event.pot_before, blind),
+                _norm_chips(event.stack_before, blind),
+                _norm_chips(event.to_call_before, blind),
             )
             actions_by_street[event.street].append((token_id, TYPE_ACTION, numeric))
 

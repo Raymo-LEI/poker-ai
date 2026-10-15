@@ -1,5 +1,7 @@
 """Tokenizer, pot-fraction buckets, and rlcard-history replay."""
 
+import math
+
 from alphanl.transformer.buckets import pot_fraction_bucket
 from alphanl.transformer.history import NlEnvTracker, make_action_event, replay_events
 from alphanl.transformer.schema import HandSnapshot, normalize_card
@@ -149,7 +151,9 @@ def test_encode_shapes_street_marker_and_legal_mask():
     names = [tokenizer.describe(int(token)) for token in batch["token_ids"][0] if int(token) != 0]
     assert "STREET_0" in names
     assert any(name.startswith("ACT_call_SB_me_") for name in names)
-    assert abs(float(batch["numeric"][0, 0, 0]) - 0.03) < 1e-6
+    # pot=3, big_blind=2 → log1p(chips / big_blind) / log1p(200)
+    expected_pot = math.log1p(3.0 / 2.0) / math.log1p(200.0)
+    assert abs(float(batch["numeric"][0, 0, 0]) - expected_pot) < 1e-5
     assert bool(batch["pad_mask"][0, 0]) is False
     assert bool(batch["pad_mask"][0, -1]) is True
 
@@ -196,3 +200,49 @@ def test_truncation_keeps_cls_hole_and_newest_actions():
     action_count = sum(1 for type_id in batch["type_ids"][0].tolist() if type_id == TYPE_ACTION)
     assert action_count == 3
     assert len(described) == 8
+
+
+def test_log1p_chip_norm_one_bb_and_200bb():
+    """Botzone big blind is 100. 1bb ≈ 0.131 and 200bb = 1 on every chip channel."""
+
+    big_blind = 100.0
+    one_bb = big_blind
+    stack_200bb = 200.0 * big_blind
+    event = make_action_event(
+        street=0,
+        actor_seat=0,
+        me_seat=0,
+        sb_seat=0,
+        action_id=1,
+        action_type="call",
+        pot_before=one_bb,
+        chips_added=one_bb,
+        to_call_before=stack_200bb,
+        stack_before=stack_200bb,
+        legal_action_ids=(0, 1),
+    )
+    snap = _snap(
+        events=(event,),
+        pot=one_bb,
+        stacks=(stack_200bb, one_bb),
+        to_call=stack_200bb,
+        legal_action_ids=(0, 1),
+        big_blind=big_blind,
+        starting_stack=stack_200bb,
+    )
+    batch = BettingHistoryTokenizer(max_seq_len=32).encode(snap)
+    cls = batch["numeric"][0, 0]
+    assert abs(float(cls[0]) - 0.131) < 1e-3
+    assert abs(float(cls[1]) - 1.0) < 1e-6
+    assert abs(float(cls[2]) - 0.131) < 1e-3
+    assert abs(float(cls[3]) - 1.0) < 1e-6
+
+    action_cols = [
+        i for i, type_id in enumerate(batch["type_ids"][0].tolist()) if type_id == TYPE_ACTION
+    ]
+    assert len(action_cols) == 1
+    action = batch["numeric"][0, action_cols[0]]
+    assert abs(float(action[0]) - 0.1) < 1e-6
+    assert abs(float(action[1]) - 0.131) < 1e-3
+    assert abs(float(action[2]) - 1.0) < 1e-6
+    assert abs(float(action[3]) - 1.0) < 1e-6

@@ -1,9 +1,9 @@
 """Botzone TexasHoldem2p rules, kept apart from rlcard and PokerKit.
 
 M1 is betting legality. M2 deals, rotates the button, and awards the pot.
-M3 packs the five policy ids through that legality. The training adapter
-that speaks ``SelfPlayEnv`` lives in ``alphanl.transformer.botzone_table``
-and does not change these rules.
+M3 packs the five policy ids through that legality. M7 is the weak rule
+opponent on those ids. The training adapter that speaks ``SelfPlayEnv``
+lives in ``alphanl.transformer.botzone_table`` and does not change these rules.
 """
 
 from .actions import (
@@ -31,6 +31,7 @@ from .legal import (
     safe_extra,
     to_call,
 )
+from .rule_bot import BotzoneRuleBot
 from .table import BotzoneTable
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "RAISE_MIN_ACTION",
     "SMALL_BLIND",
     "STARTING_STACK",
+    "BotzoneRuleBot",
     "BotzoneTable",
     "HandState",
     "action_responses",

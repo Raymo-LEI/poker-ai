@@ -43,6 +43,12 @@ def test_is_free_check_is_the_training_helper():
     assert EVAL.is_free_check is is_free_check
 
 
+def test_botzone_laptop_keeps_last_20_checkpoints():
+    cfg = ExperimentConfig.from_json(LAPTOP_CONFIG)
+    assert cfg.train.keep_last == 20
+    assert ExperimentConfig().train.keep_last == 3
+
+
 PASS_KEYS = (
     "n_decisions",
     "n_hands",

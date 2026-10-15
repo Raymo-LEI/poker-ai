@@ -41,7 +41,7 @@
     "out_dir": "runs/transformer_botzone_laptop",
     "amp": true,
     "checkpoint_dir": "runs/ckpt_botzone",
-    "keep_last": 3
+    "keep_last": 20
   },
   "env": {
     "backend": "botzone",

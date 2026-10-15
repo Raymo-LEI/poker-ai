@@ -162,13 +162,37 @@ def legal_response(state: HandState) -> set:
     return legal
 
 
+def is_legal(state: HandState, response: int) -> bool:
+    """``response in legal_response(state)`` without building the set.
+
+    The set holds every positive extra up to the stack (about 20000 ints
+    preflop), so callers on the rollout path use this instead.
+    """
+
+    if state.hand_over:
+        return False
+    remaining = state.stacks[state.actor]
+    if remaining <= 0:
+        return False
+    if response in (FOLD, ALL_IN):
+        return True
+    if any(state.all_in):
+        return False
+    if response == CHECK_CALL:
+        return remaining > to_call(state)
+    if response > 0:
+        safe = safe_extra(state)
+        return safe is not None and safe <= response < remaining
+    return False
+
+
 def apply(state: HandState, response: int) -> HandState:
     """Return the next betting state. Does not mutate ``state``."""
 
     if state.hand_over:
         raise ValueError("hand is over")
     response = _require_response(response)
-    if response not in legal_response(state):
+    if not is_legal(state, response):
         raise ValueError(f"illegal response {response}")
 
     actor = state.actor

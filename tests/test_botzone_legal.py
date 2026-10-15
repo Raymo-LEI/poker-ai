@@ -3,11 +3,14 @@
 dealer = 0: seat 0 is the big blind, seat 1 is the small blind.
 """
 
+import random
+
 import pytest
 
 from alphanl.botzone.legal import (
     HandState,
     apply,
+    is_legal,
     legal_response,
     lower_bound_a,
     lower_bound_b,
@@ -147,3 +150,24 @@ def test_hand5_call_requires_stack_strictly_greater_than_owed():
     assert short.all_in == (False, False)
     assert to_call(short) + 1 == short.stacks[short.actor]
     assert 0 in legal_response(short)
+
+
+def test_is_legal_matches_legal_response_on_random_hands():
+    rng = random.Random(7)
+    checked = 0
+    for hand in range(300):
+        state = new_hand(dealer=hand % 2)
+        while not state.hand_over:
+            legal = legal_response(state)
+            remaining = state.stacks[state.actor]
+            safe = safe_extra(state) or 0
+            probes = {-3, -2, -1, 0, 1, safe - 1, safe, safe + 1, remaining - 1,
+                      remaining, remaining + 1, to_call(state), rng.randrange(1, 40001)}
+            for response in probes:
+                assert is_legal(state, response) == (response in legal), (state, response)
+                checked += 1
+            choices = sorted(legal)
+            pick = rng.choice([-1, -2, 0, safe, rng.choice(choices)])
+            state = apply(state, pick if pick in legal else rng.choice(choices))
+        assert not is_legal(state, -1)
+    assert checked > 3000

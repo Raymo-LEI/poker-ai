@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from .legal import ALL_IN, CHECK_CALL, FOLD, HandState, legal_response, safe_extra
+from .legal import ALL_IN, CHECK_CALL, FOLD, HandState, is_legal, safe_extra
 
 NUM_ACTIONS = 5
 
@@ -40,12 +40,11 @@ def action_responses(state: HandState) -> Tuple[Optional[int], ...]:
     ``response_for_action`` only read this tuple.
     """
 
-    legal = legal_response(state)
     safe = safe_extra(state)
     large = None if safe is None else max(safe * 2, state.pot)
     candidates = (FOLD, CHECK_CALL, safe, large, ALL_IN)
     return tuple(
-        response if response is not None and response in legal else None
+        response if response is not None and is_legal(state, response) else None
         for response in candidates
     )
 

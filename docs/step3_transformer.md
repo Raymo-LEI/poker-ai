@@ -114,9 +114,14 @@ CPU 吞吐（这台云主机，2026-10-13，Python 3.12，pokerkit 0.7.7，不�
 ```
 ratio = exp(new_logp - old_logp)
 policy = -mean(min(ratio * A, clip(ratio, 1-ε, 1+ε) * A))
-value  = 0.5 * mean(max((V-R)^2, (V_clip-R)^2))
+value  = 0.5 * mean((V-R)^2)                          # value_clip_eps = null（默认）
+value  = 0.5 * mean(max((V-R)^2, (V_clip-R)^2))      # V_clip = V_old + clip(V-V_old, ±value_clip_eps)
 loss   = policy + value_coef * value - entropy_coef * entropy
 ```
+
+`value_clip_eps` 和 `clip_eps` 分开设置。它按奖励单位计算，不是比例：rlcard / pokerkit 的奖励以 bb 计（单手可达 ±50），0.2 只允许值函数每次更新移动 0.2bb，所以默认关闭。botzone 的奖励除以了 200，0.2 相当于 40bb，`botzone_laptop_8gb.json` 保留 0.2。
+
+PPO 更新时模型处于 eval 模式（dropout 关闭），和 rollout 采样时一致。否则同一组权重下 ratio 也不等于 1，dropout 噪声会把大量样本推出裁剪区间。
 
 熵是掩码之后的分布算的，非法动作不贡献 `0 * (-inf)`。`entropy_coef` 越大，越把合法动作往均匀推。这是防止策略塌成永远弃牌的那个旋钮。
 

@@ -485,7 +485,6 @@ def run_training(
         storage, stats = collect_rollout(envs, obs, rollout_model, rollout_device, cfg.ppo.rollout_steps)
         flat = flatten_rollout(storage, cfg.ppo.gamma, cfg.ppo.gae_lambda)
         flat = {key: value.to(train_device) for key, value in flat.items()}
-        learner.train()
         metrics = ppo_update(
             learner,
             optimizer,
@@ -503,6 +502,7 @@ def run_training(
             max_grad_norm=cfg.ppo.max_grad_norm,
             amp=use_amp,
             scaler=scaler,
+            value_clip_eps=cfg.ppo.value_clip_eps,
         )
         if cfg.pool.snapshot_every > 0 and (update + 1) % cfg.pool.snapshot_every == 0:
             pool.add(learner.state_dict())

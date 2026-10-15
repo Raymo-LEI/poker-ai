@@ -50,6 +50,7 @@ from alphanl.botzone.rule_bot import BotzoneRuleBot  # noqa: E402
 from alphanl.botzone.rule_eval import uniform_legal_action  # noqa: E402
 from alphanl.transformer.checkpoint import latest_checkpoint, load_checkpoint  # noqa: E402
 from alphanl.transformer.config import ExperimentConfig, resolve_device  # noqa: E402
+from alphanl.transformer.decision_stats import is_free_check  # noqa: E402
 from alphanl.transformer.model import entropy_from_probs, masked_log_probs  # noqa: E402
 from alphanl.transformer.tokenizer import BettingHistoryTokenizer, batch_to_device  # noqa: E402
 from alphanl.transformer.train import build_model, set_seed  # noqa: E402
@@ -81,14 +82,6 @@ def seats_for_hand(hand_index: int) -> Tuple[int, int]:
     if hand_index < 0:
         raise ValueError(f"hand index must be >= 0, got {hand_index}")
     return (hand_index // 2) % 2, hand_index % 2
-
-
-def is_free_check(to_call: float, legal_mask: torch.Tensor) -> bool:
-    """Check is free: nothing is owed, and the mask the policy sees allows fold."""
-
-    mask = legal_mask.detach().reshape(-1)
-    fold_legal = float(mask[FOLD_ACTION]) > 0.5
-    return float(to_call) == 0.0 and fold_legal
 
 
 def wilson_interval(successes: int, total: int, z: float = Z_95) -> Tuple[float, float]:

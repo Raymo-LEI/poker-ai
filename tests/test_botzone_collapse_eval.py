@@ -36,6 +36,13 @@ def _load_eval():
 
 EVAL = _load_eval()
 
+
+def test_is_free_check_is_the_training_helper():
+    from alphanl.transformer.decision_stats import is_free_check
+
+    assert EVAL.is_free_check is is_free_check
+
+
 PASS_KEYS = (
     "n_decisions",
     "n_hands",

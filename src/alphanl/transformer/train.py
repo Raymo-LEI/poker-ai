@@ -12,6 +12,11 @@ import torch
 
 from .checkpoint import checkpoint_path, latest_checkpoint, load_checkpoint, save_checkpoint
 from .config import ExperimentConfig, resolve_device, resolve_env_limits
+from .decision_stats import (
+    DECISION_STAT_COLUMNS,
+    empty_decision_stats,
+    summarize_rollout_decisions,
+)
 from .env import PolicyActor, SelfPlayEnv, gae_reward_depth, logged_bb_from_reward
 from .model import PokerTransformer, count_parameters
 from .pool import OpponentPool
@@ -70,6 +75,32 @@ def _sync_weights(src: torch.nn.Module, dst: torch.nn.Module) -> None:
     dst.load_state_dict({key: value.detach().to(device) for key, value in src.state_dict().items()})
 
 
+def _log_decision_stats_enabled() -> bool:
+    """Tests set this false to replay the pre-log rollout path.
+
+    The flag skips the to_call read and the reduction only. ``model.act``
+    still returns the entropy it already computed, and nothing is resampled.
+    """
+
+    return True
+
+
+def _read_to_call(env: Any) -> Optional[float]:
+    """Chips the hero owes right now, or ``None`` if this env cannot say.
+
+    Only a table ``snapshot`` counts. Normalized observation features are
+    not decoded: a backend without ``to_call`` must log NaN, not a guess.
+    """
+
+    table = getattr(env, "table", None)
+    if table is None or not hasattr(table, "snapshot"):
+        return None
+    hero = getattr(env, "hero", None)
+    if hero is None:
+        return None
+    return float(table.snapshot(int(hero)).to_call)
+
+
 def _batching(envs: Sequence[Any]) -> bool:
     actor = getattr(envs[0], "actor", None) if envs else None
     if actor is None or not hasattr(actor, "prefetch") or not actor.batching_enabled():
@@ -110,15 +141,25 @@ def collect_rollout(
     dones = torch.zeros(num_envs, rollout_steps)
     passive_bb: List[float] = []
     episodes = 0
+    # Read before begin_step. The reduction uses the sampled action, the mask
+    # already stored on the rollout, and the entropy act() already returned.
+    log_stats = _log_decision_stats_enabled()
+    decision_entropy = torch.zeros(num_envs, rollout_steps) if log_stats else None
+    decision_to_call = torch.zeros(num_envs, rollout_steps) if log_stats else None
+    to_call_known = True
 
     model.eval()
     for t in range(rollout_steps):
         stacked = batch_to_device(cat_batches(obs), device)
         with torch.no_grad():
-            act, logp, values, _ = model.act(stacked, deterministic=False)
+            act, logp, values, ent = model.act(stacked, deterministic=False)
         act = act.cpu()
         logp = logp.cpu()
         values = values.cpu()
+        owed_now = None
+        if log_stats:
+            ent = ent.detach().cpu()
+            owed_now = [_read_to_call(env) for env in envs]
         batched = _batching(envs)
         if batched:
             # T-C1b: push every hero action, then one opponent forward per
@@ -132,6 +173,12 @@ def collect_rollout(
             actions[e, t] = act[e]
             old_logp[e, t] = logp[e]
             old_values[e, t] = values[e]
+            if log_stats:
+                decision_entropy[e, t] = ent[e]
+                if owed_now[e] is None:
+                    to_call_known = False
+                else:
+                    decision_to_call[e, t] = owed_now[e]
             if batched:
                 next_obs, reward, done, _info = env.finish_step()
             else:
@@ -177,6 +224,17 @@ def collect_rollout(
         "passive_hands": len(passive_bb),
         "passive_mean_bb": float(np.mean(passive_bb)) if passive_bb else 0.0,
     }
+    if log_stats and "legal_mask" in columns:
+        stats.update(
+            summarize_rollout_decisions(
+                actions,
+                columns["legal_mask"],
+                decision_entropy,
+                decision_to_call if to_call_known else None,
+            )
+        )
+    else:
+        stats.update(empty_decision_stats())
     return storage, stats
 
 
@@ -472,6 +530,8 @@ def run_training(
             )
         else:
             row["eval_random_bb"] = ""
+        for key in DECISION_STAT_COLUMNS:
+            row[key] = stats[key]
         if cfg.train.log_every > 0 and update % cfg.train.log_every == 0:
             _append_csv(csv_path, row)
             if writer is not None:

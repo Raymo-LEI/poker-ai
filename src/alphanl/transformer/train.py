@@ -70,6 +70,13 @@ def _sync_weights(src: torch.nn.Module, dst: torch.nn.Module) -> None:
     dst.load_state_dict({key: value.detach().to(device) for key, value in src.state_dict().items()})
 
 
+def _batching(envs: Sequence[Any]) -> bool:
+    actor = getattr(envs[0], "actor", None) if envs else None
+    if actor is None or not hasattr(actor, "prefetch") or not actor.batching_enabled():
+        return False
+    return all(getattr(env, "actor", None) is actor and hasattr(env, "begin_step") for env in envs)
+
+
 def collect_rollout(
     envs: Sequence[Any],
     obs: List[Dict[str, torch.Tensor]],
@@ -112,13 +119,23 @@ def collect_rollout(
         act = act.cpu()
         logp = logp.cpu()
         values = values.cpu()
+        batched = _batching(envs)
+        if batched:
+            # T-C1b: push every hero action, then one opponent forward per
+            # model across envs; sampling stays per env, in env order.
+            for e, env in enumerate(envs):
+                env.begin_step(int(act[e]))
+            envs[0].actor.prefetch(envs)
         for e, env in enumerate(envs):
             for key in obs_keys:
                 columns[key][e, t] = obs[e][key][0]
             actions[e, t] = act[e]
             old_logp[e, t] = logp[e]
             old_values[e, t] = values[e]
-            next_obs, reward, done, _info = env.step(int(act[e]))
+            if batched:
+                next_obs, reward, done, _info = env.finish_step()
+            else:
+                next_obs, reward, done, _info = env.step(int(act[e]))
             rewards[e, t] = float(reward)
             dones[e, t] = 1.0 if done else 0.0
             if done:

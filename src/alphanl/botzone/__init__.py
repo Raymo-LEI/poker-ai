@@ -1,7 +1,7 @@
 """Botzone TexasHoldem2p rules, kept apart from rlcard and PokerKit.
 
-Milestone M1 exports legality only. Dealing, showdown ranking, and the
-training loop are later milestones.
+M1 is betting legality. M2 deals, rotates the button, and awards the pot.
+The training loop is a later milestone.
 """
 
 from .legal import (
@@ -17,11 +17,13 @@ from .legal import (
     safe_extra,
     to_call,
 )
+from .table import BotzoneTable
 
 __all__ = [
     "BIG_BLIND",
     "SMALL_BLIND",
     "STARTING_STACK",
+    "BotzoneTable",
     "HandState",
     "apply",
     "legal_response",

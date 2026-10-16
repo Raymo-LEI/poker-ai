@@ -169,7 +169,11 @@ def test_opening_state_matches_the_judge():
     assert view.round_bet == 100
     assert reconstruct.min_raise_extra(view) == 150
     assert view.bound_b == 200
-    assert policy.safe_extra(view) == 200
+    # Judge minimum is 150. 200 still passes player_action and is stricter.
+    assert reconstruct.judge_accepts(view, 150)
+    assert reconstruct.judge_accepts(view, 200)
+    assert not reconstruct.judge_accepts(view, 149)
+    assert policy.safe_extra(view) == 150
 
 
 def test_allin_does_not_change_round_raise_and_derives_chips():

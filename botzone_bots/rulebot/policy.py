@@ -3,8 +3,10 @@
 The numbers and the priority order are ``src/alphanl/botzone/rule_bot.py``.
 The five responses are packed the way ``actions.py`` packs them: fold -1,
 check/call 0, min raise = ``safe``, large raise = ``max(safe * 2, pot)``,
-all-in -2. ``safe`` is ``legal.py``'s ``max(bound A, bound B)``, which is
-stricter than the judge. This file does not change which id is chosen.
+all-in -2. ``safe`` is ``legal.py``'s judge minimum
+``max(1, bound_b - own)``, where ``bound_b`` stores ``2 * round_raise``.
+The priority order is unchanged, so the chosen id matches the source
+rule bot and the packed integer matches ``response_for_action``.
 
 The evaluator is the local five-card ranker ``table._local_rank`` uses.
 No numpy and no torch.
@@ -127,20 +129,25 @@ def _owed(view):
 
 
 def safe_extra(view):
-    """``legal.safe_extra`` from the policy fields on ``view``."""
+    """``legal.safe_extra``: ``max(1, bound_b - own)``.
+
+    ``bound_b`` is ``2 * round_raise``. The judge accepts a positive extra
+    when ``extra + own >= 2 * round_raise`` and ``extra`` is strictly less
+    than the stack (``botzone_judge.py`` lines 299-303). Preflop, the small
+    blind facing the big blind therefore needs 150 (``2 * 100 - 50``). The
+    old ``max(bound A, bound B)`` value of 200 is still accepted, and is
+    stricter than this minimum. ``decide.map_target`` is unchanged and
+    still drops anything the judge would reject.
+    """
 
     if any(view.p_all_in):
         return None
-    max_commit = max(view.p_commit)
-    if max_commit == 0:
-        bound_a = 100
-    else:
-        bound_a = 2 * max_commit
-    safe = bound_a if bound_a > view.bound_b else view.bound_b
+    extra = view.bound_b - view.p_commit[view.my_id]
+    if extra < 1:
+        extra = 1
     remaining = view.chips[view.my_id]
-    owed = max_commit - view.p_commit[view.my_id]
-    if owed < safe < remaining:
-        return safe
+    if extra < remaining:
+        return extra
     return None
 
 

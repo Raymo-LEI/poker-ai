@@ -307,7 +307,7 @@ def save_checkpoint(
             handle.write(b"PARTIAL-CHECKPOINT")
             handle.flush()
             os.fsync(handle.fileno())
-            os.kill(os.getpid(), signal.SIGKILL)
+            (os.kill(os.getpid(), signal.SIGKILL) if hasattr(signal, "SIGKILL") else os._exit(137))
         torch.save(blob, handle)
         handle.flush()
         os.fsync(handle.fileno())

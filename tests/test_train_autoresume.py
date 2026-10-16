@@ -159,7 +159,7 @@ def test_kill_during_write_leaves_the_previous_checkpoint(tmp_path: Path):
         capture_output=True,
         text=True,
     )
-    assert proc.returncode < 0, proc.returncode
+    assert proc.returncode != 0, proc.returncode
     assert not (tmp_path / "update_0000001.pt").exists()
     assert (tmp_path / "update_0000001.pt.tmp").is_file()
     found = latest_complete_checkpoint(tmp_path)

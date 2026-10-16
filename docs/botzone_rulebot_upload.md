@@ -50,7 +50,7 @@ print(json.dumps({"response": action}))
 
 ## 规则机器人怎么落到裁判合法的整数
 
-策略与 `src/alphanl/botzone/rule_bot.py` 相同：翻前点数、翻后真实牌面的 1–9 档、四张优先级表都不改。五个动作仍按 `actions.py` 打包：`-1`、`0`、`safe`、`max(safe * 2, pot)`、`-2`。`safe` 仍是训练代码里更严的 `max(下界 A, 下界 B)`，不是裁判的 `2 * round_raise - own`。这样选中的动作编号和现有规则机器人一致。
+策略与 `src/alphanl/botzone/rule_bot.py` 相同：翻前点数、翻后真实牌面的 1–9 档、四张优先级表都不改。五个动作仍按 `actions.py` 打包：`-1`、`0`、`safe`、`max(safe * 2, pot)`、`-2`。`safe` 与 `src/alphanl/botzone/legal.py` 的 `safe_extra` 相同，也就是 `policy.py` 里的 `max(1, bound_b - own)`（`bound_b` 存 `2 * round_raise`）。不再取更严的 `max(下界 A, 下界 B)`。翻前小盲的最小加注因此是 150，和裁判一致。`decide.map_target` 的降级没有改：裁判接受就原样送出，否则能跟注就送 `0`，再不行送 `-2`，仍被拒绝才送 `-1`。
 
 zip 里是一份 Python 3.6 / 标准库的副本，不导入 `legal.py`（那里有 `dataclasses` 和 `from __future__ import annotations`，3.6 跑不了，而且任务禁止改它）。测试把副本的翻前全部起手、翻后抽样、以及整手动作整数对回 `BotzoneRuleBot`。
 

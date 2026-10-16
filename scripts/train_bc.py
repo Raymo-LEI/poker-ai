@@ -18,6 +18,7 @@ into this process.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import shutil
 import subprocess
@@ -30,13 +31,69 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from alphanl.transformer.bc import (  # noqa: E402
+    bc_losses,
     bc_update,
     dataset_for_encoder,
     load_bc_npz,
     save_bc_checkpoint,
 )
 from alphanl.transformer.config import ExperimentConfig, resolve_device  # noqa: E402
+from alphanl.transformer.tokenizer import slice_batch  # noqa: E402
 from alphanl.transformer.train import build_model, build_optimizer  # noqa: E402
+
+
+def kl_value(model, batch, teacher, *, minibatch_size: int) -> float:
+    """Row-weighted KL from :func:`bc_losses`. No optimizer step.
+
+    ``train_bc.py``'s KL. Illegal teacher mass is dropped inside
+    ``bc_losses`` the same way a training step drops it.
+    """
+
+    count = int(teacher.shape[0])
+    if count == 0:
+        raise ValueError("KL requires at least one row")
+    width = max(1, int(minibatch_size))
+    was_training = model.training
+    model.eval()
+    total = 0.0
+    try:
+        with torch.no_grad():
+            for start in range(0, count, width):
+                index = torch.arange(start, min(start + width, count), device=teacher.device)
+                _loss, metrics = bc_losses(
+                    model,
+                    slice_batch(batch, index),
+                    teacher_probs=teacher.index_select(0, index),
+                    kind="kl",
+                )
+                value = float(metrics["kl"])
+                if not math.isfinite(value):
+                    raise RuntimeError(f"non-finite KL {value}")
+                total += value * int(index.shape[0])
+    finally:
+        if was_training:
+            model.train()
+    return total / float(count)
+
+
+def train_kl_epoch(model, optimizer, batch, teacher, *, minibatch_size: int, max_grad_norm: float) -> float:
+    """One pass of :func:`bc_update` with ``kind='kl'``. Returns that pass's mean loss."""
+
+    metrics = bc_update(
+        model,
+        optimizer,
+        batch,
+        teacher_probs=teacher,
+        actions=None,
+        kind="kl",
+        epochs=1,
+        minibatch_size=int(minibatch_size),
+        max_grad_norm=float(max_grad_norm),
+    )
+    value = float(metrics["loss"])
+    if not math.isfinite(value):
+        raise RuntimeError(f"non-finite training KL {value}")
+    return value
 
 
 def _dump_if_needed(args) -> None:

@@ -1,0 +1,84 @@
+{
+  "action_id_distribution": {
+    "all_in": 2,
+    "check_call": 41,
+    "fold": 2,
+    "raise_large": 0,
+    "raise_min": 5
+  },
+  "action_id_fraction": {
+    "all_in": 0.04,
+    "check_call": 0.82,
+    "fold": 0.04,
+    "raise_large": 0.0,
+    "raise_min": 0.1
+  },
+  "action_mapping": "Fold (-1): if mask_free_fold and the spot is a free check (to_call == 0 and check/call is legal), rewrite the target to check_call (id 1); otherwise the target is fold (id 0). Check/call (0) maps to check_call (id 1). Any other code is a wager: -2 (all-in) has chip amount equal to the actor's remaining stack; a positive code's chip amount is that extra. Candidates are the legal subset of raise_min (id 2), raise_large (id 3), and all_in (id 4). The target is the candidate with the smallest absolute chip difference. A tie goes to the smaller action id (raise_min, then raise_large, then all_in).",
+  "arrays": {
+    "actions": "int64 [N], mapped target action id",
+    "env_legal_mask": "float32 [N, 5], environment mask before the free-fold drop",
+    "game_id": "int64 [N], hand index, for a later holdout by games",
+    "legal_mask": "float32 [N, 5], policy mask after mask_free_fold",
+    "numeric": "float32 [N, max_seq_len, 4]",
+    "opponent_id": "int64 [N], index into opponent_mix.kinds",
+    "pad_mask": "bool [N, max_seq_len], True where padded",
+    "probs": "float32 [N, 5], one-hot of actions (deterministic teacher for KL)",
+    "raw_action_id": "int64 [N], BotzoneRuleBot.action_id before mapping",
+    "raw_response": "int64 [N], response_for_action of raw_action_id",
+    "seat": "int64 [N]",
+    "to_call": "float32 [N], chips owed at the decision",
+    "token_ids": "int64 [N, max_seq_len], tokenizer ids",
+    "type_ids": "int64 [N, max_seq_len]"
+  },
+  "bc_training": "Not run by this script. A later KL run should load these token fields and probs. scripts/train_bc.py still rebuilds transformer rows from c_1048 meta_json and will not load this npz unchanged.",
+  "data_policy": "BotzoneRuleBot.action_id, unchanged, then map_response_to_action_id",
+  "deck_rng": "random.Random(seed) inside BotzoneEnvTable",
+  "elapsed_seconds": 0.616958584999793,
+  "env_version": {
+    "backend": "botzone",
+    "big_blind": 100,
+    "game": "TexasHoldem2p",
+    "git_commit": "230c105efe3226af31c5282c79e4ef29c68dfde4",
+    "legal_py": "src/alphanl/botzone/legal.py",
+    "legal_py_sha256": "df77491a9f472c10cb2902e4b0e1e51275d21bcaa56d98f3bb7b013881188b6d",
+    "note": "Raise sizes and legality come from legal.py at git_commit. BC training refuses a dataset whose legal_py_sha256 is not the hash of src/alphanl/botzone/legal.py on the tree that loads it. Regenerate after legal.py changes. Do not mix two hashes.",
+    "small_blind": 50,
+    "stacks": 20000
+  },
+  "epsilon": 0.2,
+  "format_version": 1,
+  "mapped_differs_from_raw": 0,
+  "mask_free_fold": true,
+  "max_seq_len": 64,
+  "min_legal_actions": 2,
+  "network": "laptop_8gb botzone transformer (configs/transformer/botzone_laptop_8gb_maskfold.json); not widened",
+  "num_decisions": 50,
+  "num_hands": 24,
+  "num_hands_with_decisions": 15,
+  "opponent_hand_counts": {
+    "epsilon": 12,
+    "random": 3,
+    "rule": 9
+  },
+  "opponent_mix": {
+    "epsilon": 0.2,
+    "epsilon_meaning": "With probability epsilon the opponent plays uniform over environment-legal action ids; otherwise it plays the mapped rule-bot target.",
+    "kinds": [
+      "rule",
+      "random",
+      "epsilon"
+    ],
+    "random_meaning": "Uniform over environment-legal action ids. A random opponent may fold a free check. Those seats are not recorded.",
+    "rule_meaning": "The mapped rule-bot target, including the free-check fold rewrite.",
+    "selection": "one kind per hand, uniform over kinds, drawn before the hand",
+    "weights": [
+      1,
+      1,
+      1
+    ]
+  },
+  "opponent_rng": "numpy.random.Generator(PCG64(seed))",
+  "recorded_seat": "hand_index % 2 (the data-policy seat). The other seat is the opponent mix.",
+  "seed": 42,
+  "skipped_single_legal": 0
+}

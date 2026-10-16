@@ -4,14 +4,17 @@ TexasHoldem2p is JSON-only. stdin is the single JSON object documented
 on the Bot wiki (``requests``, ``responses``, ...). stdout is one line,
 ``{"response": <int>}``.
 
-Thread pools are pinned before NumPy is imported. Botzone gives the
-process one core; OpenBLAS must not spawn a second one.
+Thread pools are pinned before NumPy is imported. ``decide`` is imported
+only after that, and it pins the same variables again before importing
+``forward`` (the module that imports NumPy). Botzone gives the process
+one core. The rule-bot entry does not import NumPy, so it does not set
+these.
 """
 
 import os
 
-os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 

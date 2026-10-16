@@ -138,18 +138,32 @@ def _attention(hidden, in_weight, in_bias, out_weight, out_bias, nhead, pad_mask
     query = _heads(query) * np.float32(head_dim ** -0.5)
     key = _heads(key)
     value = _heads(value)
-    scores = np.matmul(query, np.transpose(key, (0, 1, 3, 2)))
+    scores = _matmul(query, np.transpose(key, (0, 1, 3, 2)))
     scores = np.where(pad_mask[:, None, None, :], np.float32(-np.inf), scores)
     scores = scores - np.max(scores, axis=-1, keepdims=True)
     weights = np.exp(scores)
     weights = weights / np.sum(weights, axis=-1, keepdims=True)
-    context = np.matmul(weights, value)
+    context = _matmul(weights, value)
     context = np.transpose(context, (0, 2, 1, 3)).reshape(batch, seq, width)
     return _linear(context, out_weight, out_bias)
 
 
+def _matmul(left, right):
+    """Product of (..., M, K) and (..., K, N) without a BLAS GEMM.
+
+    NumPy 1.19.5's OpenBLAS segfaults inside ``np.matmul`` and ``np.dot``
+    when the address space is capped at 256MB, even if the thread counts
+    were set to 1 before the import. ``einsum(..., optimize=False)`` stays
+    off that path. ``OPENBLAS_CORETYPE`` did not.
+    """
+
+    left = np.asarray(left, dtype=np.float32)
+    right = np.ascontiguousarray(right, dtype=np.float32)
+    return np.einsum("...mk,...kn->...mn", left, right, optimize=False)
+
+
 def _linear(inputs, weight, bias):
-    return np.matmul(inputs, np.ascontiguousarray(weight.T)) + bias
+    return _matmul(inputs, weight.T) + bias
 
 
 def _layer_norm(inputs, weight, bias):

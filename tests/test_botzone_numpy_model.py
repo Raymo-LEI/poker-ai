@@ -539,6 +539,87 @@ def test_sampling_stays_on_legal_ids(tmp_path):
         os.environ.pop("POKER_SAMPLE", None)
 
 
+def test_default_action_is_argmax_and_does_not_touch_random(tmp_path):
+    """Deployment and the in-process default are argmax. Sampling is opt-in."""
+
+    import subprocess
+
+    os.environ.pop("POKER_SAMPLE", None)
+    dest, _ckpt = _export_random(tmp_path)
+    os.environ["POKER_WEIGHTS"] = str(dest)
+    api = load_model_api()
+    api["weights"].clear_cache()
+    weights, meta = api["weights"].load_weights()
+    assert meta.get("sample") is False
+    assert api["decide"].want_sample(meta) is False
+
+    game = new_dealt_holdem(0)
+    request = _request_from_game(
+        game,
+        [card.to_int() for card in game.player_cards[game.round_idx]],
+        [],
+    )
+    obs = api["observe"].build_observation(request)
+    logits = api["forward"].forward_logits(weights, meta, obs.batch, obs.to_call)
+
+    class Guard(object):
+        def random(self):
+            raise AssertionError("rng used on the argmax path")
+
+    chosen = api["forward"].select_action(logits[0], True, Guard())
+    assert chosen == int(np.argmax(np.asarray(logits[0])))
+    view = api["decide"].reconstruct(request)
+    expected = api["decide"].map_target(
+        view, int(api["decide"].action_response(obs.state, chosen))
+    )
+
+    used = []
+
+    def _trace(frame, event, arg):
+        if event == "call":
+            mod = frame.f_globals.get("__name__", "")
+            if mod == "random" or mod.startswith("numpy.random"):
+                used.append(mod)
+        return _trace
+
+    sys.settrace(_trace)
+    try:
+        first = api["decide"].choose_response(request)
+        second = api["decide"].choose_response(request)
+    finally:
+        sys.settrace(None)
+    assert used == []
+    assert first == expected
+    assert second == expected
+
+    payload = json.dumps({"requests": [request], "responses": []}) + "\n"
+    env = dict(os.environ)
+    env.pop("POKER_SAMPLE", None)
+    for key in (
+        "OPENBLAS_NUM_THREADS",
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        env.pop(key, None)
+    env["POKER_WEIGHTS"] = str(dest)
+    outs = []
+    for _turn in range(2):
+        proc = subprocess.run(
+            [sys.executable, str(MODEL_DIR / "__main__.py")],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=env,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        outs.append(proc.stdout.strip())
+    assert outs[0] == outs[1]
+    assert json.loads(outs[0])["response"] == expected
+
+
 def test_mask_free_fold_removes_fold_when_nothing_is_owed():
     api = load_model_api()
     logits = np.array([[5.0, 0.0, 1.0, 0.0, 0.0]], dtype=np.float32)

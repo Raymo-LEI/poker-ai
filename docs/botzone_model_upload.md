@@ -6,7 +6,7 @@
 
 ## 英文摘要 / English
 
-Export is one command: checkpoint in, `.npz` out. The zip is source only. Upload `model.npz` separately into account storage; the entry reads `data/model.npz`. The checked-in development weights are a random init of `configs/transformer/botzone_laptop_8gb_maskfold.json` because `update_0000999.pt` is not in the repo. Numpy forward vs torch stays under `1e-4` on 1000 states. Python 3.6.5 (Miniconda) ran the entry and `botzone_bots/rulebot.zip`.
+Export is one command: checkpoint in, `.npz` out. The zip is source only. Upload `model.npz` separately into account storage; the entry reads `data/model.npz`. The checked-in development weights are a random init of `configs/transformer/botzone_laptop_8gb_maskfold.json` because `update_0000999.pt` is not in the repo. Default play is argmax. Numpy 1.19.5 used to SIGSEGV inside `np.matmul` under a 256MB address cap; the entry now pins BLAS threads before importing NumPy and multiplies with `einsum(..., optimize=False)`. On that interpreter the capped turn returns `{"response": 0}`. `tools/verify_numpy_vs_torch_ckpt.py` checks a real checkpoint: logit error and argmax identity.
 
 ## 两条命令
 
@@ -72,9 +72,15 @@ Wiki **写明**的：
 
 1. 存储空间里的文件，进程当前目录下的相对路径是 `data/<上传时的文件名>`。入口只打开 `data/model.npz`。请把文件名传成 `model.npz`。若管理页显示的路径不是这个，把实际路径发回来再改。
 2. 大约 2.4MB 的单个文件在存储配额以内。Wiki 没有公布配额。这次导出的文件是 2387938 字节（592390 个 fp32 参数，权重本体 2369560 字节）。
-3. 平台 python3 能 `import numpy`。我们在 Python 3.6.5 上用 numpy 1.16.6 跑通了入口；numpy 1.19.5 在不限制地址空间时 logits 也对，但在 256MB 地址空间上限下，BLAS 的 `matmul` 会段错误（见文末）。平台若是 1.19 且同样在 256MB 虚拟地址上分配失败，这一步会落到回退动作，而不是算出网络输出。
+3. 平台 python3 能 `import numpy`。Wiki 没有 numpy 版本号。1.16.6 和 1.19.5 在 256MB 地址空间下现在都能出牌（见文末）。1.19.5 原先会在 `np.matmul` 段错误，入口已避开 BLAS GEMM。
 
-本地测试可以设 `POKER_WEIGHTS=/绝对路径/model.npz`，Botzone 不会设这个变量。`POKER_SAMPLE=1` 改为按掩码后的 softmax 抽样；默认是 argmax。npz 里的 `sample` 字段同样可以打开抽样，这次导出是 `false`。
+本地测试可以设 `POKER_WEIGHTS=/绝对路径/model.npz`，Botzone 不会设这个变量。
+
+## 默认动作是 argmax
+
+评估和部署都走 argmax。默认路径不抽样、不构造 `random.Random`、不读种子。`select_action(..., deterministic=True)` 就是 `np.argmax`。入口在 `POKER_SAMPLE` 未设置且 npz 的 `sample` 为 false 时走这条路径。导出器把 `sample` 写成 false。
+
+抽样是显式打开的：环境变量 `POKER_SAMPLE=1`（也接受 `true` / `True` / `yes`），或者把 npz 元数据里的 `sample` 改成 true。两个都不设时，同一输入两次调用得到同一个动作。
 
 ## 网络和观测
 
@@ -133,7 +139,24 @@ python3 tools/accept_botzone_model.py --weights /tmp/model.npz --hands 200 --see
 | 同上，跑现成的 `botzone_bots/rulebot.zip` | 退出码 0，`{"response": -2}`，0.0301 秒 |
 | 3.6.5 + numpy 1.16.6，8 行随机输入对 torch logits | 最大绝对误差 `1.4901161193847656e-08` |
 | 3.6.5 + numpy 1.19.5，不限制地址空间，同一 8 行 | 最大绝对误差相同；入口退出码 0，`{"response": 0}`，0.149 秒 |
-| 3.6.5 + numpy 1.19.5，地址空间 256MB | 段错误（`rc -11`），栈在 `forward.py` 的 `np.matmul`。不限制时同一进程能出牌 |
+| 3.6.5 + numpy 1.19.5，地址空间 256MB | 改前向之前：段错误（`rc -11`，0.1344 秒）。栈在 `forward.py` 的 `np.matmul`。父进程没有设置线程环境变量 |
+
+规则机器人入口不 `import numpy`（`policy.py` 写明没有 numpy、没有 torch），所以没有在那边设线程变量。
+
+### 256MB 段错误：改前向之前和之后
+
+复现时父进程去掉 `OPENBLAS_NUM_THREADS`、`OMP_NUM_THREADS`、`MKL_NUM_THREADS`、`NUMEXPR_NUM_THREADS`。只有入口自己在 `import numpy` 之前写这些变量。解释器是 `/tmp/miniconda36/bin/python`（3.6.5），`taskset -c 0`，输入是同一个翻前请求，权重 `/tmp/model.npz`。
+
+只设线程数不够。`OPENBLAS_CORETYPE` 试了 `GENERIC`、`NEHALEM`、`PRESCOTT`、`HASWELL`、`SANDYBRIDGE`，外加 `OPENBLAS_MAIN_FREE=1`，在 numpy 1.19.5 + 256MB 下都是 `rc -11`。`np.dot` 同样段错误。`np.einsum(..., optimize=False)` 不走这个 GEMM，同一个 64×128 @ 128×384 能算完。
+
+前向里的矩阵乘换成这条 einsum 之后（入口仍然自己设线程数）：
+
+| 环境 | 结果 |
+|------|------|
+| 3.6.5 + numpy 1.19.5，地址空间 256MB | 退出码 0，`{"response": 0}`，0.1516 秒 |
+| 3.6.5 + numpy 1.19.5，不限制地址空间 | 退出码 0，`{"response": 0}`，0.1484 秒 |
+| 3.6.5 + numpy 1.16.6，地址空间 256MB | 退出码 0，`{"response": 0}`，0.1295 秒 |
+| 3.6.5 + numpy 1.16.6，不限制地址空间 | 退出码 0，`{"response": 0}`，0.128 秒 |
 
 开发机上的验收用的是 Python 3.12 + numpy 1.26.4。这个组合在 256MB 地址空间下跑完了同一步（0.1378 秒，`{"response": 0}`）。另外从一个几乎不占内存的父进程拉起过入口：那次请求被多包了一层，所以走到回退，输出 `{"response": -1}`，`ru_maxrss` 是 32264 KB。它只说明父进程很小时，fork 记账不会冒到两百多 MB。完整前向的峰值以验收脚本里的 VmHWM 39664 KB 为准。
 
@@ -145,4 +168,42 @@ python3 tools/accept_botzone_model.py --weights /tmp/model.npz --hands 200 --see
 python3 -m pytest -q --override-ini='addopts=' --tb=line
 ```
 
-结果：`213 passed, 1 skipped in 308.98s`，退出码 0。新测试覆盖导出、前向对齐、观测逐位一致、回退、抽样、免费过牌时的 fold 掩码，以及 zip 不含 torch。
+上一轮（矩阵乘仍是 `np.matmul`）：`213 passed, 1 skipped in 308.98s`，退出码 0。
+
+这一轮（einsum 前向、argmax 测试、核对脚本）同一条命令：
+
+```text
+python3 -m pytest -q --override-ini='addopts=' --tb=line
+```
+
+`214 passed, 1 skipped in 210.13s`，退出码 0。新测试覆盖导出、前向对齐、观测逐位一致、回退、抽样、免费过牌时的 fold 掩码、默认 argmax 两次一致且不调用 `random`，以及 zip 不含 torch。
+
+## 从真实 checkpoint 到 zip 和 npz
+
+在有 torch 的机器上，对真实的 Botzone BC/PPO checkpoint：
+
+```text
+python3 tools/export_numpy_weights.py \
+  --checkpoint path/to/update_0000999.pt \
+  --out model.npz
+python3 tools/pack_botzone_model.py
+python3 tools/verify_numpy_vs_torch_ckpt.py \
+  --checkpoint path/to/update_0000999.pt \
+  --npz model.npz \
+  --states 1000
+```
+
+`pack` 写出 `botzone_bots/model.zip`（只有源码）。`model.npz` 单独上传到用户存储空间，文件名用 `model.npz`。
+
+核对脚本用 checkpoint 里的 `mask_free_fold` 造 1000 个不同的自打局面（和 logits 测试同一套采样：环境合法动作里随机走，免费过牌和面对下注都要出现）。比较 NumPy 和 torch 的 logits 最大绝对误差，以及掩码后 logits 的 argmax。argmax 必须逐行相同。另外打印「最大和次大 logit 相差 ≤ 1e-4」的行数；那种近乎平局上的翻转是良性的，但只要 argmax 有一行不同，脚本仍然 FAIL。标准输出最后一行是 `PASS` 或 `FAIL`，FAIL 时退出码非 0。logits 最大绝对误差 ≥ 1e-4 也是 FAIL。
+
+这次没有真实训练 checkpoint。用随机初值跑的是：
+
+```text
+python3 tools/verify_numpy_vs_torch_ckpt.py \
+  --checkpoint /tmp/random_init.pt \
+  --npz /tmp/model.npz \
+  --states 1000
+```
+
+退出码 0，最后一行 `PASS`。`mask_free_fold` true，权重最大绝对误差 0。1000 个局面里 `to_call == 0` 有 164 个，`to_call > 0` 有 836 个。原始 logits 和掩码后 logits 的最大绝对误差都是 `2.421438694000244e-08`。argmax 1000/1000 相同。最大和次大 logit 相差 ≤ 1e-4 的行有 6 行；这 6 行的 argmax 也没有翻转（`mismatch_rows_that_are_near_ties` 为 0）。

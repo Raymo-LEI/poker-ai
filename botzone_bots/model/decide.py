@@ -15,6 +15,11 @@ import json
 import os
 import sys
 
+# Before any sibling import. ``forward`` imports NumPy at module scope.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+
 from betting import action_response
 from forward import forward_logits, select_action
 from observe import VOCAB_SIZE, build_observation

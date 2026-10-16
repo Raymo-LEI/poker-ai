@@ -193,6 +193,12 @@ def _tokens(state, records, hole, board, my_id, max_seq_len):
 def _pad(tokens, max_seq_len):
     # Imported here so a missing NumPy fails the model, not process import
     # order in tests that only want the fallback path's syntax checked.
+    # Thread caps first: this can be the first NumPy import in a process.
+    import os
+
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
     import numpy as np
 
     token_ids = np.zeros((1, max_seq_len), dtype=np.int64)

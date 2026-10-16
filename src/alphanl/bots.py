@@ -13,6 +13,13 @@ def _card_rank(card: str) -> int:
     return RANK_ORDER.index(card[1])
 
 
+def _has_straight(ranks) -> bool:
+    present = set(ranks)
+    if 12 in present:
+        present.add(-1)
+    return any(all(top - k in present for k in range(5)) for top in range(3, 13))
+
+
 class RandomBot:
     def make_action(self, obs: Dict[str, Any]) -> int:
         legal = np.where(obs["legal_moves"])[0]
@@ -56,18 +63,41 @@ class RuleBot:
         if len(board) == 0:
             return self._preflop_strength(hole)
         if len(board) >= 3:
-            try:
-                from rlcard.games.limitholdem.utils import Hand
-
-                cards = list(hole) + list(board)
-                while len(cards) < 7:
-                    cards.append("S2")
-                hand = Hand(cards[:7])
-                hand.evaluateHand()
-                return int(hand.category)
-            except Exception:
-                pass
+            return self._postflop_category(list(hole) + list(board))
         return self._made_hand_category(hole, board)
+
+    @staticmethod
+    def _postflop_category(cards: list) -> int:
+        """Best five-card category of 5 to 7 real cards, on rlcard's ``Hand.category`` scale.
+
+        rlcard's ``Hand.evaluateHand`` only accepts exactly seven cards, and
+        padding the flop or turn with filler cards invents pairs, straights
+        and flushes, so the category is computed here instead.
+        """
+
+        ranks = [_card_rank(c) for c in cards]
+        counts = sorted((ranks.count(r) for r in set(ranks)), reverse=True)
+        by_suit: Dict[str, list] = {}
+        for card in cards:
+            by_suit.setdefault(card[0], []).append(_card_rank(card))
+        flush_ranks = next((rs for rs in by_suit.values() if len(rs) >= 5), None)
+        if flush_ranks is not None and _has_straight(flush_ranks):
+            return 9
+        if counts[0] >= 4:
+            return 8
+        if counts[0] == 3 and len(counts) > 1 and counts[1] >= 2:
+            return 7
+        if flush_ranks is not None:
+            return 6
+        if _has_straight(ranks):
+            return 5
+        if counts[0] == 3:
+            return 4
+        if counts[0] == 2 and len(counts) > 1 and counts[1] == 2:
+            return 3
+        if counts[0] == 2:
+            return 2
+        return 1
 
     @staticmethod
     def _preflop_strength(hole: list) -> int:

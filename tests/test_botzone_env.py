@@ -96,7 +96,7 @@ def test_opening_snapshot_uses_m3_and_keeps_free_fold():
     assert table.sb_seat == 1
     assert table.current_player() == 1
     state = table._table.state
-    assert response_for_action(state, 2) == 200
+    assert response_for_action(state, 2) == 150
     snap = table.snapshot(1)
     assert snap.pot == 150
     assert snap.stacks == (19900.0, 19950.0)
@@ -112,17 +112,17 @@ def test_opening_snapshot_uses_m3_and_keeps_free_fold():
     table.step(2)
     event = table.events_for(1)[-1]
     assert event.action_id == 2
-    assert event.chips_added == 200
+    assert event.chips_added == 150
     assert event.action_type == "raise"
-    assert table.snapshot(0).stacks[1] == before - 200
-    assert table.snapshot(0).pot == 350
+    assert table.snapshot(0).stacks[1] == before - 150
+    assert table.snapshot(0).pot == 300
     assert table.current_player() == 0
 
     # Call, then check the flop. Fold stays legal when a check is free.
     table.step(1)
     called = table.events_for(0)[-1]
     assert called.action_id == 1
-    assert called.chips_added == 150
+    assert called.chips_added == 100
     assert table.street == 1
     assert table.current_player() == table.sb_seat
     flop = table.snapshot(table.sb_seat)

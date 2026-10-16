@@ -1,26 +1,36 @@
 """Pure legality for Botzone simple TexasHoldem2p.
 
-Responses are integers, matching the wiki:
+Responses are integers, matching the wiki and the official judge
+(``tests/fixtures/botzone_judge.py``):
 
 - ``-1`` fold
 - ``-2`` all-in
 - ``0`` check or call
 - a positive int is the extra chips put in on this action (not raise-to)
 
-Two lower bounds disagree once a raise has happened. The extra that may
-be sent is ``max(A, B)``:
+The minimum positive extra is the judge's, not ``max(bound A, bound B)``.
+``Holdem.player_action`` accepts a raise when
+``bet + own_round_bet >= 2 * round_raise`` (lines 299-303) and
+``bet`` is strictly less than the remaining stack (lines 301-302). The
+smallest such extra is ``2 * round_raise - own_round_bet``, and at least
+1. ``round_raise`` is the max single-action chip amount accepted on this
+street. Blinds count: they go through the raise branch (lines 333-334),
+so after the 50/100 blinds it is 100. Each later street resets it to
+``big_blind // 2`` which is 50 (line 261). Every accepted positive bet
+updates it with ``max(round_raise, bet)`` (line 303), including a bet
+whose new total does not beat the street maximum. A call (lines 291-298)
+does not. An all-in (lines 285-290) does not.
 
-- A, by street commitment. No chips in on this street yet: 100. Otherwise
-  ``2 *`` the largest street commitment. Preflop blinds count, so the
-  opening bound is ``2 * 100 = 200``.
-- B, by the wiki sample. Preflop starts at 200. Each real bet or raise
-  sets it to ``max(B, 2 * extra)``. A new street resets it to 100.
+``bound_b`` stores ``2 * round_raise``, so the minimum extra is
+``bound_b - own_round_bet`` (clamped up to 1). It is 200 after the blinds
+and 100 at the start of each later street.
 
 A fold is always offered, including when a check is free. After anyone
 is all-in, the only responses are fold and all-in. Calling requires the
 stack to be strictly greater than the chips owed. A positive extra must
-be strictly less than the stack. There are no side pots: both seats
-reset to 20000, and remaining chips plus the pot stay 40000.
+be strictly less than the stack; spending the rest of the stack is
+``-2``. There are no side pots: both seats reset to 20000, and remaining
+chips plus the pot stay 40000.
 
 ``apply`` only advances betting. A fold pays the pot to the other seat.
 If betting ends without a fold, the pot stays where it is and the hand
@@ -51,7 +61,8 @@ class HandState:
 
     ``stacks`` and ``street_commit`` are indexed by seat. ``dealer`` posts
     the big blind; the other seat posts the small blind and acts first on
-    every street.
+    every street. ``bound_b`` is ``2 * round_raise``: 200 after the blinds,
+    100 at the start of each later street.
     """
 
     dealer: int
@@ -98,7 +109,11 @@ def new_hand(dealer: int = 0) -> HandState:
 
 
 def lower_bound_a(state: HandState) -> int:
-    """Minimum extra from the current street's largest commitment."""
+    """Old street-commitment bound. ``safe_extra`` does not use it.
+
+    No chips in on this street yet: 100. Otherwise twice the largest
+    street commitment. Still exported so existing imports keep working.
+    """
 
     max_commit = max(state.street_commit)
     if max_commit == 0:
@@ -107,7 +122,12 @@ def lower_bound_a(state: HandState) -> int:
 
 
 def lower_bound_b(state: HandState) -> int:
-    """Minimum extra tracked the way the wiki sample tracks ``round_raise``."""
+    """``2 * round_raise``. ``safe_extra`` subtracts this seat's commit.
+
+    The name is the old wiki-sample tracker. The stored value is still
+    ``state.bound_b``, which ``apply`` now keeps equal to twice the
+    judge's ``round_raise``.
+    """
 
     return state.bound_b
 
@@ -122,26 +142,30 @@ def to_call(state: HandState, seat: Optional[int] = None) -> int:
 def safe_extra(state: HandState) -> Optional[int]:
     """Smallest legal positive extra, or ``None`` when that raise does not exist.
 
-    The number is ``max(A, B)``. It exists only when nobody is all-in and
-    it is strictly less than the actor's remaining stack (and, with these
-    bounds, strictly more than the call).
+    This is the judge's minimum (``botzone_judge.py`` lines 299-303):
+    ``2 * round_raise - own_round_bet``, and at least 1. ``bound_b`` stores
+    ``2 * round_raise``. It exists only when nobody is all-in and it is
+    strictly less than the actor's remaining stack. It may be less than or
+    equal to the call; the judge allows that bet.
     """
 
     if state.hand_over or any(state.all_in):
         return None
-    safe = max(lower_bound_a(state), lower_bound_b(state))
+    extra = state.bound_b - state.street_commit[state.actor]
+    if extra < 1:
+        extra = 1
     remaining = state.stacks[state.actor]
-    if to_call(state) < safe < remaining:
-        return safe
+    if extra < remaining:
+        return extra
     return None
 
 
 def legal_response(state: HandState) -> set:
     """Legal responses for the seat about to act.
 
-    ``{-1, -2, 0}`` plus every positive extra that clears the safe minimum
-    and is strictly less than the remaining stack. Fold is always included
-    while the hand is still asking this seat to act.
+    ``{-1, -2, 0}`` plus every positive extra from ``safe_extra`` up to, but
+    not including, the remaining stack. Fold is always included while the
+    hand is still asking this seat to act.
     """
 
     if state.hand_over:
@@ -215,8 +239,11 @@ def apply(state: HandState, response: int) -> HandState:
     raised = commit[actor] > prev_max
     if stacks[actor] == 0:
         all_in[actor] = True
-    if raised:
+    # Judge line 303: every accepted positive bet, not only a new street max.
+    # Calls and all-ins are not positive bets and leave round_raise alone.
+    if response > 0:
         bound_b = max(bound_b, 2 * chips)
+    if raised:
         if not folded[other] and not all_in[other] and stacks[other] > 0:
             needs[other] = True
     needs[actor] = False
@@ -263,6 +290,8 @@ def _end_betting_round(state: HandState) -> HandState:
             state,
             street=state.street + 1,
             street_commit=(0, 0),
+            # Judge line 261: round_raise = big_blind // 2 == 50, so
+            # bound_b = 2 * round_raise = 100.
             bound_b=BIG_BLIND,
             actor=_sb_seat(state.dealer),
             needs_action=(True, True),

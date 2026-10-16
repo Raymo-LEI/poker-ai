@@ -30,6 +30,7 @@ from alphanl.transformer.decision_stats import (
     summarize_rollout_decisions,
 )
 from alphanl.transformer.model import entropy_from_probs, masked_log_probs
+from alphanl.transformer.ppo import GRAD_NORM_COLUMNS
 from alphanl.transformer.schema import HandSnapshot
 from alphanl.transformer.tokenizer import BettingHistoryTokenizer
 from alphanl.transformer.train import _append_csv, _read_to_call
@@ -392,7 +393,9 @@ def test_fresh_metrics_append_the_new_columns(tmp_path: Path):
 
     run_training(_tiny_cfg(tmp_path, 1))
     rows, header = _rows(tmp_path / "metrics.csv")
-    assert header[-len(DECISION_STAT_COLUMNS) :] == list(DECISION_STAT_COLUMNS)
+    # T-L1 appends grad-norm columns after the M11a/M13a decision columns.
+    tail = list(DECISION_STAT_COLUMNS) + list(GRAD_NORM_COLUMNS)
+    assert header[-len(tail) :] == tail
     assert "entropy" in header
     assert header.index("entropy") < header.index("legal_entropy")
     assert len(rows) == 1
@@ -472,7 +475,8 @@ def test_logging_matches_training_with_the_reduction_disabled(tmp_path: Path):
         train_mod._log_decision_stats_enabled = original
 
     assert header_on == header_off
-    assert header_on[-len(DECISION_STAT_COLUMNS) :] == list(DECISION_STAT_COLUMNS)
+    tail = list(DECISION_STAT_COLUMNS) + list(GRAD_NORM_COLUMNS)
+    assert header_on[-len(tail) :] == tail
     assert len(rows_on) == 3 and len(rows_off) == 3
     skip = {"seconds", *DECISION_STAT_COLUMNS}
     for update, (left, right) in enumerate(zip(rows_on, rows_off)):

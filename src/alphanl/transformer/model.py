@@ -191,3 +191,43 @@ class PokerTransformer(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         return policy_act(self, batch, deterministic=deterministic)
 
+
+# Heads are not part of the shared trunk. ``conv_fuse`` / ``value_out`` are
+# the AlphaNL conv net's policy and value heads; the transformer uses
+# ``policy_head`` / ``value_head``. One tuple, so the probe cannot grow a
+# second filter.
+_HEAD_PARAM_PREFIXES = (
+    "policy_head.",
+    "value_head.",
+    "conv_fuse.",
+    "value_out.",
+)
+
+
+def shared_trunk_parameters(model: nn.Module) -> list:
+    """Parameters of the shared trunk. This is the only definition of that set.
+
+    Gradient-norm logging differentiates with respect to this list only.
+
+    ``PokerTransformer`` trunk (everything except the two heads):
+
+    * embeddings ``token_emb``, ``type_emb``, ``pos_emb``
+    * numeric embedding projection ``numeric_proj``
+    * transformer layers ``encoder``
+    * shared post-encoder MLP ``trunk`` (Linear + GELU). Both heads read it.
+      Dropout has no parameters.
+
+    Excluded: ``policy_head`` and ``value_head``.
+
+    ``AlphaNLConvNet`` uses the same rule: exclude the policy head
+    ``conv_fuse`` and the value head ``value_out``. The conv towers and the
+    shared 256-128-64 stack stay in the trunk.
+    """
+
+    selected = []
+    for name, param in model.named_parameters():
+        if name.startswith(_HEAD_PARAM_PREFIXES):
+            continue
+        selected.append(param)
+    return selected
+

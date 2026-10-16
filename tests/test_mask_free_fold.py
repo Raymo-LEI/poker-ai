@@ -372,7 +372,7 @@ def test_rollout_mask_matches_the_ppo_reforward():
             recomputed.append(logp.gather(1, flat["actions"][row : row + 1].long().unsqueeze(1)).squeeze(1))
         got = torch.cat(recomputed)
     assert torch.equal(got, flat["old_logp"])
-    _loss, metrics = ppo_losses(
+    _loss, metrics, *_ = ppo_losses(
         model,
         batch,
         actions=flat["actions"],

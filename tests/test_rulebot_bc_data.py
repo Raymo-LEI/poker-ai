@@ -252,6 +252,21 @@ def test_generate_metadata_mask_and_reproducibility(gen, tmp_path: Path):
     assert np.array_equal(loaded["legal_mask"], arrays["legal_mask"])
 
 
+def test_legal_py_sha_mismatch_is_refused(gen, tmp_path: Path):
+    arrays, meta = gen.collect_decisions(seed=3, hands=2, epsilon=0.2, mask_free_fold=True)
+    assert meta["env_version"]["legal_py_sha256"] == gen.current_legal_py_sha256()
+    meta["env_version"]["legal_py_sha256"] = "0" * 64
+    out = tmp_path / "stale"
+    gen.write_dataset(out, arrays, meta, force=False)
+    with pytest.raises(gen.LegalPyMismatch, match="refusing"):
+        gen.load_dataset(out)
+    loaded, loaded_meta = gen.load_dataset(out, check_legal=False)
+    assert loaded_meta["env_version"]["legal_py_sha256"] == "0" * 64
+    assert np.array_equal(loaded["actions"], arrays["actions"])
+    with pytest.raises(gen.LegalPyMismatch, match="current legal.py"):
+        gen.assert_legal_py_sha256("abc", where="unit")
+
+
 def test_refuses_to_write_outside_bc_rulebot_under_runs(gen):
     with pytest.raises(SystemExit):
         gen.assert_output_dir(ROOT / "runs" / "transformer_botzone_laptop", force=True)

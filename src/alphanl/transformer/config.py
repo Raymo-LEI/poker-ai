@@ -128,6 +128,11 @@ class ExperimentConfig:
     # PyTorch port of TF1.15 ``NlHoldemNet`` (the control group). PPO, the
     # 5-way mask, and this training script stay the same either way.
     encoder: str = "transformer"
+    # Documented path of a behavior-cloning checkpoint for a later PPO run.
+    # PPO does not load this field. Pass the same path as ``--init-weights``
+    # (with ``--allow-cross-backend-init`` on botzone) or as ``--resume``.
+    # ``None`` on every config that is not that continuation.
+    bc_init_checkpoint: Optional[str] = None
     model: ModelConfig = None  # type: ignore[assignment]
     ppo: PPOConfig = None  # type: ignore[assignment]
     pool: PoolConfig = None  # type: ignore[assignment]

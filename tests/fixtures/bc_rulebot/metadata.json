@@ -1,17 +1,17 @@
 {
   "action_id_distribution": {
-    "all_in": 1,
-    "check_call": 44,
-    "fold": 5,
+    "all_in": 2,
+    "check_call": 41,
+    "fold": 2,
     "raise_large": 0,
-    "raise_min": 3
+    "raise_min": 5
   },
   "action_id_fraction": {
-    "all_in": 0.018867924528301886,
-    "check_call": 0.8301886792452831,
-    "fold": 0.09433962264150944,
+    "all_in": 0.04,
+    "check_call": 0.82,
+    "fold": 0.04,
     "raise_large": 0.0,
-    "raise_min": 0.05660377358490566
+    "raise_min": 0.1
   },
   "action_mapping": "Fold (-1): if mask_free_fold and the spot is a free check (to_call == 0 and check/call is legal), rewrite the target to check_call (id 1); otherwise the target is fold (id 0). Check/call (0) maps to check_call (id 1). Any other code is a wager: -2 (all-in) has chip amount equal to the actor's remaining stack; a positive code's chip amount is that extra. Candidates are the legal subset of raise_min (id 2), raise_large (id 3), and all_in (id 4). The target is the candidate with the smallest absolute chip difference. A tie goes to the smaller action id (raise_min, then raise_large, then all_in).",
   "arrays": {
@@ -33,15 +33,15 @@
   "bc_training": "Not run by this script. A later KL run should load these token fields and probs. scripts/train_bc.py still rebuilds transformer rows from c_1048 meta_json and will not load this npz unchanged.",
   "data_policy": "BotzoneRuleBot.action_id, unchanged, then map_response_to_action_id",
   "deck_rng": "random.Random(seed) inside BotzoneEnvTable",
-  "elapsed_seconds": 0.583643617000007,
+  "elapsed_seconds": 0.616958584999793,
   "env_version": {
     "backend": "botzone",
     "big_blind": 100,
     "game": "TexasHoldem2p",
-    "git_commit": "930ce2fbe60717b4943cac01c96c36837aceebad",
+    "git_commit": "230c105efe3226af31c5282c79e4ef29c68dfde4",
     "legal_py": "src/alphanl/botzone/legal.py",
-    "legal_py_sha256": "81248904945a63b77d162ab38cdd231218cc43eeb17428b78e1d9ded5ae5abd7",
-    "note": "Raise sizes and legality come from legal.py at git_commit. Generated on main, before PR #33 aligns the minimum raise with the Botzone judge. After #33 merges, regenerate the 200k set; do not train on a mix of the two raise ladders.",
+    "legal_py_sha256": "df77491a9f472c10cb2902e4b0e1e51275d21bcaa56d98f3bb7b013881188b6d",
+    "note": "Raise sizes and legality come from legal.py at git_commit. BC training refuses a dataset whose legal_py_sha256 is not the hash of src/alphanl/botzone/legal.py on the tree that loads it. Regenerate after legal.py changes. Do not mix two hashes.",
     "small_blind": 50,
     "stacks": 20000
   },
@@ -52,13 +52,13 @@
   "max_seq_len": 64,
   "min_legal_actions": 2,
   "network": "laptop_8gb botzone transformer (configs/transformer/botzone_laptop_8gb_maskfold.json); not widened",
-  "num_decisions": 53,
+  "num_decisions": 50,
   "num_hands": 24,
   "num_hands_with_decisions": 15,
   "opponent_hand_counts": {
     "epsilon": 12,
-    "random": 4,
-    "rule": 8
+    "random": 3,
+    "rule": 9
   },
   "opponent_mix": {
     "epsilon": 0.2,

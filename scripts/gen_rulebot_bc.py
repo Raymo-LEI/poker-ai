@@ -74,8 +74,10 @@ bot as a deterministic teacher. ``train_bc.py``'s current transformer loader
 still expects c_1048 ``meta_json``; this file does not call it.
 
 Legality is whatever ``src/alphanl/botzone/legal.py`` is on the tree you run.
-This generator is meant to run on current main (before PR #33's min-raise
-alignment). After #33 merges, regenerate; do not reuse old raise sizes.
+``metadata.env_version.legal_py_sha256`` is the sha256 of that file.
+``load_dataset`` refuses a directory whose hash is not the current file
+(BC training calls the same check). Regenerate after ``legal.py`` changes.
+Do not mix two hashes.
 
 Laptop command for at least 200k counted decisions (seed 42). The last hand
 is finished, so the count can be slightly above 200k::
@@ -200,9 +202,9 @@ def environment_version() -> dict:
         "legal_py_sha256": digest,
         "note": (
             "Raise sizes and legality come from legal.py at git_commit. "
-            "Generated on main, before PR #33 aligns the minimum raise with "
-            "the Botzone judge. After #33 merges, regenerate the 200k set; "
-            "do not train on a mix of the two raise ladders."
+            "BC training refuses a dataset whose legal_py_sha256 is not the "
+            "hash of src/alphanl/botzone/legal.py on the tree that loads it. "
+            "Regenerate after legal.py changes. Do not mix two hashes."
         ),
     }
 
@@ -640,8 +642,33 @@ def write_dataset(out: Path, arrays: Dict[str, np.ndarray], metadata: dict, *, f
     return out
 
 
-def load_dataset(out: Path) -> Tuple[Dict[str, np.ndarray], dict]:
-    """Load a directory written by :func:`write_dataset`."""
+class LegalPyMismatch(ValueError):
+    """Dataset legality hash is not the ``legal.py`` on this tree."""
+
+
+def current_legal_py_sha256() -> str:
+    """sha256 of ``src/alphanl/botzone/legal.py`` as it is on disk now."""
+
+    return environment_version()["legal_py_sha256"]
+
+
+def assert_legal_py_sha256(recorded: str, *, where: str) -> None:
+    """Refuse to train or load when the dataset was dealt by another ``legal.py``."""
+
+    current = current_legal_py_sha256()
+    if str(recorded) != current:
+        raise LegalPyMismatch(
+            f"refusing {where}: legal_py_sha256 {recorded} != current legal.py {current}. "
+            "Regenerate with scripts/gen_rulebot_bc.py on this tree. Do not mix two hashes."
+        )
+
+
+def load_dataset(out: Path, *, check_legal: bool = True) -> Tuple[Dict[str, np.ndarray], dict]:
+    """Load a directory written by :func:`write_dataset`.
+
+    ``check_legal`` is on by default. A hash that is not the current
+    ``legal.py`` raises :class:`LegalPyMismatch` before any training step.
+    """
 
     out = Path(out)
     file_meta = json.loads((out / "metadata.json").read_text(encoding="utf-8"))
@@ -650,6 +677,9 @@ def load_dataset(out: Path) -> Tuple[Dict[str, np.ndarray], dict]:
         arrays = {key: blob[key] for key in blob.files if key != "metadata_json"}
     if embedded != file_meta:
         raise ValueError("metadata.json does not match decisions.npz metadata_json")
+    if check_legal:
+        recorded = file_meta.get("env_version", {}).get("legal_py_sha256")
+        assert_legal_py_sha256("" if recorded is None else str(recorded), where=str(out))
     return arrays, file_meta
 
 

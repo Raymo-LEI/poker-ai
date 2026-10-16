@@ -35,6 +35,7 @@ from botzone_referee_adapter import (  # noqa: E402
 from alphanl.botzone.actions import action_responses, legal_action_ids, response_for_action
 from alphanl.botzone.legal import (
     HandState,
+    apply,
     legal_response,
     lower_bound_a,
     lower_bound_b,
@@ -140,29 +141,27 @@ def _our_hand(state: RefereeState, bound_b: int) -> HandState:
 
 
 def _next_bound(bound_b: int, state: RefereeState, response: int) -> int:
-    """``legal.apply``'s bound update, including sizes our gate would reject.
+    """``legal.apply``'s round-raise update.
 
-    A positive bet or an all-in updates the bound only when the new street
-    commitment is strictly above the previous maximum. That is lines 215-219
-    of ``legal.py``. The judge updates ``round_raise`` on every accepted
-    positive bet, which is a wider condition; this function stays with ours.
+    ``bound_b`` stores ``2 * round_raise``. Every accepted positive bet
+    does ``max(round_raise, bet)``, including one whose new total does not
+    beat the street maximum. Calls, folds, and all-ins do not. ``state``
+    is unused; it stays in the signature so callers can pass the pre-action
+    judge node.
     """
 
-    if response == -1 or int(state.round_bet) < 0:
+    del state
+    if int(response) <= 0:
         return int(bound_b)
-    chips = _chips_put(state, response)
-    prev = []
-    for bet in state.round_player_bet:
-        prev.append(0 if int(bet) < 0 else int(bet))
-    prev_max = max(prev) if prev else 0
-    actor = int(state.actor)
-    if prev[actor] + chips > prev_max:
-        return max(int(bound_b), 2 * chips)
-    return int(bound_b)
+    return max(int(bound_b), 2 * int(response))
 
 
 def _street_reset_bound(game) -> int:
-    """Our postflop bound is 100. The judge resets ``round_raise`` to 50."""
+    """``2 * round_raise`` after a street change.
+
+    Postflop the judge sets ``round_raise = big_blind // 2`` (50), so this
+    is 100. The preflop value 200 is the post-blind opening, not a reset.
+    """
 
     return 100 if int(game.round) > 0 else 200
 
@@ -213,9 +212,12 @@ def compare_decision(
         "gap_sum": 0,
         "gap_max": 0,
         "gap_decisions": 0,
+        "min_raise_mismatch": 0,
     }
     judge_min = judge_min_positive(state)
     our_safe = safe_extra(our)
+    if our_safe != judge_min:
+        counts["min_raise_mismatch"] = 1
     our_legal = legal_response(our)
 
     # legal_response's positive region is the interval [safe, chips). The
@@ -626,6 +628,7 @@ def run_fuzz(
         "spec_action_amount_disagree": int(totals.get("spec_action_amount_disagree", 0)),
         "spec_street_total_disagree": int(totals.get("spec_street_total_disagree", 0)),
         "undercall_accepts": int(totals.get("undercall_accepts", 0)),
+        "min_raise_mismatch": int(totals.get("min_raise_mismatch", 0)),
         "desyncs": len(desyncs),
         "examples_we_legal_judge_illegal": illegal_examples,
         "examples_we_illegal_judge_legal": conservative_examples,
@@ -671,7 +674,7 @@ def scenario_tables() -> Dict[str, List[Dict[str, Any]]]:
     pre = state_from_holdem(opener)
     opener.player_action(150)
     bound = _next_bound(200, pre, 150)
-    record("preflop", opener, bound, "BB after SB raises 150 (judge-legal, we reject 150)")
+    record("preflop", opener, bound, "BB after SB raises 150")
 
     game = new_dealt_holdem(0)
     game.player_action(0)
@@ -724,12 +727,12 @@ def undercall_sequence() -> RefereeState:
 
 
 def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Replay the 41-match log.
+    """Replay the 41-match log through the judge and through ``apply``.
 
-    Action order and the judge's acceptance of the logged bets are checked
-    separately. Real bets our ``legal_response`` rejects are stricter-min
-    mismatches. They are returned in full as ``our_rejected_patterns``
-    (the "0 mismatch" acceptance did not pass). They are not dropped.
+    Whole hands are stepped on our engine. A logged bet our
+    ``legal_response`` rejects, or a street/actor/stack/round-raise
+    disagreement, is a mismatch. ``our_rejected_patterns`` is empty when
+    the minimum matches the judge.
     """
 
     import gzip
@@ -743,16 +746,19 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
     judge_rejected = []
     our_rejected = []
     mapped_bad = []
+    engine_bad = []
     decisions = 0
     order_mismatches = 0
     judge_rejected_total = 0
     our_rejected_total = 0
     mapped_illegal = 0
+    engine_mismatches = 0
     # Full histogram. Examples above are capped; this list is not.
     pattern_counts: Dict[Tuple[int, int, int, int, int], int] = {}
     for hand in hands:
         dealer = int(hand["d"])
         game = new_dealt_holdem(dealer)
+        engine = new_hand(dealer)
         bound_b = 200
         for index, (pid, response, street) in enumerate(hand["a"]):
             decisions += 1
@@ -839,6 +845,34 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
                             }
                         )
                     break
+            if (
+                engine.hand_over
+                or int(engine.actor) != int(pid)
+                or int(engine.street) != int(street)
+                or int(response) not in legal_response(engine)
+                or [int(x) for x in engine.stacks] != [int(x) for x in game.player_chips]
+                or int(engine.pot) != int(game.pot)
+                or int(engine.bound_b) // 2 != int(game.round_raise)
+            ):
+                engine_mismatches += 1
+                if len(engine_bad) < _EXAMPLE_CAP:
+                    engine_bad.append(
+                        {
+                            "match": hand["m"],
+                            "hand": hand["h"],
+                            "index": index,
+                            "engine_actor": None if engine.hand_over else int(engine.actor),
+                            "engine_street": int(engine.street),
+                            "engine_over": bool(engine.hand_over),
+                            "fixture_actor": int(pid),
+                            "fixture_street": int(street),
+                            "response": int(response),
+                            "bound_b": int(engine.bound_b),
+                            "judge_round_raise": int(game.round_raise),
+                        }
+                    )
+            else:
+                engine = apply(engine, int(response))
             pre = state
             street_before = int(game.round)
             game.player_action(int(response))
@@ -878,6 +912,8 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
         "our_rejected_examples": our_rejected,
         "mapped_illegal": mapped_illegal,
         "mapped_examples": mapped_bad,
+        "engine_mismatches": engine_mismatches,
+        "engine_examples": engine_bad,
     }
 
 
@@ -897,10 +933,14 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
         use_policy=not args.skip_policy,
     )
     summary["scenarios"] = scenario_tables()
+    undercall = undercall_sequence()
+    undercall_ours = new_hand(0)
+    for bet in (0, 100, 101, 102):
+        undercall_ours = apply(undercall_ours, bet)
     summary["undercall_minimal"] = _repro(
-        undercall_sequence(),
+        undercall,
         3,
-        our_safe=None,
+        our_safe=safe_extra(undercall_ours),
         judge_min=3,
         note="scripted preflop 0,100,101,102 then bet 3",
     )

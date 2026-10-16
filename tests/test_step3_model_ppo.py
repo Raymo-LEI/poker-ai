@@ -110,7 +110,7 @@ def test_entropy_coef_changes_only_the_entropy_term():
         old_logp = log_probs.gather(1, actions.unsqueeze(1)).squeeze(1)
     advantages = torch.randn(16)
     returns = values.detach() + advantages
-    loss0, metrics0 = ppo_losses(
+    loss0, metrics0, *_ = ppo_losses(
         model,
         batch,
         actions=actions,
@@ -122,7 +122,7 @@ def test_entropy_coef_changes_only_the_entropy_term():
         entropy_coef=0.0,
         value_coef=0.5,
     )
-    loss1, metrics1 = ppo_losses(
+    loss1, metrics1, *_ = ppo_losses(
         model,
         batch,
         actions=actions,
@@ -236,8 +236,8 @@ def test_value_clip_eps_none_is_plain_squared_error():
         entropy_coef=0.0,
         value_coef=0.5,
     )
-    _, plain = ppo_losses(model, batch, value_clip_eps=None, **common)
-    _, clipped = ppo_losses(model, batch, value_clip_eps=0.2, **common)
+    _, plain, *_ = ppo_losses(model, batch, value_clip_eps=None, **common)
+    _, clipped, *_ = ppo_losses(model, batch, value_clip_eps=0.2, **common)
     assert abs(plain["value_loss"] - 50.0) < 1e-3
     # V_clip = V_old + 0.2 = V - 4.8, so (V_clip - R)^2 = 14.8^2.
     assert abs(clipped["value_loss"] - 0.5 * 14.8 ** 2) < 1e-2

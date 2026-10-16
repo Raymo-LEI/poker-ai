@@ -21,7 +21,7 @@ from .decision_stats import (
 from .env import PolicyActor, SelfPlayEnv, gae_reward_depth, logged_bb_from_reward
 from .model import PokerTransformer, count_parameters
 from .pool import OpponentPool
-from .ppo import amp_enabled, compute_gae, make_grad_scaler, ppo_update
+from .ppo import GRAD_NORM_COLUMNS, amp_enabled, compute_gae, make_grad_scaler, ppo_update
 from .tokenizer import BettingHistoryTokenizer, batch_to_device, cat_batches
 
 _PPO_SKIP = {
@@ -573,6 +573,10 @@ def run_training(
             mask_free_fold=use_mask,
             to_call=decision_to_call if use_mask else None,
         )
+        # Keep these off the middle of the row. They are appended after the
+        # M11a/M13a decision columns so an existing metrics.csv header stays
+        # put and the new fields land at the end of the line.
+        grad_cols = {key: metrics.pop(key) for key in GRAD_NORM_COLUMNS}
         if cfg.pool.snapshot_every > 0 and (update + 1) % cfg.pool.snapshot_every == 0:
             pool.add(learner.state_dict())
         row = {
@@ -601,6 +605,8 @@ def run_training(
             row["eval_random_bb"] = ""
         for key in DECISION_STAT_COLUMNS:
             row[key] = stats[key]
+        for key in GRAD_NORM_COLUMNS:
+            row[key] = grad_cols[key]
         if cfg.train.log_every > 0 and update % cfg.train.log_every == 0:
             _append_csv(csv_path, row)
             if writer is not None:

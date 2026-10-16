@@ -27,6 +27,11 @@ the hero the big blind forever). Over each block of four hands the hero
 blind is BB, SB, SB, BB.
 
     PYTHONPATH=src python eval/eval_botzone_collapse.py --ckpt-dir runs/smoke_botzone_m9/ckpt --decisions 2000 --seed 42
+
+``--mask-free-fold`` / ``--no-mask-free-fold`` apply the policy mask at
+inference. If neither is passed, the value is ``env.mask_free_fold`` in the
+checkpoint, and a missing key means false. The report prints which value
+was used.
 """
 
 from __future__ import annotations
@@ -50,7 +55,7 @@ from alphanl.botzone.rule_bot import BotzoneRuleBot  # noqa: E402
 from alphanl.botzone.rule_eval import uniform_legal_action  # noqa: E402
 from alphanl.transformer.checkpoint import latest_checkpoint, load_checkpoint  # noqa: E402
 from alphanl.transformer.config import ExperimentConfig, resolve_device  # noqa: E402
-from alphanl.transformer.decision_stats import is_free_check  # noqa: E402
+from alphanl.transformer.decision_stats import is_free_check, policy_action_mask  # noqa: E402
 from alphanl.transformer.model import entropy_from_probs, masked_log_probs  # noqa: E402
 from alphanl.transformer.tokenizer import BettingHistoryTokenizer, batch_to_device  # noqa: E402
 from alphanl.transformer.train import build_model, set_seed  # noqa: E402
@@ -107,6 +112,45 @@ def _as_row(tensor: torch.Tensor, name: str) -> torch.Tensor:
     return tensor
 
 
+def add_mask_free_fold_argument(parser: argparse.ArgumentParser) -> None:
+    """``--mask-free-fold`` / ``--no-mask-free-fold``. Omitted means checkpoint."""
+
+    parser.add_argument(
+        "--mask-free-fold",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Drop fold from the policy mask when to_call is 0 and check/call "
+            "is legal. Default: env.mask_free_fold in the checkpoint; a missing "
+            "key means false. --no-mask-free-fold forces it off."
+        ),
+    )
+
+
+def resolve_mask_free_fold(explicit, raw_config) -> Tuple[bool, str]:
+    """Flag value and a short description of where it came from.
+
+    ``explicit`` is the CLI value: ``None`` if neither flag was passed.
+    ``raw_config`` is the checkpoint's ``config`` dict, before defaults fill
+    a missing ``mask_free_fold`` key.
+    """
+
+    if explicit is True:
+        return True, "true (--mask-free-fold)"
+    if explicit is False:
+        return False, "false (--no-mask-free-fold)"
+    env = {}
+    if isinstance(raw_config, dict):
+        maybe = raw_config.get("env")
+        if isinstance(maybe, dict):
+            env = maybe
+    if "mask_free_fold" not in env:
+        return False, "false (checkpoint has no mask_free_fold; default false)"
+    value = bool(env["mask_free_fold"])
+    word = "true" if value else "false"
+    return value, f"{word} (checkpoint metadata)"
+
+
 @torch.no_grad()
 def evaluate_policy_on_mask(
     logits: torch.Tensor,
@@ -114,36 +158,44 @@ def evaluate_policy_on_mask(
     to_call: float,
     *,
     mode: str,
+    mask_free_fold: bool = False,
 ) -> HeroDecision:
     """Mask ``logits`` with :func:`masked_log_probs` and take one action.
 
     ``mode`` is ``sample`` (draw from the masked distribution) or ``argmax``.
     Entropy is the Shannon entropy of that masked distribution, in nats,
     the same quantity the PPO logger records.
+
+    ``legal_mask`` is environment legality. When ``mask_free_fold`` is set,
+    the action is drawn from :func:`policy_action_mask` instead. Free-check
+    bookkeeping still uses the environment mask, so a masked policy reports
+    a free-check fold fraction of 0 rather than dropping those decisions.
     """
 
     if mode not in ("sample", "argmax"):
         raise ValueError(f"mode must be 'sample' or 'argmax', got {mode!r}")
     logits = _as_row(logits, "logits").float()
-    legal_mask = _as_row(legal_mask, "legal_mask").to(device=logits.device, dtype=torch.float32)
-    _masked, log_probs, probs, legal = masked_log_probs(logits, legal_mask)
+    env_mask = _as_row(legal_mask, "legal_mask").to(device=logits.device, dtype=torch.float32)
+    chosen = policy_action_mask(env_mask, to_call, mask_free_fold)
+    _masked, log_probs, probs, legal = masked_log_probs(logits, chosen)
     entropy = entropy_from_probs(probs, log_probs, legal)
     if mode == "argmax":
         action = int(torch.argmax(probs, dim=-1).item())
     else:
         action = int(torch.distributions.Categorical(probs=probs).sample().item())
-    mask_row = legal_mask.reshape(-1)
-    legal_ids = [index for index, flag in enumerate(mask_row.tolist()) if float(flag) > 0.5]
-    if action not in legal_ids:
-        raise RuntimeError(f"policy chose {action} outside legal ids {legal_ids}")
-    fold_legal = FOLD_ACTION in legal_ids
+    env_row = env_mask.reshape(-1)
+    policy_ids = [index for index, flag in enumerate(chosen.reshape(-1).tolist()) if float(flag) > 0.5]
+    env_ids = [index for index, flag in enumerate(env_row.tolist()) if float(flag) > 0.5]
+    if action not in policy_ids:
+        raise RuntimeError(f"policy chose {action} outside legal ids {policy_ids}")
+    fold_legal = FOLD_ACTION in env_ids
     return HeroDecision(
         to_call=float(to_call),
         fold_legal=fold_legal,
-        free_check=is_free_check(to_call, mask_row),
+        free_check=is_free_check(to_call, env_row),
         action=action,
         entropy=float(entropy.reshape(-1)[0].item()),
-        n_legal=len(legal_ids),
+        n_legal=len(env_ids),
     )
 
 
@@ -262,6 +314,9 @@ def load_botzone_model(
     model.to(device)
     model.eval()
     tokenizer = BettingHistoryTokenizer(max_seq_len=cfg.model.max_seq_len)
+    # Raw config, so a checkpoint written before mask_free_fold keeps the
+    # missing key. ExperimentConfig.from_dict would already have filled false.
+    cfg.checkpoint_config = blob["config"]
     return model, tokenizer, cfg, path, int(blob.get("update", -1))
 
 
@@ -298,6 +353,7 @@ def play_pass(
     seed: int,
     opponent: str,
     device: torch.device,
+    mask_free_fold: bool = False,
 ) -> dict:
     """Play until ``n_decisions`` non-forced hero decisions, then summarize.
 
@@ -356,6 +412,7 @@ def play_pass(
                 moved["legal_mask"],
                 float(snapshot.to_call),
                 mode=mode,
+                mask_free_fold=mask_free_fold,
             )
             decisions.append(decision)
             table.step(decision.action)
@@ -387,6 +444,7 @@ def render_report(payload: dict) -> str:
             f"opponent: {payload['opponent']}  seed: {payload['seed']}  "
             f"device: {payload['device']}  decisions: {payload['decisions']}"
         ),
+        f"mask_free_fold: {payload['mask_free_fold_source']}",
         payload["seat_schedule"],
         f"--entropy-thr {payload['entropy_thr']:g} --fold-thr {payload['fold_thr']:g}",
         "",
@@ -429,6 +487,10 @@ def evaluate(args: argparse.Namespace) -> dict:
     device_name = resolve_device(args.device)
     device = torch.device(device_name)
     model, tokenizer, cfg, path, update = load_botzone_model(Path(args.ckpt_dir), device)
+    mask_free_fold, mask_source = resolve_mask_free_fold(
+        getattr(args, "mask_free_fold", None),
+        getattr(cfg, "checkpoint_config", {}),
+    )
     passes = {}
     for mode in ("sample", "argmax"):
         passes[mode] = play_pass(
@@ -439,6 +501,7 @@ def evaluate(args: argparse.Namespace) -> dict:
             seed=args.seed,
             opponent=args.opponent,
             device=device,
+            mask_free_fold=mask_free_fold,
         )
     verdict = collapse_verdict(passes["sample"], args.entropy_thr, args.fold_thr)
     return {
@@ -454,6 +517,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         "device": device_name,
         "entropy_thr": float(args.entropy_thr),
         "fold_thr": float(args.fold_thr),
+        "mask_free_fold": bool(mask_free_fold),
+        "mask_free_fold_source": mask_source,
         "seat_schedule": (
             "button alternates each hand; hero seat swaps every two hands; "
             "hero blind over four hands is BB, SB, SB, BB"
@@ -504,6 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.5,
         help="COLLAPSED if the sampled free-check fold fraction is above this.",
     )
+    add_mask_free_fold_argument(parser)
     return parser
 
 

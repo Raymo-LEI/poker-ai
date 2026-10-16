@@ -113,6 +113,8 @@ def test_hand_built_ratio_and_legal_entropy():
     assert stats["free_check_fold_ratio"] == pytest.approx(2 / 3)
     assert stats["free_check_count"] == 3
     assert stats["legal_entropy"] == pytest.approx(expected_entropy, rel=1e-5, abs=1e-6)
+    # Only row 2 faces a bet with fold legal and two or more legal ids.
+    assert stats["fold_facing_ratio"] == pytest.approx(1.0)
     # Forced free-check fold (row 3) is outside the mean. Including it
     # changes the denominator from 5 to 6.
     with_forced = (sum(analytic[index] for index in kept) + analytic[3]) / 6
@@ -129,6 +131,7 @@ def test_missing_to_call_is_nan_and_does_not_drop_entropy():
     missing = summarize_rollout_decisions(actions, mask, entropy, None)
     assert math.isnan(missing["free_check_fold_ratio"])
     assert math.isnan(missing["free_check_count"])
+    assert math.isnan(missing["fold_facing_ratio"])
     assert missing["legal_entropy"] == pytest.approx(expected_entropy, rel=1e-5, abs=1e-6)
 
     poisoned = to_call.clone()
@@ -136,12 +139,15 @@ def test_missing_to_call_is_nan_and_does_not_drop_entropy():
     mixed = summarize_rollout_decisions(actions, mask, entropy, poisoned)
     assert math.isnan(mixed["free_check_fold_ratio"])
     assert math.isnan(mixed["free_check_count"])
+    assert math.isnan(mixed["fold_facing_ratio"])
     assert mixed["legal_entropy"] == pytest.approx(expected_entropy, rel=1e-5, abs=1e-6)
 
     owed = torch.full((6,), 2.0)
     quiet = summarize_rollout_decisions(actions, mask, entropy, owed)
     assert math.isnan(quiet["free_check_fold_ratio"])
     assert quiet["free_check_count"] == 0
+    # Rows 0, 1, 2, 4 face a bet with fold legal. Three of those four fold.
+    assert quiet["fold_facing_ratio"] == pytest.approx(0.75)
     assert quiet["legal_entropy"] == pytest.approx(expected_entropy, rel=1e-5, abs=1e-6)
 
 
@@ -152,6 +158,7 @@ def test_forced_decisions_alone_log_nan_entropy_and_zero_count():
     stats = summarize_rollout_decisions(actions, mask, entropy, torch.zeros(2))
     assert math.isnan(stats["legal_entropy"])
     assert math.isnan(stats["free_check_fold_ratio"])
+    assert math.isnan(stats["fold_facing_ratio"])
     assert stats["free_check_count"] == 0
     assert set(empty_decision_stats()) == set(DECISION_STAT_COLUMNS)
 
@@ -385,7 +392,7 @@ def test_fresh_metrics_append_the_new_columns(tmp_path: Path):
 
     run_training(_tiny_cfg(tmp_path, 1))
     rows, header = _rows(tmp_path / "metrics.csv")
-    assert header[-3:] == list(DECISION_STAT_COLUMNS)
+    assert header[-len(DECISION_STAT_COLUMNS) :] == list(DECISION_STAT_COLUMNS)
     assert "entropy" in header
     assert header.index("entropy") < header.index("legal_entropy")
     assert len(rows) == 1
@@ -465,7 +472,7 @@ def test_logging_matches_training_with_the_reduction_disabled(tmp_path: Path):
         train_mod._log_decision_stats_enabled = original
 
     assert header_on == header_off
-    assert header_on[-3:] == list(DECISION_STAT_COLUMNS)
+    assert header_on[-len(DECISION_STAT_COLUMNS) :] == list(DECISION_STAT_COLUMNS)
     assert len(rows_on) == 3 and len(rows_off) == 3
     skip = {"seconds", *DECISION_STAT_COLUMNS}
     for update, (left, right) in enumerate(zip(rows_on, rows_off)):
@@ -477,7 +484,88 @@ def test_logging_matches_training_with_the_reduction_disabled(tmp_path: Path):
         assert math.isnan(float(right["free_check_fold_ratio"]))
         assert math.isnan(float(right["legal_entropy"]))
         assert math.isnan(float(right["free_check_count"]))
+        assert math.isnan(float(right["fold_facing_ratio"]))
     assert any(not math.isnan(float(row["legal_entropy"])) for row in rows_on)
     assert all(not math.isnan(float(row["free_check_count"])) for row in rows_on)
     _equal_tree(blob_on["model"], blob_off["model"], "model")
     _equal_tree(blob_on["rng"], blob_off["rng"], "rng")
+
+
+def test_mask_free_fold_false_matches_the_pre_mask_branch(tmp_path: Path):
+    """Switch off matches the branch from before the switch existed.
+
+    Same approach as :func:`test_logging_matches_training_with_the_reduction_disabled`:
+    two in-process CPU runs, no stored golden ``state_dict`` (a CPU state
+    from another machine is not a stable oracle). Same seed, 3 updates,
+    AMP off, dropout 0.
+
+    Arm A leaves ``env.mask_free_fold`` false. Arm B sets it true but
+    monkeypatches :func:`mask_free_fold_enabled` to false, so the new
+    branch is not taken. Loss columns are compared as CSV strings. The
+    final model ``state_dict`` is compared with ``torch.equal``.
+    ``policy_action_mask`` must not run in either arm.
+    """
+
+    import alphanl.transformer.botzone_table  # noqa: F401
+    import alphanl.transformer.decision_stats as stats_mod
+    import alphanl.transformer.env as env_mod
+    import alphanl.transformer.ppo as ppo_mod
+    import alphanl.transformer.train as train_mod
+
+    try:
+        from torch.utils.tensorboard import SummaryWriter  # noqa: F401
+    except ImportError:
+        pass
+
+    calls = {"n": 0}
+    real_mask = stats_mod.policy_action_mask
+
+    def _counting(*args, **kwargs):
+        calls["n"] += 1
+        return real_mask(*args, **kwargs)
+
+    original_gate = train_mod.mask_free_fold_enabled
+    originals = {
+        stats_mod: stats_mod.policy_action_mask,
+        env_mod: env_mod.policy_action_mask,
+        ppo_mod: ppo_mod.policy_action_mask,
+        train_mod: train_mod.policy_action_mask,
+    }
+
+    def _run(out: Path, flag: bool, gate):
+        calls["n"] = 0
+        train_mod.mask_free_fold_enabled = gate
+        for module in originals:
+            module.policy_action_mask = _counting
+        cfg = _tiny_cfg(out, 3)
+        cfg.env.mask_free_fold = flag
+        train_mod.run_training(cfg)
+        rows, header = _rows(out / "metrics.csv")
+        blob = _load_checkpoint(out / "ckpt" / "update_0000002.pt")
+        return rows, header, blob, calls["n"]
+
+    try:
+        rows_off, header_off, blob_off, calls_off = _run(tmp_path / "off", False, original_gate)
+        rows_bypass, header_bypass, blob_bypass, calls_bypass = _run(
+            tmp_path / "bypass",
+            True,
+            lambda flag: False,
+        )
+    finally:
+        train_mod.mask_free_fold_enabled = original_gate
+        for module, original in originals.items():
+            module.policy_action_mask = original
+
+    assert calls_off == 0
+    assert calls_bypass == 0
+    assert header_off == header_bypass
+    assert len(rows_off) == 3 and len(rows_bypass) == 3
+    for update, (left, right) in enumerate(zip(rows_off, rows_bypass)):
+        for key in _OLD_METRIC_COLUMNS:
+            assert left[key] == right[key], f"update {update} {key}: {left[key]!r} != {right[key]!r}"
+        for key in left:
+            if key != "seconds":
+                assert left[key] == right[key], f"update {update} {key}"
+    _equal_tree(blob_off["model"], blob_bypass["model"], "model")
+    assert blob_off["config"]["env"]["mask_free_fold"] is False
+    assert blob_bypass["config"]["env"]["mask_free_fold"] is True

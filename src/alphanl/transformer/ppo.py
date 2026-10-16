@@ -12,6 +12,7 @@ from typing import Dict, Optional
 
 import torch
 
+from .decision_stats import policy_action_mask
 from .model import entropy_from_probs, masked_log_probs
 from .tokenizer import TensorBatch, slice_batch
 
@@ -65,6 +66,8 @@ def ppo_losses(
     entropy_coef: float,
     value_coef: float,
     value_clip_eps: Optional[float] = None,
+    mask_free_fold: bool = False,
+    to_call: Optional[torch.Tensor] = None,
 ) -> tuple:
     """One forward and the clipped PPO objective.
 
@@ -74,8 +77,18 @@ def ppo_losses(
 
     ``value_clip_eps`` is in reward units, not a ratio. ``None`` turns value
     clipping off and fits the value head with a plain squared error.
+
+    ``mask_free_fold`` only replaces the legal mask before the existing
+    forward. The clip, value loss, and entropy terms are unchanged. When
+    the flag is false the mask tensor the forward sees is the one in
+    ``batch``.
     """
 
+    if mask_free_fold:
+        if to_call is None:
+            raise ValueError("mask_free_fold requires to_call aligned with the batch")
+        batch = dict(batch)
+        batch["legal_mask"] = policy_action_mask(batch["legal_mask"], to_call, True)
     logits, values = model(batch, mask_illegal=True)
     _, log_probs, probs, legal = masked_log_probs(logits, batch["legal_mask"])
     new_logp = log_probs.gather(1, actions.long().unsqueeze(1)).squeeze(1)
@@ -140,6 +153,8 @@ def ppo_update(
     amp: bool = False,
     scaler: "Optional[torch.amp.GradScaler]" = None,
     value_clip_eps: Optional[float] = None,
+    mask_free_fold: bool = False,
+    to_call: Optional[torch.Tensor] = None,
 ) -> Dict[str, float]:
     """Several epochs of minibatch PPO. Storage stays on ``batch``'s device.
 
@@ -149,6 +164,10 @@ def ppo_update(
     whatever device the tensors and the model share.
 
     The model is left in eval mode: dropout is off for every PPO forward.
+
+    ``mask_free_fold`` and ``to_call`` are forwarded to :func:`ppo_losses`.
+    When the flag is false, ``to_call`` is ignored and the mask in ``batch``
+    is the one the forward uses.
     """
 
     num_samples = int(actions.shape[0])
@@ -178,6 +197,7 @@ def ppo_update(
         for start in range(0, num_samples, int(minibatch_size)):
             index = order[start : start + int(minibatch_size)]
             mb_batch = slice_batch(batch, index)
+            mb_to_call = None if to_call is None else to_call.index_select(0, index)
             optimizer.zero_grad(set_to_none=True)
             if use_amp:
                 with torch.autocast(device_type="cuda", enabled=True):
@@ -193,6 +213,8 @@ def ppo_update(
                         entropy_coef=entropy_coef,
                         value_coef=value_coef,
                         value_clip_eps=value_clip_eps,
+                        mask_free_fold=mask_free_fold,
+                        to_call=mb_to_call,
                     )
                 assert scaler is not None
                 scaler.scale(loss).backward()
@@ -213,6 +235,8 @@ def ppo_update(
                     entropy_coef=entropy_coef,
                     value_coef=value_coef,
                     value_clip_eps=value_clip_eps,
+                    mask_free_fold=mask_free_fold,
+                    to_call=mb_to_call,
                 )
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)

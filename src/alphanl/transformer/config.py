@@ -78,6 +78,11 @@ class EnvConfig:
     big_blind: float = 2.0
     small_blind: float = 1.0
     starting_stack: float = 100.0
+    # Policy-only. False keeps the historical mask (fold stays available on a
+    # free check). True removes fold from the policy mask when nothing is
+    # owed and check/call is legal. Environment legality is unchanged.
+    # Checkpoints written before this field existed mean false.
+    mask_free_fold: bool = False
 
 
 # rlcard / the historical SelfPlayEnv signature. Botzone simple is not this game.

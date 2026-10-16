@@ -35,7 +35,7 @@
   },
   "train": {
     "num_updates": 100000,
-    "checkpoint_every": 50,
+    "checkpoint_every": 25,
     "log_every": 1,
     "eval_every": 25,
     "eval_hands": 20,

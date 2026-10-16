@@ -60,20 +60,27 @@ def test_holdout_is_by_games_not_rows(trainer):
 def test_continuation_config_differs_only_in_lr_init_and_output_dirs():
     mask = json.loads(MASKFOLD.read_text())
     init = json.loads(BC_INIT.read_text())
-    differences = ["bc_init_checkpoint", "ppo.lr", "train.out_dir", "train.checkpoint_dir"]
-    assert init.pop("bc_init_checkpoint") == "runs/bc_rulebot_train/bc.pt"
+    # bc_init_checkpoint is absent: ExperimentConfig.from_dict rejects unknown keys,
+    # and the running PPO process did not carry that key.
+    assert "bc_init_checkpoint" not in init
     assert "bc_init_checkpoint" not in mask
+    differences = [
+        "ppo.lr",
+        "train.num_updates",
+        "train.checkpoint_every",
+        "train.out_dir",
+        "train.checkpoint_dir",
+    ]
     assert init["ppo"].pop("lr") == 0.0001
     assert mask["ppo"].pop("lr") == 0.0003
+    assert init["train"].pop("num_updates") == 5000
+    assert mask["train"].pop("num_updates") == 100000
+    assert init["train"].pop("checkpoint_every") == 25
+    assert mask["train"].pop("checkpoint_every") == 50
     assert init["train"].pop("out_dir") == "runs/transformer_botzone_laptop_bc_init"
     assert init["train"].pop("checkpoint_dir") == "runs/transformer_botzone_laptop_bc_init/ckpt"
     mask["train"].pop("out_dir")
     mask["train"].pop("checkpoint_dir")
-    init_every = init["train"].pop("checkpoint_every")
-    mask_every = mask["train"].pop("checkpoint_every")
-    assert init_every == 25
-    if init_every != mask_every:
-        differences.append("train.checkpoint_every")
     assert init["train"]["keep_last"] >= 20
     if init["train"]["keep_last"] != mask["train"]["keep_last"]:
         differences.append("train.keep_last")
@@ -81,17 +88,18 @@ def test_continuation_config_differs_only_in_lr_init_and_output_dirs():
         mask["train"].pop("keep_last")
     assert init == mask
     assert differences == [
-        "bc_init_checkpoint",
         "ppo.lr",
+        "train.num_updates",
+        "train.checkpoint_every",
         "train.out_dir",
         "train.checkpoint_dir",
-        "train.checkpoint_every",
     ]
     loaded = ExperimentConfig.from_json(BC_INIT)
     assert loaded.ppo.lr == 1e-4
+    assert loaded.train.num_updates == 5000
     assert loaded.train.checkpoint_every == 25
     assert loaded.train.keep_last >= 20
-    assert loaded.bc_init_checkpoint == "runs/bc_rulebot_train/bc.pt"
+    assert loaded.bc_init_checkpoint is None
     assert loaded.env.mask_free_fold is True
     assert loaded.model.d_model == ExperimentConfig.from_json(MASKFOLD).model.d_model
     assert ExperimentConfig.from_json(MASKFOLD).bc_init_checkpoint is None

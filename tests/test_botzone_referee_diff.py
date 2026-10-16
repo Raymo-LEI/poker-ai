@@ -110,7 +110,33 @@ def test_scenario_gaps_match_the_judge_formula():
             assert row["our_safe"] >= row["judge_min"]
 
 
-def test_fixture_replay_has_no_order_or_dangerous_mismatch():
+# Acceptance "replay of 41 real matches with 0 mismatch" FAILED.
+# Each row is a real raise the judge accepts (response >= 2*round_raise - own)
+# and our legal.py safe rejects (response < safe). Expected until T-M14b.
+# Do not delete rows or lower the counts to make the replay look clean.
+# count, street, response, our_safe, judge_min, to_call
+EXPECTED_STRICTER_MIN_RAISES = (
+    (15, 0, 150, 200, 150, 50),
+    (5, 0, 400, 500, 300, 150),
+    (3, 0, 800, 900, 700, 350),
+    (2, 0, 450, 500, 300, 150),
+    (2, 0, 900, 1100, 650, 300),
+    (2, 0, 820, 920, 720, 360),
+    (2, 0, 410, 500, 300, 150),
+    (1, 0, 100, 200, 100, 0),
+    (1, 0, 3320, 3520, 2870, 1310),
+    (1, 0, 1600, 1800, 1350, 650),
+    (1, 1, 14600, 16040, 12899, 6319),
+    (1, 0, 1800, 2300, 1250, 600),
+    (1, 1, 4210, 4720, 2940, 1380),
+    (1, 1, 8420, 10380, 6060, 2830),
+    (1, 0, 1700, 1800, 1150, 450),
+    (1, 0, 870, 1000, 550, 250),
+    (1, 0, 870, 920, 720, 360),
+)
+
+
+def test_fixture_replay_records_expected_stricter_min_raises():
     report = replay_fixture()
     assert report["hands"] == 2050
     assert report["matches"] == 41
@@ -118,9 +144,31 @@ def test_fixture_replay_has_no_order_or_dangerous_mismatch():
     assert report["order_mismatches"] == 0
     assert report["judge_rejected_real_actions"] == 0
     assert report["mapped_illegal"] == 0
-    # Real Botzone bets below our minimum. Counted, not "fixed".
+    patterns = tuple(
+        (
+            row["count"],
+            row["street"],
+            row["response"],
+            row["our_safe"],
+            row["judge_min"],
+            row["to_call"],
+        )
+        for row in report["our_rejected_patterns"]
+    )
+
+    def _order(row: tuple) -> tuple:
+        count, street, response, our_safe, _judge_min, _call = row
+        return (-count, street, response, our_safe)
+
+    assert tuple(sorted(patterns, key=_order)) == tuple(
+        sorted(EXPECTED_STRICTER_MIN_RAISES, key=_order)
+    )
+    assert sum(row[0] for row in patterns) == 41
     assert report["our_rejected_real_actions"] == 41
-    assert report["our_rejected_examples"][0]["response"] < report["our_rejected_examples"][0]["our_safe"]
+    for count, _street, response, our_safe, judge_min, call_amount in patterns:
+        assert count >= 1
+        assert judge_min <= response < our_safe
+        assert response > call_amount
 
 
 def test_fuzz_2000_hands_never_sends_a_judge_illegal_bet():

@@ -724,10 +724,12 @@ def undercall_sequence() -> RefereeState:
 
 
 def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Replay the 41-match log. Order and judge acceptance must hold.
+    """Replay the 41-match log.
 
-    A real bet our ``legal_response`` rejects is a conservative mismatch.
-    It is counted, not treated as the judge rejecting us.
+    Action order and the judge's acceptance of the logged bets are checked
+    separately. Real bets our ``legal_response`` rejects are stricter-min
+    mismatches. They are returned in full as ``our_rejected_patterns``
+    (the "0 mismatch" acceptance did not pass). They are not dropped.
     """
 
     import gzip
@@ -746,6 +748,8 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
     judge_rejected_total = 0
     our_rejected_total = 0
     mapped_illegal = 0
+    # Full histogram. Examples above are capped; this list is not.
+    pattern_counts: Dict[Tuple[int, int, int, int, int], int] = {}
     for hand in hands:
         dealer = int(hand["d"])
         game = new_dealt_holdem(dealer)
@@ -792,6 +796,17 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
                     )
             if int(response) not in legal_response(our):
                 our_rejected_total += 1
+                our_safe = safe_extra(our)
+                judge_min = judge_min_positive(state)
+                call_amount = to_call(our)
+                pattern_key = (
+                    int(street),
+                    int(response),
+                    int(our_safe),
+                    int(judge_min),
+                    int(call_amount),
+                )
+                pattern_counts[pattern_key] = pattern_counts.get(pattern_key, 0) + 1
                 if len(our_rejected) < _EXAMPLE_CAP:
                     our_rejected.append(
                         {
@@ -801,12 +816,12 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
                             "actor": int(pid),
                             "street": int(street),
                             "response": int(response),
-                            "our_safe": safe_extra(our),
-                            "judge_min": judge_min_positive(state),
+                            "our_safe": our_safe,
+                            "judge_min": judge_min,
                             "own": state.own_round_bet,
                             "round_raise": state.round_raise,
                             "round_bet": state.round_bet,
-                            "to_call": to_call(our),
+                            "to_call": call_amount,
                         }
                     )
             for mapped in action_responses(our):
@@ -835,6 +850,21 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
         fixture_name = str(fixture.resolve().relative_to(_REPO))
     except ValueError:
         fixture_name = str(fixture)
+    our_rejected_patterns = [
+        {
+            "count": count,
+            "street": street,
+            "response": response,
+            "our_safe": our_safe,
+            "judge_min": judge_min,
+            "to_call": call_amount,
+            "gap": our_safe - response,
+        }
+        for (street, response, our_safe, judge_min, call_amount), count in pattern_counts.items()
+    ]
+    our_rejected_patterns.sort(
+        key=lambda row: (-row["count"], row["street"], row["response"], row["our_safe"])
+    )
     return {
         "fixture": fixture_name,
         "hands": len(hands),
@@ -844,6 +874,7 @@ def replay_fixture(path: Optional[Path] = None) -> Dict[str, Any]:
         "order_examples": order_bad,
         "judge_rejected_real_actions": judge_rejected_total,
         "our_rejected_real_actions": our_rejected_total,
+        "our_rejected_patterns": our_rejected_patterns,
         "our_rejected_examples": our_rejected,
         "mapped_illegal": mapped_illegal,
         "mapped_examples": mapped_bad,

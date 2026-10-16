@@ -159,13 +159,14 @@ def _checkpoint_readable(path: Path) -> bool:
     return fmt in (1, FORMAT_VERSION)
 
 
-def latest_complete_checkpoint(ckpt_dir: Path | str) -> Optional[Path]:
+def latest_complete_checkpoint(ckpt_dir: Path | str, *, verbose: bool = True) -> Optional[Path]:
     """Newest ``update_*.pt`` that ``torch.load`` can read.
 
     Unreadable or half-written files are skipped. ``*.tmp`` is not a
     checkpoint name, so a kill during :func:`save_checkpoint` does not hide
     the previous complete file. Returns ``None`` when every file is bad or
-    the directory is empty.
+    the directory is empty. ``verbose=False`` skips the stdout note so a
+    launcher can read the result without an extra log line.
     """
 
     chosen: Optional[Path] = None
@@ -175,9 +176,37 @@ def latest_complete_checkpoint(ckpt_dir: Path | str) -> Optional[Path]:
             chosen = path
             break
         skipped.append(path)
-    for path in skipped:
-        print(f"[resume] skipping unreadable checkpoint {path}")
+    if verbose:
+        for path in skipped:
+            print(f"[resume] skipping unreadable checkpoint {path}")
     return chosen
+
+
+def choose_launch_mode(ckpt_dir: Path | str) -> str:
+    """``resume`` if any complete PPO checkpoint exists, otherwise ``fresh``.
+
+    The readability check is :func:`latest_complete_checkpoint`, the same one
+    ``--resume auto`` uses. A corrupt newest file with an older complete file
+    is still ``resume`` (auto falls back). An empty directory, or a directory
+    whose ``update_*.pt`` files are all unreadable, is ``fresh``.
+    """
+
+    if latest_complete_checkpoint(ckpt_dir, verbose=False) is None:
+        return "fresh"
+    return "resume"
+
+
+def ppo_launch_args(ckpt_dir: Path | str, bc_checkpoint: Path | str) -> List[str]:
+    """Flags for one autoresume launch. Never mixes resume and init-weights.
+
+    ``fresh`` loads BC weights only (``--init-weights`` plus
+    ``--allow-cross-backend-init``) and does not pass ``--resume``.
+    ``resume`` passes only ``--resume auto``.
+    """
+
+    if choose_launch_mode(ckpt_dir) == "resume":
+        return ["--resume", "auto"]
+    return ["--init-weights", str(bc_checkpoint), "--allow-cross-backend-init"]
 
 
 def capture_env_rngs(envs: Sequence[Any]) -> List[Dict[str, Any]]:

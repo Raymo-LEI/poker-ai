@@ -350,3 +350,210 @@ def test_corrupt_newest_checkpoint_falls_back_during_resume(tmp_path: Path):
     assert previous_update == 0
     assert final["update"] == 2
     assert not (ckpt / "update_0000001.pt").read_bytes().startswith(b"torn-zip")
+
+
+PPO_LR = 1e-4
+BC_LR = 1e-3
+
+
+def _import_training():
+    import alphanl.transformer.botzone_table  # noqa: F401
+    import alphanl.transformer.train as train_mod
+
+    try:
+        from torch.utils.tensorboard import SummaryWriter  # noqa: F401
+    except ImportError:
+        pass
+    return train_mod
+
+
+def _write_bc(path: Path, cfg) -> None:
+    """BC file with Adam lr 1e-3. PPO must not load that optimizer."""
+
+    from alphanl.transformer.checkpoint import save_checkpoint
+    from alphanl.transformer.train import build_model
+
+    model = build_model(cfg)
+    with torch.no_grad():
+        for param in model.parameters():
+            param.fill_(0.02)
+    optimizer = torch.optim.Adam(model.parameters(), lr=BC_LR, eps=cfg.ppo.adam_eps)
+    first = next(model.parameters())
+    first.grad = torch.ones_like(first)
+    optimizer.step()
+    save_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        update=-1,
+        config={"stage": "bc"},
+    )
+
+
+def _launch(cfg, bc: Path, **kwargs):
+    """Call run_training the way train_autoresume.ps1 would for this directory."""
+
+    from alphanl.transformer.checkpoint import choose_launch_mode, ppo_launch_args
+    from alphanl.transformer.train import run_training
+
+    mode = choose_launch_mode(cfg.train.checkpoint_dir)
+    args = ppo_launch_args(cfg.train.checkpoint_dir, bc)
+    if mode == "fresh":
+        assert args == ["--init-weights", str(bc), "--allow-cross-backend-init"]
+        run_training(cfg, init_weights=bc, allow_cross_backend_init=True, **kwargs)
+    else:
+        assert mode == "resume"
+        assert args == ["--resume", "auto"]
+        run_training(cfg, resume="auto", **kwargs)
+    return mode
+
+
+def test_empty_or_unreadable_dir_chooses_fresh_init_weights(tmp_path: Path):
+    from alphanl.transformer.checkpoint import choose_launch_mode, ppo_launch_args
+
+    bc = tmp_path / "bc.pt"
+    assert choose_launch_mode(tmp_path / "missing") == "fresh"
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert choose_launch_mode(empty) == "fresh"
+    assert ppo_launch_args(empty, bc) == [
+        "--init-weights",
+        str(bc),
+        "--allow-cross-backend-init",
+    ]
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    (bad / "update_0000004.pt").write_bytes(b"not-a-checkpoint")
+    (bad / "update_0000004.pt.tmp").write_bytes(b"partial")
+    assert choose_launch_mode(bad) == "fresh"
+
+
+def test_corrupt_newest_with_older_complete_chooses_resume(tmp_path: Path):
+    from alphanl.transformer.checkpoint import (
+        checkpoint_path,
+        choose_launch_mode,
+        ppo_launch_args,
+        save_checkpoint,
+    )
+
+    model = torch.nn.Linear(2, 2)
+    for update in (3, 4):
+        save_checkpoint(
+            checkpoint_path(tmp_path, update),
+            model=model,
+            optimizer=None,
+            update=update,
+            config={"update": update},
+            keep_last=20,
+        )
+    newest = checkpoint_path(tmp_path, 4)
+    newest.write_bytes(b"torn")
+    bc = tmp_path / "bc.pt"
+    assert choose_launch_mode(tmp_path) == "resume"
+    assert ppo_launch_args(tmp_path, bc) == ["--resume", "auto"]
+
+
+def test_launch_mode_cli_prints_one_word(tmp_path: Path):
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "tools" / "train_launch_mode.py"),
+            "--checkpoint-dir",
+            str(tmp_path),
+        ],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "fresh"
+
+
+@pytest.mark.skipif(not HAS_RLCARD, reason="rlcard is not installed")
+def test_relaunch_keeps_ppo_adam_not_bc_init(tmp_path: Path):
+    """3 PPO updates, stop, relaunch via the script's mode choice.
+
+    The second launch must resume PPO weights and Adam (lr 1e-4). It must
+    not pass --init-weights, which would put the BC weights back and drop
+    the PPO Adam (BC was saved at lr 1e-3). The control is one process that
+    also resets tables after update 2, because --resume auto deals a new
+    hand instead of restoring the mid-hand.
+    """
+
+    train_mod = _import_training()
+    bc = tmp_path / "bc.pt"
+    _write_bc(bc, _tiny_cfg(tmp_path / "shape", 1))
+    bc_blob = _load(bc)
+    assert bc_blob["optimizer"]["param_groups"][0]["lr"] == BC_LR
+
+    control = _tiny_cfg(tmp_path / "control", 6)
+    control.ppo.lr = PPO_LR
+    train_mod.run_training(
+        control,
+        init_weights=bc,
+        allow_cross_backend_init=True,
+        reset_envs_after_update=2,
+    )
+
+    split = _tiny_cfg(tmp_path / "split", 6)
+    split.ppo.lr = PPO_LR
+    assert _launch(split, bc, stop_after_update=2) == "fresh"
+    assert _launch(split, bc) == "resume"
+
+    control_blob = _load(Path(control.train.checkpoint_dir) / "update_0000005.pt")
+    resumed = _load(Path(split.train.checkpoint_dir) / "update_0000005.pt")
+    _equal_model(control_blob["model"], resumed["model"])
+    _equal_optimizer(control_blob["optimizer"], resumed["optimizer"])
+    assert resumed["optimizer"]["param_groups"][0]["lr"] == PPO_LR
+    assert len(resumed["optimizer"]["state"]) > 0
+    weight_key = next(iter(resumed["model"]))
+    assert not torch.equal(resumed["model"][weight_key].cpu(), bc_blob["model"][weight_key].cpu())
+
+
+@pytest.mark.skipif(not HAS_RLCARD, reason="rlcard is not installed")
+def test_corrupt_newest_relaunch_uses_older_ppo_not_bc(tmp_path: Path):
+    """Newest file torn, older file complete: launcher stays on --resume auto.
+
+    The continued weights match a run that had only that older file, and
+    they do not match starting over from the BC checkpoint.
+    """
+
+    train_mod = _import_training()
+    bc = tmp_path / "bc.pt"
+    _write_bc(bc, _tiny_cfg(tmp_path / "shape", 1))
+
+    def make(path: Path):
+        cfg = _tiny_cfg(path, 3, checkpoint_every=1)
+        cfg.ppo.lr = PPO_LR
+        return cfg
+
+    ref = make(tmp_path / "ref")
+    split = make(tmp_path / "split")
+    assert _launch(ref, bc, stop_after_update=1) == "fresh"
+    assert _launch(split, bc, stop_after_update=1) == "fresh"
+    ref_old = _load(Path(ref.train.checkpoint_dir) / "update_0000000.pt")
+    split_old = _load(Path(split.train.checkpoint_dir) / "update_0000000.pt")
+    _equal_model(ref_old["model"], split_old["model"])
+    _equal_optimizer(ref_old["optimizer"], split_old["optimizer"])
+    assert ref_old["optimizer"]["param_groups"][0]["lr"] == PPO_LR
+
+    (Path(ref.train.checkpoint_dir) / "update_0000001.pt").unlink()
+    (Path(split.train.checkpoint_dir) / "update_0000001.pt").write_bytes(b"torn-zip")
+    train_mod.run_training(ref, resume="auto")
+    assert _launch(split, bc) == "resume"
+
+    ref_final = _load(Path(ref.train.checkpoint_dir) / "update_0000002.pt")
+    split_final = _load(Path(split.train.checkpoint_dir) / "update_0000002.pt")
+    _equal_model(ref_final["model"], split_final["model"])
+    _equal_optimizer(ref_final["optimizer"], split_final["optimizer"])
+    assert split_final["optimizer"]["param_groups"][0]["lr"] == PPO_LR
+    assert split_final["optimizer"]["param_groups"][0]["lr"] != BC_LR
+
+    fresh = make(tmp_path / "fresh")
+    assert _launch(fresh, bc) == "fresh"
+    fresh_final = _load(Path(fresh.train.checkpoint_dir) / "update_0000002.pt")
+    assert any(
+        not torch.equal(split_final["model"][key].cpu(), fresh_final["model"][key].cpu())
+        for key in split_final["model"]
+    )

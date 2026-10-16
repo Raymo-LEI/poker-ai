@@ -2,17 +2,18 @@
 
 训练进程被杀掉（关机、重启、睡眠把后台进程清掉）之后，下一次登录要自己把 PPO 拉起来，从最近一份**写完的** checkpoint 继续，直到配置里的 `train.num_updates` 跑完。
 
-脚本是 `tools/train_autoresume.ps1`。它循环调用：
+脚本是 `tools/train_autoresume.ps1`。每次启动前它先运行 `tools/train_launch_mode.py`，看 `train.checkpoint_dir` 里有没有一份**能读的 PPO checkpoint**。判定和 `--resume auto` 用的是同一个检查（`torch.load` 能读、带模型、格式是已知版本）。
 
-```text
-python scripts/train_transformer.py --config <配置> --resume auto --updates <目标步数>
-```
+- **fresh**（目录是空的，或者里面的 `update_*.pt` 全都读不出来）：从 BC 权重开训，命令是 `--init-weights <BC 文件> --allow-cross-backend-init`。只加载模型权重，**不**加载 BC 的 Adam。BC 阶段的学习率（例如 1e-3）不会进 PPO。这次命令里没有 `--resume`。
+- **resume**（至少有一份能读的 `update_*.pt`）：命令只有 `--resume auto`，**不**传 `--init-weights`。否则每次重启都会把权重打回 BC。最新一份是坏的、但更早还有一份完好时，仍然是 resume：`--resume auto` 会跳过坏文件，用那份更早的。不会退回 fresh。
+
+半截写入留在同目录的 `.tmp` 上，不算一份完整 checkpoint。每次崩溃重试都会重新判定。第一次 fresh 写出 checkpoint 之后，下一次就是 resume。
 
 - 退出码 **0**：目标步数已经跑完，脚本自己结束，不会空转。
-- 退出码 **2**：配置哈希和 checkpoint 对不上。这不是暂时故障，脚本**不再重试**。先停任务，再决定改回原配置，或显式加上 `-AllowConfigMismatch`。
-- 其他非 0（包括进程被直接杀掉）：等 30 秒，再带 `--resume auto` 启动。
+- 退出码 **2**：配置哈希和 checkpoint 对不上，或者 fresh 时 `-BcCheckpoint` 指向的文件不存在。这不是暂时故障，脚本**不再重试**。先停任务，再改配置或补上 BC 文件；哈希不一致也可以显式加上 `-AllowConfigMismatch`。
+- 其他非 0（包括进程被直接杀掉）：等 30 秒，再重新判定 fresh 还是 resume。
 
-`--resume auto` 只认 `train.checkpoint_dir` 里的 `update_*.pt`。它会跳过读不出来的文件，退回到上一份完整文件；目录里一份都没有就从头训练。半截写入留在同目录的 `.tmp` 上，不会盖掉已经写好的 `update_*.pt`。
+`--resume auto` 只认 `train.checkpoint_dir` 里的 `update_*.pt`（不在 `out_dir`，除非两边配成同一个目录）。`-ExtraArgs --checkpoint-dir <目录>` 时，判定和训练都用这个目录。
 
 牌桌打到一半的状态**不恢复**。续训时各环境重新发牌。checkpoint 里仍有每张牌桌的发牌 RNG，所以同一次边界上的重发是确定的。`--resume`（不带 `auto`）的行为跟以前一样，会接着未打完的那一手。
 
@@ -43,9 +44,12 @@ python scripts/train_transformer.py --config <配置> --resume auto --updates <�
 cd C:\poker-ai
 .\tools\train_autoresume.ps1 `
   -Config configs\transformer\laptop_8gb.json `
+  -BcCheckpoint C:\poker-ai\runs\bc_conv\bc.pt `
   -Python C:\poker-ai\.venv\Scripts\python.exe `
   -LogFile C:\poker-ai\runs\autoresume.log
 ```
+
+`-BcCheckpoint` 是 BC 权重文件，每次任务都要带上。只有目录里还没有完整 PPO checkpoint 时才会用到它。已经有 PPO checkpoint 之后，脚本不会再把这个路径传给训练。
 
 `-TargetUpdates` 可以不写，脚本读配置里的 `train.num_updates`。要改目标步数就显式传入，脚本会把它当成 `--updates` 传给训练（这是总步数，不是“再跑多少”）。
 
@@ -63,7 +67,7 @@ cd C:\poker-ai
 
 ```powershell
 $repo = "C:\poker-ai"
-$arg = "-NoProfile -ExecutionPolicy Bypass -File `"$repo\tools\train_autoresume.ps1`" -Config `"$repo\configs\transformer\laptop_8gb.json`" -Python `"$repo\.venv\Scripts\python.exe`" -LogFile `"$repo\runs\autoresume.log`""
+$arg = "-NoProfile -ExecutionPolicy Bypass -File `"$repo\tools\train_autoresume.ps1`" -Config `"$repo\configs\transformer\laptop_8gb.json`" -BcCheckpoint `"$repo\runs\bc_conv\bc.pt`" -Python `"$repo\.venv\Scripts\python.exe`" -LogFile `"$repo\runs\autoresume.log`""
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet `
@@ -80,7 +84,7 @@ Register-ScheduledTask -TaskName "AlphaNL-TrainAutoresume" -Action $action -Trig
 ### 对照：schtasks /create
 
 ```powershell
-schtasks /create /tn "AlphaNL-TrainAutoresume" /sc onlogon /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\poker-ai\tools\train_autoresume.ps1 -Config C:\poker-ai\configs\transformer\laptop_8gb.json -Python C:\poker-ai\.venv\Scripts\python.exe -LogFile C:\poker-ai\runs\autoresume.log"
+schtasks /create /tn "AlphaNL-TrainAutoresume" /sc onlogon /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\poker-ai\tools\train_autoresume.ps1 -Config C:\poker-ai\configs\transformer\laptop_8gb.json -BcCheckpoint C:\poker-ai\runs\bc_conv\bc.pt -Python C:\poker-ai\.venv\Scripts\python.exe -LogFile C:\poker-ai\runs\autoresume.log"
 ```
 
 `/tr` 有长度上限。路径一长就用上面的 `Register-ScheduledTask`。用 `schtasks` 创建之后，仍要到“任务计划程序”里把“如果任务运行时间超过以下时间，停止任务”改成不限制，否则几天后任务会被系统杀掉，脚本的重试循环也一起没了。

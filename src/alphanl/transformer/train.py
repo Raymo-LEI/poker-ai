@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -10,7 +11,18 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 import torch
 
-from .checkpoint import checkpoint_path, latest_checkpoint, load_checkpoint, save_checkpoint
+from .checkpoint import (
+    ConfigMismatchError,
+    assert_resume_config,
+    checkpoint_path,
+    config_hash,
+    latest_checkpoint,
+    latest_complete_checkpoint,
+    load_checkpoint,
+    restore_env_rngs,
+    restore_rng_state,
+    save_checkpoint,
+)
 from .config import ExperimentConfig, resolve_device, resolve_env_limits
 from .decision_stats import (
     DECISION_STAT_COLUMNS,
@@ -319,6 +331,102 @@ def _append_csv(path: Path, row: Dict[str, Any]) -> None:
         if new_file:
             writer.writeheader()
         writer.writerow(row)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def truncate_metrics_csv(path: Path, start_update: int) -> None:
+    """Drop metrics rows whose ``update`` is at or after ``start_update``.
+
+    Rows from the crashed process that sit past the checkpoint are removed
+    before the resumed run appends them again. The header and earlier rows
+    stay byte-for-byte. The rewrite is atomic (temp file, fsync, replace).
+    """
+
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return
+    lines = text.splitlines(keepends=True)
+    header = lines[0]
+    try:
+        fieldnames = [name.strip() for name in next(csv.reader([header.strip("\r\n")]))]
+    except StopIteration:
+        return
+    if "update" not in fieldnames:
+        return
+    data_lines = lines[1:]
+    parsed_rows = []
+    for line in data_lines:
+        stripped = line.strip("\r\n")
+        if not stripped:
+            parsed_rows.append({})
+            continue
+        parsed_rows.append(next(csv.DictReader([header.strip("\r\n"), stripped])))
+    kept = [header if header.endswith(("\n", "\r\n")) else header + "\n"]
+    dropped = False
+    for line, row in zip(data_lines, parsed_rows):
+        if not row:
+            piece = line if line.endswith(("\n", "\r\n")) else line + "\n"
+            kept.append(piece)
+            continue
+        raw = row.get("update", "")
+        try:
+            update = int(str(raw).strip())
+        except (TypeError, ValueError):
+            piece = line if line.endswith(("\n", "\r\n")) else line + "\n"
+            kept.append(piece)
+            continue
+        if update < int(start_update):
+            piece = line if line.endswith(("\n", "\r\n")) else line + "\n"
+            kept.append(piece)
+        else:
+            dropped = True
+    if not dropped:
+        return
+    payload = "".join(kept)
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("w", newline="", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+
+
+def reset_envs_from_rng_snapshot(
+    envs: Sequence[Any],
+    actor: Any,
+    blob: Dict[str, Any],
+) -> List[Dict[str, torch.Tensor]]:
+    """Restore RNGs, then deal a new hand on every table.
+
+    The in-progress hand in ``blob["envs"]`` is not loaded. ``--resume auto``
+    and the equality-test control both call this, so the next rollout starts
+    from the same deal. The rollout net is set to eval first: PPO leaves the
+    learner in eval, and a freshly built resume model would otherwise still
+    be in train mode.
+    """
+
+    rollout = getattr(actor, "rollout_model", None)
+    if rollout is not None:
+        rollout.eval()
+    shadow = getattr(actor, "shadow", None)
+    if shadow is not None:
+        shadow.eval()
+    opponents = getattr(actor, "_opponents", None)
+    if isinstance(opponents, dict):
+        opponents.clear()
+    restore_rng_state(blob.get("rng"))
+    actor_rng = blob.get("actor_rng")
+    if actor_rng is not None and hasattr(actor, "set_rng_state"):
+        actor.set_rng_state(actor_rng)
+    restore_env_rngs(envs, blob.get("env_rngs"))
+    obs = []
+    for env in envs:
+        obs.append(env.reset())
+        env.drain_passive_rewards()
+    return obs
 
 
 def _make_writer(log_dir: Path):
@@ -411,19 +519,60 @@ def refuse_botzone_init_weights(
         )
 
 
+def _resolve_resume(resume: Optional[Path | str], ckpt_dir: Path) -> tuple:
+    """Return ``(mode, path)``. ``path`` is ``None`` when this run starts fresh.
+
+    ``latest`` is the newest filename and is not opened here. ``auto`` skips
+    unreadable files and is ``None`` when the directory has no complete
+    checkpoint. A filesystem path is returned as-is.
+    """
+
+    if resume is None:
+        return None, None
+    label = str(resume)
+    if label == "auto":
+        path = latest_complete_checkpoint(ckpt_dir)
+        if path is None:
+            print(f"[resume] auto: no complete checkpoint in {ckpt_dir}, starting fresh")
+        else:
+            print(f"[resume] auto: {path}")
+        return "auto", path
+    if label == "latest":
+        path = latest_checkpoint(ckpt_dir)
+        print(f"[resume] {'starting fresh, no checkpoint in ' + str(ckpt_dir) if path is None else path}")
+        return "latest", path
+    return "path", Path(resume)
+
+
 def run_training(
     cfg: ExperimentConfig,
     *,
     resume: Optional[Path | str] = None,
     init_weights: Optional[Path | str] = None,
     allow_cross_backend_init: bool = False,
+    allow_config_mismatch: bool = False,
+    reset_envs_after_update: Optional[int] = None,
+    stop_after_update: Optional[int] = None,
 ) -> Path:
     """Run ``cfg.train.num_updates`` PPO updates. Returns the output directory.
 
-    ``resume`` is a checkpoint path, or ``"latest"`` to pick the newest
-    ``update_*.pt`` in ``cfg.train.checkpoint_dir`` (starts fresh if none).
+    ``resume`` is a checkpoint path, ``"latest"`` (newest ``update_*.pt``,
+    fresh if the directory is empty), or ``"auto"`` (newest file that
+    actually loads; corrupt files are skipped; fresh if none load).
+    ``"auto"`` refuses when ``config_hash`` differs unless
+    ``allow_config_mismatch`` is set. It restores RNGs and the opponent
+    pool, then resets every table instead of loading the mid-hand.
+    ``"latest"`` and a path still restore the mid-hand when the checkpoint
+    has one.
+
     ``init_weights`` loads model weights only. It is refused when
     ``cfg.env.backend`` is ``botzone`` unless ``allow_cross_backend_init``.
+
+    ``reset_envs_after_update`` and ``stop_after_update`` are test seams.
+    Both default to off. The first reruns the auto-resume reset after that
+    update's checkpoint so an in-process control matches ``--resume auto``.
+    The second returns after that update without the usual final-save, which
+    is how tests stand in for a kill between updates.
     """
 
     # A botzone config that still carries the rlcard 1/2/100 defaults is
@@ -451,9 +600,7 @@ def run_training(
     use_amp = amp_enabled(cfg.train.amp, train_device)  # auto-off on CPU
     scaler = make_grad_scaler(use_amp, train_device)
     ckpt_dir = Path(cfg.train.checkpoint_dir)
-    if resume is not None and str(resume) == "latest":
-        resume = latest_checkpoint(ckpt_dir)
-        print(f"[resume] {'starting fresh, no checkpoint in ' + str(ckpt_dir) if resume is None else resume}")
+    resume_mode, resume_path = _resolve_resume(resume, ckpt_dir)
     pool = OpponentPool(
         max_size=cfg.pool.max_size,
         selfplay_prob=cfg.pool.selfplay_prob,
@@ -462,13 +609,29 @@ def run_training(
         seed=cfg.seed,
     )
     start_update = 0
-    if resume is not None and init_weights is not None:
+    blob = None
+    if resume_path is not None and init_weights is not None:
         raise ValueError("pass only one of resume and init_weights")
-    if resume is not None:
+    if resume_path is not None:
         # RNG states are restored after the tables are built (building them consumes RNG).
         blob = load_checkpoint(
-            resume, learner, optimizer, pool, map_location=str(train_device), scaler=scaler, restore_rng=False
+            resume_path, learner, optimizer, pool, map_location=str(train_device), scaler=scaler, restore_rng=False
         )
+        if resume_mode == "auto":
+            assert_resume_config(
+                blob.get("config"),
+                blob.get("config_hash"),
+                cfg.to_dict(),
+                allow=allow_config_mismatch,
+                path=resume_path,
+            )
+            if allow_config_mismatch and blob.get("config_hash") not in (None, ""):
+                if config_hash(cfg.to_dict()) != blob.get("config_hash"):
+                    print(f"[resume] auto: config hash mismatch ignored for {resume_path}")
+            if not blob.get("config_hash"):
+                print(f"[resume] auto: {resume_path} has no config hash; continuing")
+            if blob.get("env_rngs") is None:
+                print(f"[resume] auto: {resume_path} has no per-env RNG snapshot; tables reset from their seeds")
         start_update = int(blob["update"]) + 1
     elif init_weights is not None:
         # BC warm start: model weights only. Fresh Adam, fresh tables, update 0.
@@ -503,8 +666,15 @@ def run_training(
         )
         for index in range(cfg.ppo.num_envs)
     ]
-    resumed_tables = resume is not None and blob.get("envs") is not None and len(blob["envs"]) == len(envs)
-    if resumed_tables:
+    resumed_tables = (
+        resume_mode in ("latest", "path")
+        and blob is not None
+        and blob.get("envs") is not None
+        and len(blob["envs"]) == len(envs)
+    )
+    if resume_mode == "auto" and blob is not None:
+        obs = reset_envs_from_rng_snapshot(envs, actor, blob)
+    elif resumed_tables:
         for env, env_state in zip(envs, blob["envs"]):
             env.load_state_dict(env_state)
         if blob.get("actor_rng") is not None:
@@ -514,12 +684,12 @@ def run_training(
         obs = [env.reset() for env in envs]
         for env in envs:
             env.drain_passive_rewards()
-    if resume is not None:
-        from .checkpoint import restore_rng_state
-
+    if resume_mode in ("latest", "path") and blob is not None:
         restore_rng_state(blob.get("rng"))
     writer = _make_writer(out_dir / "tb")
     csv_path = out_dir / "metrics.csv"
+    if resume_path is not None:
+        truncate_metrics_csv(csv_path, start_update)
 
     def _save(update: int) -> None:
         save_checkpoint(
@@ -536,6 +706,7 @@ def run_training(
         )
 
     last_saved = None
+    finished = True
 
     for update in range(start_update, cfg.train.num_updates):
         started = time.perf_counter()
@@ -619,8 +790,25 @@ def run_training(
         if cfg.train.checkpoint_every > 0 and (update + 1) % cfg.train.checkpoint_every == 0:
             _save(update)
             last_saved = update
+        if reset_envs_after_update is not None and update == int(reset_envs_after_update):
+            # Same bytes --resume auto will load: RNG snapshot from this update,
+            # then a fresh deal. The hand inside the checkpoint is not restored.
+            saved = checkpoint_path(ckpt_dir, update)
+            if not saved.is_file():
+                raise RuntimeError(
+                    f"reset_envs_after_update={update} but {saved} was not written. "
+                    "checkpoint_every must save that update."
+                )
+            try:
+                snap = torch.load(saved, map_location="cpu", weights_only=False)
+            except TypeError:
+                snap = torch.load(saved, map_location="cpu")
+            obs = reset_envs_from_rng_snapshot(envs, actor, snap)
+        if stop_after_update is not None and update >= int(stop_after_update):
+            finished = False
+            break
     final_update = cfg.train.num_updates - 1
-    if final_update >= start_update and last_saved != final_update:
+    if finished and final_update >= start_update and last_saved != final_update:
         _save(final_update)
     if writer is not None:
         writer.close()

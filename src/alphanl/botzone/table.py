@@ -21,7 +21,7 @@ from __future__ import annotations
 import itertools
 import random
 from importlib.metadata import PackageNotFoundError, version
-from typing import Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from .legal import STARTING_STACK, TOTAL_CHIPS, HandState, apply, legal_response, new_hand
 
@@ -152,6 +152,16 @@ class BotzoneTable:
         self._board: Optional[Tuple[int, int, int, int, int]] = None
         self._winners: Tuple[int, ...] = ()
         self._showed = False
+
+    def rng_state(self) -> Dict[str, Any]:
+        """Deck RNG and the dealer used when ``start_hand`` is not given one."""
+
+        return {"random": self._rng.getstate(), "next_dealer": int(self._next_dealer)}
+
+    def set_rng_state(self, state: Dict[str, Any]) -> None:
+        version, seq, gauss = state["random"]
+        self._rng.setstate((int(version), tuple(int(item) for item in seq), gauss))
+        self._next_dealer = int(state["next_dealer"])
 
     def start_hand(
         self,

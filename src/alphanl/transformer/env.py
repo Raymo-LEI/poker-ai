@@ -35,6 +35,7 @@ import torch
 import torch.nn as nn
 
 from .config import resolve_env_limits
+from .decision_stats import policy_action_mask
 from .history import BIG_BLIND_CHIPS, SMALL_BLIND_CHIPS, STARTING_STACK
 from .pool import OpponentPool
 from .tables import make_table
@@ -245,6 +246,7 @@ class SelfPlayEnv:
         backend: str = "rlcard",
         record_results: bool = True,
         observer: Optional[Any] = None,
+        mask_free_fold: bool = False,
     ) -> None:
         small_blind, big_blind, starting_stack = resolve_env_limits(
             backend, small_blind, big_blind, starting_stack
@@ -258,6 +260,10 @@ class SelfPlayEnv:
         self.small_blind = int(small_blind)
         self.starting_stack = float(starting_stack)
         self.record_results = record_results
+        # Policy copies (self-play and the pool) use this. Random opponents
+        # keep the environment mask. The flag is not part of the table blob:
+        # a resume builds the env from the config and then loads the hand.
+        self.mask_free_fold = bool(mask_free_fold)
         self.rng = np.random.default_rng(seed)
         self.table = make_table(
             self.backend,
@@ -454,11 +460,26 @@ class SelfPlayEnv:
             else:
                 self.actor.prepare_pool(self.choice["weights"])
 
+    def _policy_batch(self, batch: TensorBatch, seat: int) -> TensorBatch:
+        """Environment mask for a random opponent. Policy mask otherwise.
+
+        Fold at a free check stays in the batch a random opponent draws from.
+        A neural opponent sees the same mask the learner samples from.
+        """
+
+        if not self.mask_free_fold or self.choice.get("kind") == "random":
+            return batch
+        owed = float(self.table.snapshot(int(seat)).to_call)
+        masked = dict(batch)
+        masked["legal_mask"] = policy_action_mask(batch["legal_mask"], owed, True)
+        return masked
+
     def _actor_choose(self, seat: int) -> int:
         pre, self._prefetched = self._prefetched, None
         if pre is not None:
-            return self.actor.act_batch(pre[0], self.choice, logits=pre[1])
-        batch = self._observe_seat(seat)
+            batch = self._policy_batch(pre[0], seat)
+            return self.actor.act_batch(batch, self.choice, logits=pre[1])
+        batch = self._policy_batch(self._observe_seat(seat), seat)
         if hasattr(self.actor, "act_batch"):
             return self.actor.act_batch(batch, self.choice)
         return self.actor.act(self.table.snapshot(int(seat)), self.choice)

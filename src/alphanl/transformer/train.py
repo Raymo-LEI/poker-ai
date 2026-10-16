@@ -15,6 +15,7 @@ from .config import ExperimentConfig, resolve_device, resolve_env_limits
 from .decision_stats import (
     DECISION_STAT_COLUMNS,
     empty_decision_stats,
+    policy_action_mask,
     summarize_rollout_decisions,
 )
 from .env import PolicyActor, SelfPlayEnv, gae_reward_depth, logged_bb_from_reward
@@ -23,7 +24,16 @@ from .pool import OpponentPool
 from .ppo import amp_enabled, compute_gae, make_grad_scaler, ppo_update
 from .tokenizer import BettingHistoryTokenizer, batch_to_device, cat_batches
 
-_PPO_SKIP = {"actions", "old_logp", "old_values", "advantages", "returns", "rewards", "dones"}
+_PPO_SKIP = {
+    "actions",
+    "old_logp",
+    "old_values",
+    "advantages",
+    "returns",
+    "rewards",
+    "dones",
+    "to_call",
+}
 
 
 def set_seed(seed: int) -> None:
@@ -85,6 +95,16 @@ def _log_decision_stats_enabled() -> bool:
     return True
 
 
+def mask_free_fold_enabled(flag: bool) -> bool:
+    """Whether this process should mask free folds for the policy.
+
+    Tests monkeypatch this to false to replay the branch from before the
+    switch existed. The config field is still recorded on the checkpoint.
+    """
+
+    return bool(flag)
+
+
 def _read_to_call(env: Any) -> Optional[float]:
     """Chips the hero owes right now, or ``None`` if this env cannot say.
 
@@ -114,6 +134,8 @@ def collect_rollout(
     model: torch.nn.Module,
     device: torch.device,
     rollout_steps: int,
+    *,
+    mask_free_fold: bool = False,
 ) -> tuple:
     """Step each env ``rollout_steps`` hero decisions.
 
@@ -147,19 +169,42 @@ def collect_rollout(
     decision_entropy = torch.zeros(num_envs, rollout_steps) if log_stats else None
     decision_to_call = torch.zeros(num_envs, rollout_steps) if log_stats else None
     to_call_known = True
+    # Chips owed at the hero decision, kept so the PPO re-forward can rebuild
+    # the same policy mask. Absent when the switch is off, so that path does
+    # not add a tensor to storage.
+    mask_to_call = (
+        torch.full((num_envs, rollout_steps), float("nan"), dtype=torch.float32)
+        if mask_free_fold
+        else None
+    )
 
     model.eval()
     for t in range(rollout_steps):
         stacked = batch_to_device(cat_batches(obs), device)
+        owed_now = None
+        if mask_free_fold:
+            # Read before the step. ``act`` does not change the table, so this
+            # is the chips owed at the decision the policy is about to take.
+            owed_now = [_read_to_call(env) for env in envs]
+            owed_tensor = torch.tensor(
+                [float("nan") if value is None else float(value) for value in owed_now],
+                dtype=stacked["legal_mask"].dtype,
+                device=stacked["legal_mask"].device,
+            )
+            stacked = dict(stacked)
+            stacked["legal_mask"] = policy_action_mask(stacked["legal_mask"], owed_tensor, True)
+            for env_index, value in enumerate(owed_now):
+                if value is not None:
+                    mask_to_call[env_index, t] = float(value)
         with torch.no_grad():
             act, logp, values, ent = model.act(stacked, deterministic=False)
         act = act.cpu()
         logp = logp.cpu()
         values = values.cpu()
-        owed_now = None
         if log_stats:
             ent = ent.detach().cpu()
-            owed_now = [_read_to_call(env) for env in envs]
+            if owed_now is None:
+                owed_now = [_read_to_call(env) for env in envs]
         batched = _batching(envs)
         if batched:
             # T-C1b: push every hero action, then one opponent forward per
@@ -208,6 +253,8 @@ def collect_rollout(
             "bootstrap": bootstrap.detach().cpu(),
         }
     )
+    if mask_to_call is not None:
+        storage["to_call"] = mask_to_call
     terminal = dones > 0.5
     if int(terminal.sum()) == 0:
         mean_reward = 0.0
@@ -308,10 +355,12 @@ def evaluate_vs_random(
         backend=cfg.env.backend,
         record_results=False,
         observer=observer_for(cfg),
+        mask_free_fold=mask_free_fold_enabled(cfg.env.mask_free_fold),
     )
     env.force_opponent = {"kind": "random", "policy_id": None, "weights": None}
     total = 0.0
     played = 0
+    use_mask = mask_free_fold_enabled(cfg.env.mask_free_fold)
     while played < int(n_hands):
         env.reset()
         backend = cfg.env.backend
@@ -324,6 +373,14 @@ def evaluate_vs_random(
         reward = 0.0
         while not done:
             batch = batch_to_device(env.observe(), device)
+            if use_mask:
+                owed = _read_to_call(env)
+                batch = dict(batch)
+                batch["legal_mask"] = policy_action_mask(
+                    batch["legal_mask"],
+                    float("nan") if owed is None else float(owed),
+                    True,
+                )
             actions, _, _, _ = model.act(batch, deterministic=True)
             _, reward, done, _info = env.step(int(actions.item()))
         total += logged_bb_from_reward(reward, backend)
@@ -430,6 +487,7 @@ def run_training(
     shadow = build_model(cfg).to(rollout_device)
     actor_rng = np.random.default_rng(cfg.seed + 17)
     actor = PolicyActor(rollout_model, shadow, tokenizer, actor_rng)
+    use_mask = mask_free_fold_enabled(cfg.env.mask_free_fold)
     envs = [
         SelfPlayEnv(
             tokenizer,
@@ -441,6 +499,7 @@ def run_training(
             starting_stack=cfg.env.starting_stack,
             backend=cfg.env.backend,
             observer=observer_for(cfg),
+            mask_free_fold=use_mask,
         )
         for index in range(cfg.ppo.num_envs)
     ]
@@ -482,9 +541,17 @@ def run_training(
         started = time.perf_counter()
         _sync_weights(learner, rollout_model)
         rollout_model.eval()
-        storage, stats = collect_rollout(envs, obs, rollout_model, rollout_device, cfg.ppo.rollout_steps)
+        storage, stats = collect_rollout(
+            envs,
+            obs,
+            rollout_model,
+            rollout_device,
+            cfg.ppo.rollout_steps,
+            mask_free_fold=use_mask,
+        )
         flat = flatten_rollout(storage, cfg.ppo.gamma, cfg.ppo.gae_lambda)
         flat = {key: value.to(train_device) for key, value in flat.items()}
+        decision_to_call = flat.get("to_call")
         metrics = ppo_update(
             learner,
             optimizer,
@@ -503,6 +570,8 @@ def run_training(
             amp=use_amp,
             scaler=scaler,
             value_clip_eps=cfg.ppo.value_clip_eps,
+            mask_free_fold=use_mask,
+            to_call=decision_to_call if use_mask else None,
         )
         if cfg.pool.snapshot_every > 0 and (update + 1) % cfg.pool.snapshot_every == 0:
             pool.add(learner.state_dict())

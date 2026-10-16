@@ -25,6 +25,11 @@ hero seat 0) is printed for comparison only. This script does not recompute it.
 No AMP. ``--device auto`` uses CUDA when it is present, otherwise CPU.
 
     PYTHONPATH=src python eval/eval_botzone_checkpoint.py --ckpt-dir runs/ckpt_botzone --hands 5000 --seed 42 --mode both
+
+``--mask-free-fold`` / ``--no-mask-free-fold`` apply the policy mask at
+inference. If neither is passed, the value is ``env.mask_free_fold`` in the
+checkpoint, and a missing key means false. The report prints which value
+was used.
 """
 
 from __future__ import annotations
@@ -202,6 +207,7 @@ def play_hands(
     n_hands: int,
     seed: int,
     device: torch.device,
+    mask_free_fold: bool = False,
 ) -> List[int]:
     """Hero chip deltas for ``n_hands`` complete hands.
 
@@ -264,6 +270,7 @@ def play_hands(
                 moved["legal_mask"],
                 float(snapshot.to_call),
                 mode=mode,
+                mask_free_fold=mask_free_fold,
             )
             table.step(decision.action)
         payoffs = table.payoffs()
@@ -310,6 +317,7 @@ def render_report(payload: dict) -> str:
             f"seed: {payload['seed']}  hands: {payload['hands']}  "
             f"device: {payload['device']}  mode: {payload['mode']}  amp: off"
         ),
+        f"mask_free_fold: {payload['mask_free_fold_source']}",
         payload["seat_schedule"],
         f"M7 reference R = {payload['reference_R']:.2f} bb/100 ({payload['reference_R_note']})",
         "",
@@ -374,6 +382,10 @@ def evaluate(args: argparse.Namespace) -> dict:
         device,
         ckpt_path=args.ckpt_file,
     )
+    mask_free_fold, mask_source = _COLLAPSE.resolve_mask_free_fold(
+        getattr(args, "mask_free_fold", None),
+        getattr(cfg, "checkpoint_config", {}),
+    )
     opponents = {}
     for opponent in ("rule", "random"):
         opponents[opponent] = {"name": OPPONENT_NAMES[opponent]}
@@ -386,6 +398,7 @@ def evaluate(args: argparse.Namespace) -> dict:
                 n_hands=args.hands,
                 seed=args.seed,
                 device=device,
+                mask_free_fold=mask_free_fold,
             )
             opponents[opponent][mode] = _block(chips, opponent, mode)
     return {
@@ -403,6 +416,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         "mode": args.mode,
         "modes": list(modes),
         "amp": False,
+        "mask_free_fold": bool(mask_free_fold),
+        "mask_free_fold_source": mask_source,
         "reference_R": M7_REFERENCE_R,
         "reference_R_hands": M7_REFERENCE_R_HANDS,
         "reference_R_seed": M7_REFERENCE_R_SEED,
@@ -460,6 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Policy device. auto picks cuda when it is present. No AMP.",
     )
+    _COLLAPSE.add_mask_free_fold_argument(parser)
     return parser
 
 

@@ -82,32 +82,39 @@ def test_action_ids_stay_width_five():
     ) == (0, 1, 2, 3, 4)
 
 
-def test_hand1_sb_open_raise_min_200_large_400():
+def test_hand1_sb_open_raise_min_150_large_300():
     state = new_hand(dealer=0)
     assert state.pot == 150
-    assert safe_extra(state) == 200
+    assert safe_extra(state) == 150
 
     _assert_one_source(state)
     assert legal_action_ids(state) == (0, 1, 2, 3, 4)
     assert response_for_action(state, FOLD_ACTION) == -1
     assert response_for_action(state, CHECK_CALL_ACTION) == 0
-    assert response_for_action(state, RAISE_MIN_ACTION) == 200
-    assert response_for_action(state, RAISE_LARGE_ACTION) == max(200 * 2, 150) == 400
+    assert response_for_action(state, RAISE_MIN_ACTION) == 150
+    assert response_for_action(state, RAISE_LARGE_ACTION) == max(150 * 2, 150) == 300
     assert response_for_action(state, ALL_IN_ACTION) == -2
+    # legal_action_ids does not collapse equal responses. These two differ,
+    # so both ids stay. raise_large = max(safe * 2, pot) is above safe
+    # whenever safe >= 1, so the new minimum cannot make them the same bet.
+    assert response_for_action(state, RAISE_LARGE_ACTION) > response_for_action(
+        state, RAISE_MIN_ACTION
+    )
 
 
-def test_hand2_bb_safe_500_raise_large_1000():
+def test_hand2_bb_safe_300_raise_large_600():
     state = apply(new_hand(dealer=0), 200)
     assert state.actor == 0
     assert state.pot == 350
-    assert safe_extra(state) == 500
+    assert safe_extra(state) == 300
 
     _assert_one_source(state)
     assert response_for_action(state, CHECK_CALL_ACTION) == 0
-    assert response_for_action(state, RAISE_MIN_ACTION) == 500
-    assert response_for_action(state, RAISE_LARGE_ACTION) == max(500 * 2, 350) == 1000
-    assert 1000 in legal_response(state)
-    assert 400 not in legal_response(state)
+    assert response_for_action(state, RAISE_MIN_ACTION) == 300
+    assert response_for_action(state, RAISE_LARGE_ACTION) == max(300 * 2, 350) == 600
+    assert 600 in legal_response(state)
+    assert 299 not in legal_response(state)
+    assert 400 in legal_response(state)
 
 
 def test_hand3_flop_min_bet_100_large_is_pot():
@@ -142,13 +149,17 @@ def test_hand5_exact_stack_masks_call_and_both_raises():
     assert 0 not in legal_response(facing)
     assert response_for_action(facing, CHECK_CALL_ACTION) is None
 
+    # A 500 commit is a bet of at least 500, so round_raise >= 500 and
+    # bound_b >= 1000. The old fixture left bound_b at the postflop reset
+    # (100) and relied on bound A. The minimum is now 1000, which does not
+    # fit in a 500 stack, so both raise ids stay masked.
     exact = HandState(
         dealer=0,
         street=1,
         stacks=(500, 10_000),
         street_commit=(0, 500),
         pot=500,
-        bound_b=100,
+        bound_b=1000,
         actor=0,
         all_in=(False, False),
         folded=(False, False),
@@ -168,7 +179,7 @@ def test_hand5_exact_stack_masks_call_and_both_raises():
         stacks=(501, 10_000),
         street_commit=(0, 500),
         pot=500,
-        bound_b=100,
+        bound_b=1000,
         actor=0,
         all_in=(False, False),
         folded=(False, False),

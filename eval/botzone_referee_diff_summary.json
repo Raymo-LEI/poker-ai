@@ -1,6 +1,6 @@
 {
-  "conservative_decisions": 47049,
-  "decisions": 79165,
+  "conservative_decisions": 0,
+  "decisions": 78663,
   "desyncs": 0,
   "examples_desync": [],
   "examples_spec_disagreement": [
@@ -8,475 +8,286 @@
       "actor": 0,
       "chips": [
         19900,
-        19550
+        19650
       ],
       "dealer": 0,
-      "judge_min_positive": 700,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 900,
-      "pot": 550,
-      "response": 700,
-      "round_bet": 450,
-      "round_player_bet": [
-        100,
-        450
-      ],
-      "round_raise": 400,
-      "street": 0,
-      "to_call": 350
-    },
-    {
-      "actor": 1,
-      "chips": [
-        18100,
-        19550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 3150,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 3800,
-      "pot": 2350,
-      "response": 3150,
-      "round_bet": 1900,
-      "round_player_bet": [
-        1900,
-        450
-      ],
-      "round_raise": 1800,
-      "street": 0,
-      "to_call": 1450
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 300,
+      "judge_min_positive": 500,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
       "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        250,
-        100
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 300,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        250,
-        100
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19900,
-        19550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 700,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 900,
-      "pot": 550,
-      "response": 700,
-      "round_bet": 450,
+      "pot": 450,
+      "response": 500,
+      "round_bet": 350,
       "round_player_bet": [
         100,
-        450
+        350
       ],
-      "round_raise": 400,
+      "round_raise": 300,
       "street": 0,
-      "to_call": 350
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19000,
-        19550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 1350,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 2000,
-      "pot": 1450,
-      "response": 1350,
-      "round_bet": 1000,
-      "round_player_bet": [
-        1000,
-        450
-      ],
-      "round_raise": 900,
-      "street": 0,
-      "to_call": 550
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19000,
-        15550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 7000,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 8900,
-      "pot": 5450,
-      "response": 7000,
-      "round_bet": 4450,
-      "round_player_bet": [
-        1000,
-        4450
-      ],
-      "round_raise": 4000,
-      "street": 0,
-      "to_call": 3450
-    },
-    {
-      "actor": 1,
-      "chips": [
-        10100,
-        15550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 13350,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": null,
-      "pot": 14350,
-      "response": 13350,
-      "round_bet": 9900,
-      "round_player_bet": [
-        9900,
-        4450
-      ],
-      "round_raise": 8900,
-      "street": 0,
-      "to_call": 5450
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19900,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 300,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        100,
-        250
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
+      "to_call": 250
     },
     {
       "actor": 1,
       "chips": [
         18900,
-        19750
+        19650
       ],
       "dealer": 0,
-      "judge_min_positive": 1750,
+      "judge_min_positive": 1650,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 2200,
-      "pot": 1350,
-      "response": 1750,
+      "our_safe": 1650,
+      "pot": 1450,
+      "response": 1650,
       "round_bet": 1100,
       "round_player_bet": [
         1100,
-        250
+        350
       ],
       "round_raise": 1000,
       "street": 0,
-      "to_call": 850
+      "to_call": 750
     },
     {
-      "actor": 0,
+      "actor": 1,
       "chips": [
-        18900,
-        17550
+        19800,
+        19900
       ],
-      "dealer": 0,
-      "judge_min_positive": 3300,
+      "dealer": 1,
+      "judge_min_positive": 200,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 4900,
-      "pot": 3550,
-      "response": 3300,
-      "round_bet": 2450,
+      "our_safe": 200,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
       "round_player_bet": [
-        1100,
-        2450
+        200,
+        100
       ],
-      "round_raise": 2200,
+      "round_raise": 150,
       "street": 0,
-      "to_call": 1350
+      "to_call": 100
+    },
+    {
+      "actor": 1,
+      "chips": [
+        19800,
+        19900
+      ],
+      "dealer": 1,
+      "judge_min_positive": 200,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 200,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
+      "round_player_bet": [
+        200,
+        100
+      ],
+      "round_raise": 150,
+      "street": 0,
+      "to_call": 100
     },
     {
       "actor": 0,
       "chips": [
         19900,
-        19750
+        19650
       ],
       "dealer": 0,
-      "judge_min_positive": 300,
+      "judge_min_positive": 500,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
       "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
+      "pot": 450,
+      "response": 500,
+      "round_bet": 350,
       "round_player_bet": [
         100,
-        250
+        350
       ],
-      "round_raise": 200,
+      "round_raise": 300,
       "street": 0,
-      "to_call": 150
+      "to_call": 250
     },
     {
       "actor": 1,
       "chips": [
-        19750,
-        19750
+        19400,
+        19650
       ],
       "dealer": 0,
-      "judge_min_positive": 100,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
-      "our_safe": 100,
-      "pot": 500,
-      "response": 99,
-      "round_bet": 0,
-      "round_player_bet": [
-        0,
-        0
-      ],
-      "round_raise": 50,
-      "street": 1,
-      "to_call": 0
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19750,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 100,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
-      "our_safe": 100,
-      "pot": 500,
-      "response": 99,
-      "round_bet": 0,
-      "round_player_bet": [
-        0,
-        0
-      ],
-      "round_raise": 50,
-      "street": 1,
-      "to_call": 0
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 100,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
-      "our_safe": 100,
-      "pot": 500,
-      "response": 99,
-      "round_bet": 0,
-      "round_player_bet": [
-        0,
-        0
-      ],
-      "round_raise": 50,
-      "street": 2,
-      "to_call": 0
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19750,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 100,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
-      "our_safe": 100,
-      "pot": 500,
-      "response": 99,
-      "round_bet": 0,
-      "round_player_bet": [
-        0,
-        0
-      ],
-      "round_raise": 50,
-      "street": 2,
-      "to_call": 0
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 100,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
-      "our_safe": 100,
-      "pot": 500,
-      "response": 99,
-      "round_bet": 0,
-      "round_player_bet": [
-        0,
-        0
-      ],
-      "round_raise": 50,
-      "street": 3,
-      "to_call": 0
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19750,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 100,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
-      "our_safe": 100,
-      "pot": 500,
-      "response": 99,
-      "round_bet": 0,
-      "round_player_bet": [
-        0,
-        0
-      ],
-      "round_raise": 50,
-      "street": 3,
-      "to_call": 0
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 300,
+      "judge_min_positive": 650,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        250,
-        100
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19750,
-        19400
-      ],
-      "dealer": 1,
-      "judge_min_positive": 750,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 1200,
-      "pot": 850,
-      "response": 750,
+      "our_safe": 650,
+      "pot": 950,
+      "response": 650,
       "round_bet": 600,
       "round_player_bet": [
-        250,
-        600
+        600,
+        350
       ],
       "round_raise": 500,
       "street": 0,
-      "to_call": 350
+      "to_call": 250
+    },
+    {
+      "actor": 0,
+      "chips": [
+        19400,
+        18350
+      ],
+      "dealer": 0,
+      "judge_min_positive": 2000,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 2000,
+      "pot": 2250,
+      "response": 2000,
+      "round_bet": 1650,
+      "round_player_bet": [
+        600,
+        1650
+      ],
+      "round_raise": 1300,
+      "street": 0,
+      "to_call": 1050
     },
     {
       "actor": 1,
       "chips": [
-        17350,
-        19400
+        17400,
+        18350
       ],
-      "dealer": 1,
-      "judge_min_positive": 4200,
+      "dealer": 0,
+      "judge_min_positive": 2350,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 5300,
-      "pot": 3250,
-      "response": 4200,
-      "round_bet": 2650,
+      "our_safe": 2350,
+      "pot": 4250,
+      "response": 2350,
+      "round_bet": 2600,
       "round_player_bet": [
-        2650,
-        600
+        2600,
+        1650
       ],
-      "round_raise": 2400,
+      "round_raise": 2000,
       "street": 0,
-      "to_call": 2050
+      "to_call": 950
     },
     {
       "actor": 0,
       "chips": [
         19900,
-        19750
+        19800
       ],
       "dealer": 0,
-      "judge_min_positive": 300,
+      "judge_min_positive": 200,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
+      "our_safe": 200,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
       "round_player_bet": [
         100,
-        250
+        200
       ],
-      "round_raise": 200,
+      "round_raise": 150,
       "street": 0,
-      "to_call": 150
+      "to_call": 100
     },
     {
       "actor": 1,
       "chips": [
-        19750,
-        19750
+        19500,
+        19800
+      ],
+      "dealer": 0,
+      "judge_min_positive": 600,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 600,
+      "pot": 700,
+      "response": 600,
+      "round_bet": 500,
+      "round_player_bet": [
+        500,
+        200
+      ],
+      "round_raise": 400,
+      "street": 0,
+      "to_call": 300
+    },
+    {
+      "actor": 0,
+      "chips": [
+        19500,
+        19200
+      ],
+      "dealer": 0,
+      "judge_min_positive": 700,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 700,
+      "pot": 1300,
+      "response": 700,
+      "round_bet": 800,
+      "round_player_bet": [
+        500,
+        800
+      ],
+      "round_raise": 600,
+      "street": 0,
+      "to_call": 300
+    },
+    {
+      "actor": 0,
+      "chips": [
+        19900,
+        19800
+      ],
+      "dealer": 0,
+      "judge_min_positive": 200,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 200,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
+      "round_player_bet": [
+        100,
+        200
+      ],
+      "round_raise": 150,
+      "street": 0,
+      "to_call": 100
+    },
+    {
+      "actor": 1,
+      "chips": [
+        19800,
+        19800
       ],
       "dealer": 0,
       "judge_min_positive": 100,
       "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
       "our_safe": 100,
-      "pot": 500,
+      "pot": 400,
+      "response": 99,
+      "round_bet": 0,
+      "round_player_bet": [
+        0,
+        0
+      ],
+      "round_raise": 50,
+      "street": 1,
+      "to_call": 0
+    },
+    {
+      "actor": 0,
+      "chips": [
+        19800,
+        19800
+      ],
+      "dealer": 0,
+      "judge_min_positive": 100,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
+      "our_safe": 100,
+      "pot": 400,
       "response": 99,
       "round_bet": 0,
       "round_player_bet": [
@@ -490,535 +301,221 @@
     {
       "actor": 1,
       "chips": [
-        19750,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 300,
-      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        250,
-        100
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    }
-  ],
-  "examples_undercall": [],
-  "examples_we_illegal_judge_legal": [
-    {
-      "actor": 1,
-      "chips": [
-        19900,
-        19950
-      ],
-      "dealer": 0,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        100,
-        50
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19900,
-        19550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 700,
-      "note": "judge allows 200 responses we reject; smallest 700",
-      "our_safe": 900,
-      "pot": 550,
-      "response": 700,
-      "round_bet": 450,
-      "round_player_bet": [
-        100,
-        450
-      ],
-      "round_raise": 400,
-      "street": 0,
-      "to_call": 350
-    },
-    {
-      "actor": 1,
-      "chips": [
-        18100,
-        19550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 3150,
-      "note": "judge allows 650 responses we reject; smallest 3150",
-      "our_safe": 3800,
-      "pot": 2350,
-      "response": 3150,
-      "round_bet": 1900,
-      "round_player_bet": [
-        1900,
-        450
-      ],
-      "round_raise": 1800,
-      "street": 0,
-      "to_call": 1450
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19950,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        50,
-        100
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19900,
-        19950
-      ],
-      "dealer": 0,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        100,
-        50
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19900,
-        19900
+        19800,
+        19800
       ],
       "dealer": 0,
       "judge_min_positive": 100,
-      "note": "judge allows 100 responses we reject; smallest 100",
-      "our_safe": 200,
-      "pot": 200,
-      "response": 100,
-      "round_bet": 100,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
+      "our_safe": 100,
+      "pot": 400,
+      "response": 99,
+      "round_bet": 0,
       "round_player_bet": [
-        100,
-        100
+        0,
+        0
       ],
-      "round_raise": 100,
-      "street": 0,
+      "round_raise": 50,
+      "street": 2,
       "to_call": 0
     },
     {
       "actor": 0,
       "chips": [
-        19950,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        50,
-        100
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 300,
-      "note": "judge allows 200 responses we reject; smallest 300",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        250,
-        100
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19900,
-        19950
+        19800,
+        19800
       ],
       "dealer": 0,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
+      "judge_min_positive": 100,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
+      "our_safe": 100,
+      "pot": 400,
+      "response": 99,
+      "round_bet": 0,
       "round_player_bet": [
-        100,
-        50
+        0,
+        0
       ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
+      "round_raise": 50,
+      "street": 2,
+      "to_call": 0
+    },
+    {
+      "actor": 1,
+      "chips": [
+        19800,
+        19800
+      ],
+      "dealer": 0,
+      "judge_min_positive": 100,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
+      "our_safe": 100,
+      "pot": 400,
+      "response": 99,
+      "round_bet": 0,
+      "round_player_bet": [
+        0,
+        0
+      ],
+      "round_raise": 50,
+      "street": 3,
+      "to_call": 0
     },
     {
       "actor": 0,
       "chips": [
-        19950,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        50,
-        100
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19750,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 300,
-      "note": "judge allows 200 responses we reject; smallest 300",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        250,
-        100
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19900,
-        19950
+        19800,
+        19800
       ],
       "dealer": 0,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
+      "judge_min_positive": 100,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
+      "our_safe": 100,
+      "pot": 400,
+      "response": 99,
+      "round_bet": 0,
       "round_player_bet": [
-        100,
-        50
+        0,
+        0
       ],
-      "round_raise": 100,
+      "round_raise": 50,
+      "street": 3,
+      "to_call": 0
+    },
+    {
+      "actor": 1,
+      "chips": [
+        19800,
+        19900
+      ],
+      "dealer": 1,
+      "judge_min_positive": 200,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 200,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
+      "round_player_bet": [
+        200,
+        100
+      ],
+      "round_raise": 150,
       "street": 0,
-      "to_call": 50
+      "to_call": 100
     },
     {
       "actor": 0,
       "chips": [
-        19900,
-        19550
+        19800,
+        19700
       ],
-      "dealer": 0,
+      "dealer": 1,
+      "judge_min_positive": 200,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 200,
+      "pot": 500,
+      "response": 200,
+      "round_bet": 300,
+      "round_player_bet": [
+        200,
+        300
+      ],
+      "round_raise": 200,
+      "street": 0,
+      "to_call": 100
+    },
+    {
+      "actor": 1,
+      "chips": [
+        19300,
+        19700
+      ],
+      "dealer": 1,
       "judge_min_positive": 700,
-      "note": "judge allows 200 responses we reject; smallest 700",
-      "our_safe": 900,
-      "pot": 550,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 700,
+      "pot": 1000,
       "response": 700,
-      "round_bet": 450,
+      "round_bet": 700,
+      "round_player_bet": [
+        700,
+        300
+      ],
+      "round_raise": 500,
+      "street": 0,
+      "to_call": 400
+    },
+    {
+      "actor": 0,
+      "chips": [
+        19900,
+        19800
+      ],
+      "dealer": 0,
+      "judge_min_positive": 200,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
+      "our_safe": 200,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
       "round_player_bet": [
         100,
-        450
+        200
       ],
-      "round_raise": 400,
+      "round_raise": 150,
       "street": 0,
-      "to_call": 350
+      "to_call": 100
     },
     {
       "actor": 1,
       "chips": [
-        19000,
-        19550
+        19800,
+        19800
       ],
       "dealer": 0,
-      "judge_min_positive": 1350,
-      "note": "judge allows 650 responses we reject; smallest 1350",
-      "our_safe": 2000,
-      "pot": 1450,
-      "response": 1350,
-      "round_bet": 1000,
+      "judge_min_positive": 100,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=True judge=False",
+      "our_safe": 100,
+      "pot": 400,
+      "response": 99,
+      "round_bet": 0,
       "round_player_bet": [
-        1000,
-        450
+        0,
+        0
       ],
-      "round_raise": 900,
-      "street": 0,
-      "to_call": 550
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19000,
-        15550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 7000,
-      "note": "judge allows 1900 responses we reject; smallest 7000",
-      "our_safe": 8900,
-      "pot": 5450,
-      "response": 7000,
-      "round_bet": 4450,
-      "round_player_bet": [
-        1000,
-        4450
-      ],
-      "round_raise": 4000,
-      "street": 0,
-      "to_call": 3450
+      "round_raise": 50,
+      "street": 1,
+      "to_call": 0
     },
     {
       "actor": 1,
       "chips": [
-        10100,
-        15550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 13350,
-      "note": "judge allows 2200 responses we reject; smallest 13350",
-      "our_safe": null,
-      "pot": 14350,
-      "response": 13350,
-      "round_bet": 9900,
-      "round_player_bet": [
-        9900,
-        4450
-      ],
-      "round_raise": 8900,
-      "street": 0,
-      "to_call": 5450
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19950,
+        19800,
         19900
       ],
       "dealer": 1,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
+      "judge_min_positive": 200,
+      "note": "spec-based reference, NOT the real referee mode=street_total spec=False judge=True",
       "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
+      "pot": 300,
+      "response": 200,
+      "round_bet": 200,
       "round_player_bet": [
-        50,
+        200,
         100
       ],
-      "round_raise": 100,
+      "round_raise": 150,
       "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19900,
-        19950
-      ],
-      "dealer": 0,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        100,
-        50
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19900,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 300,
-      "note": "judge allows 200 responses we reject; smallest 300",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        100,
-        250
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
-    },
-    {
-      "actor": 1,
-      "chips": [
-        18900,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 1750,
-      "note": "judge allows 450 responses we reject; smallest 1750",
-      "our_safe": 2200,
-      "pot": 1350,
-      "response": 1750,
-      "round_bet": 1100,
-      "round_player_bet": [
-        1100,
-        250
-      ],
-      "round_raise": 1000,
-      "street": 0,
-      "to_call": 850
-    },
-    {
-      "actor": 0,
-      "chips": [
-        18900,
-        17550
-      ],
-      "dealer": 0,
-      "judge_min_positive": 3300,
-      "note": "judge allows 1600 responses we reject; smallest 3300",
-      "our_safe": 4900,
-      "pot": 3550,
-      "response": 3300,
-      "round_bet": 2450,
-      "round_player_bet": [
-        1100,
-        2450
-      ],
-      "round_raise": 2200,
-      "street": 0,
-      "to_call": 1350
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19950,
-        19900
-      ],
-      "dealer": 1,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        50,
-        100
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 1,
-      "chips": [
-        19900,
-        19950
-      ],
-      "dealer": 0,
-      "judge_min_positive": 150,
-      "note": "judge allows 50 responses we reject; smallest 150",
-      "our_safe": 200,
-      "pot": 150,
-      "response": 150,
-      "round_bet": 100,
-      "round_player_bet": [
-        100,
-        50
-      ],
-      "round_raise": 100,
-      "street": 0,
-      "to_call": 50
-    },
-    {
-      "actor": 0,
-      "chips": [
-        19900,
-        19750
-      ],
-      "dealer": 0,
-      "judge_min_positive": 300,
-      "note": "judge allows 200 responses we reject; smallest 300",
-      "our_safe": 500,
-      "pot": 350,
-      "response": 300,
-      "round_bet": 250,
-      "round_player_bet": [
-        100,
-        250
-      ],
-      "round_raise": 200,
-      "street": 0,
-      "to_call": 150
+      "to_call": 100
     }
   ],
+  "examples_undercall": [],
+  "examples_we_illegal_judge_legal": [],
   "examples_we_legal_judge_illegal": [],
   "fixture_replay": {
     "decisions": 7785,
+    "engine_examples": [],
+    "engine_mismatches": 0,
     "fixture": "tests/fixtures/botzone_real.jsonl.gz",
     "hands": 2050,
     "judge_rejected_real_actions": 0,
@@ -1027,352 +524,17 @@
     "matches": 41,
     "order_examples": [],
     "order_mismatches": 0,
-    "our_rejected_examples": [
-      {
-        "actor": 1,
-        "hand": 7,
-        "index": 1,
-        "judge_min": 100,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 100,
-        "response": 100,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 0
-      },
-      {
-        "actor": 1,
-        "hand": 12,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 14,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 30,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 32,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 40,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 42,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 46,
-        "index": 0,
-        "judge_min": 150,
-        "match": "6ace200ef80b7d760464dade",
-        "our_safe": 200,
-        "own": 50,
-        "response": 150,
-        "round_bet": 100,
-        "round_raise": 100,
-        "street": 0,
-        "to_call": 50
-      },
-      {
-        "actor": 1,
-        "hand": 5,
-        "index": 2,
-        "judge_min": 2870,
-        "match": "6ace203ff80b7d760464dafd",
-        "our_safe": 3520,
-        "own": 450,
-        "response": 3320,
-        "round_bet": 1760,
-        "round_raise": 1660,
-        "street": 0,
-        "to_call": 1310
-      },
-      {
-        "actor": 1,
-        "hand": 22,
-        "index": 2,
-        "judge_min": 1350,
-        "match": "6ace2172f80b7d760464dc12",
-        "our_safe": 1800,
-        "own": 250,
-        "response": 1600,
-        "round_bet": 900,
-        "round_raise": 800,
-        "street": 0,
-        "to_call": 650
-      },
-      {
-        "actor": 1,
-        "hand": 49,
-        "index": 5,
-        "judge_min": 12899,
-        "match": "6ace219ff80b7d760464dc31",
-        "our_safe": 16040,
-        "own": 1701,
-        "response": 14600,
-        "round_bet": 8020,
-        "round_raise": 7300,
-        "street": 1,
-        "to_call": 6319
-      },
-      {
-        "actor": 1,
-        "hand": 39,
-        "index": 1,
-        "judge_min": 700,
-        "match": "6ace21ddf80b7d760464dc86",
-        "our_safe": 900,
-        "own": 100,
-        "response": 800,
-        "round_bet": 450,
-        "round_raise": 400,
-        "street": 0,
-        "to_call": 350
-      },
-      {
-        "actor": 0,
-        "hand": 1,
-        "index": 1,
-        "judge_min": 300,
-        "match": "6ace2489f80b7d760464def0",
-        "our_safe": 500,
-        "own": 100,
-        "response": 400,
-        "round_bet": 250,
-        "round_raise": 200,
-        "street": 0,
-        "to_call": 150
-      },
-      {
-        "actor": 0,
-        "hand": 23,
-        "index": 1,
-        "judge_min": 300,
-        "match": "6ace2489f80b7d760464def0",
-        "our_safe": 500,
-        "own": 100,
-        "response": 400,
-        "round_bet": 250,
-        "round_raise": 200,
-        "street": 0,
-        "to_call": 150
-      },
-      {
-        "actor": 1,
-        "hand": 24,
-        "index": 1,
-        "judge_min": 300,
-        "match": "6ace2489f80b7d760464def0",
-        "our_safe": 500,
-        "own": 100,
-        "response": 450,
-        "round_bet": 250,
-        "round_raise": 200,
-        "street": 0,
-        "to_call": 150
-      },
-      {
-        "actor": 0,
-        "hand": 24,
-        "index": 2,
-        "judge_min": 650,
-        "match": "6ace2489f80b7d760464def0",
-        "our_safe": 1100,
-        "own": 250,
-        "response": 900,
-        "round_bet": 550,
-        "round_raise": 450,
-        "street": 0,
-        "to_call": 300
-      },
-      {
-        "actor": 1,
-        "hand": 24,
-        "index": 3,
-        "judge_min": 1250,
-        "match": "6ace2489f80b7d760464def0",
-        "our_safe": 2300,
-        "own": 550,
-        "response": 1800,
-        "round_bet": 1150,
-        "round_raise": 900,
-        "street": 0,
-        "to_call": 600
-      },
-      {
-        "actor": 0,
-        "hand": 3,
-        "index": 5,
-        "judge_min": 2940,
-        "match": "6ace24faf80b7d760464df4f",
-        "our_safe": 4720,
-        "own": 980,
-        "response": 4210,
-        "round_bet": 2360,
-        "round_raise": 1960,
-        "street": 1,
-        "to_call": 1380
-      },
-      {
-        "actor": 1,
-        "hand": 3,
-        "index": 6,
-        "judge_min": 6060,
-        "match": "6ace24faf80b7d760464df4f",
-        "our_safe": 10380,
-        "own": 2360,
-        "response": 8420,
-        "round_bet": 5190,
-        "round_raise": 4210,
-        "street": 1,
-        "to_call": 2830
-      },
-      {
-        "actor": 1,
-        "hand": 3,
-        "index": 1,
-        "judge_min": 300,
-        "match": "6ace25a6f80b7d760464dffb",
-        "our_safe": 500,
-        "own": 100,
-        "response": 450,
-        "round_bet": 250,
-        "round_raise": 200,
-        "street": 0,
-        "to_call": 150
-      },
-      {
-        "actor": 0,
-        "hand": 3,
-        "index": 2,
-        "judge_min": 650,
-        "match": "6ace25a6f80b7d760464dffb",
-        "our_safe": 1100,
-        "own": 250,
-        "response": 900,
-        "round_bet": 550,
-        "round_raise": 450,
-        "street": 0,
-        "to_call": 300
-      },
-      {
-        "actor": 1,
-        "hand": 7,
-        "index": 1,
-        "judge_min": 720,
-        "match": "6ace25a6f80b7d760464dffb",
-        "our_safe": 920,
-        "own": 100,
-        "response": 820,
-        "round_bet": 460,
-        "round_raise": 410,
-        "street": 0,
-        "to_call": 360
-      },
-      {
-        "actor": 1,
-        "hand": 15,
-        "index": 1,
-        "judge_min": 700,
-        "match": "6ace25ebf80b7d760464e01e",
-        "our_safe": 900,
-        "own": 100,
-        "response": 800,
-        "round_bet": 450,
-        "round_raise": 400,
-        "street": 0,
-        "to_call": 350
-      },
-      {
-        "actor": 1,
-        "hand": 1,
-        "index": 1,
-        "judge_min": 700,
-        "match": "6ace265cf80b7d760464e09a",
-        "our_safe": 900,
-        "own": 100,
-        "response": 800,
-        "round_bet": 450,
-        "round_raise": 400,
-        "street": 0,
-        "to_call": 350
-      }
-    ],
-    "our_rejected_real_actions": 41
+    "our_rejected_examples": [],
+    "our_rejected_patterns": [],
+    "our_rejected_real_actions": 0
   },
-  "gap_decisions": 47049,
-  "gap_max": 9848,
-  "gap_mean": 275.6604391166656,
+  "gap_decisions": 0,
+  "gap_max": 0,
+  "gap_mean": 0,
   "hands_judge_exploration": 5000,
   "hands_our_action_set": 20000,
   "mapped_raise_illegal": 0,
+  "min_raise_mismatch": 0,
   "opponents": [
     "random",
     "rule",
@@ -1410,12 +572,12 @@
       },
       {
         "actor": 1,
-        "gap": 100,
+        "gap": 0,
         "judge_min": 300,
         "label": "original bettor facing a 200 raise",
         "our_bound_a": 400,
         "our_bound_b": 400,
-        "our_safe": 400,
+        "our_safe": 300,
         "own": 100,
         "round_bet": 200,
         "round_raise": 200,
@@ -1425,12 +587,12 @@
     "preflop": [
       {
         "actor": 1,
-        "gap": 50,
+        "gap": 0,
         "judge_min": 150,
         "label": "SB first after blinds 50/100",
         "our_bound_a": 200,
         "our_bound_b": 200,
-        "our_safe": 200,
+        "our_safe": 150,
         "own": 50,
         "round_bet": 100,
         "round_raise": 100,
@@ -1438,12 +600,12 @@
       },
       {
         "actor": 0,
-        "gap": 100,
+        "gap": 0,
         "judge_min": 100,
         "label": "BB after SB calls",
         "our_bound_a": 200,
         "our_bound_b": 200,
-        "our_safe": 200,
+        "our_safe": 100,
         "own": 100,
         "round_bet": 100,
         "round_raise": 100,
@@ -1451,12 +613,12 @@
       },
       {
         "actor": 0,
-        "gap": 200,
+        "gap": 0,
         "judge_min": 200,
-        "label": "BB after SB raises 150 (judge-legal, we reject 150)",
+        "label": "BB after SB raises 150",
         "our_bound_a": 400,
         "our_bound_b": 300,
-        "our_safe": 400,
+        "our_safe": 200,
         "own": 100,
         "round_bet": 200,
         "round_raise": 150,
@@ -1466,12 +628,12 @@
     "reraise": [
       {
         "actor": 1,
-        "gap": 100,
+        "gap": 0,
         "judge_min": 500,
         "label": "A bet 100, B raised by 300; A to act (owner example)",
         "our_bound_a": 600,
         "our_bound_b": 600,
-        "our_safe": 600,
+        "our_safe": 500,
         "own": 100,
         "round_bet": 300,
         "round_raise": 300,
@@ -1479,12 +641,12 @@
       },
       {
         "actor": 1,
-        "gap": 601,
+        "gap": 0,
         "judge_min": 3,
         "label": "after calls/raises 0,100,101,102; min positive is an under-call",
         "our_bound_a": 604,
         "our_bound_b": 204,
-        "our_safe": 604,
+        "our_safe": 3,
         "own": 201,
         "round_bet": 302,
         "round_raise": 102,
@@ -1495,7 +657,7 @@
   "seed": 0,
   "spec_action_amount_disagree": 0,
   "spec_reference": "spec-based reference, NOT the real referee",
-  "spec_street_total_disagree": 34563,
+  "spec_street_total_disagree": 34100,
   "undercall_accepts": 0,
   "undercall_minimal": {
     "actor": 1,
@@ -1506,7 +668,7 @@
     "dealer": 0,
     "judge_min_positive": 3,
     "note": "scripted preflop 0,100,101,102 then bet 3",
-    "our_safe": null,
+    "our_safe": 3,
     "pot": 503,
     "response": 3,
     "round_bet": 302,
@@ -1518,6 +680,6 @@
     "street": 0,
     "to_call": 101
   },
-  "we_illegal_judge_legal_responses": 12969548,
+  "we_illegal_judge_legal_responses": 0,
   "we_legal_judge_illegal": 0
 }

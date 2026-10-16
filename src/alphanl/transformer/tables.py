@@ -134,6 +134,23 @@ def _whole_chips(value: float, name: str) -> int:
     return chips
 
 
+def _coerce_numpy_random_state(state: Any) -> Tuple[Any, ...]:
+    """``RandomState.get_state`` after a torch round-trip, ready for ``set_state``."""
+
+    import numpy as np
+
+    kind, keys, pos, has_gauss, cached = state
+    array = np.asarray(keys)
+    if array.dtype != np.uint32:
+        array = array.astype(np.uint32)
+    return (str(kind), array, int(pos), int(has_gauss), float(cached))
+
+
+def _coerce_py_random_state(state: Any) -> Tuple[Any, ...]:
+    version, seq, gauss = state
+    return (int(version), tuple(int(item) for item in seq), gauss)
+
+
 def _normalize_deck(deck: Sequence[str]) -> Tuple[str, ...]:
     cards = tuple(normalize_card(card) for card in deck)
     if len(cards) != 52 or len(set(cards)) != 52:
@@ -277,6 +294,28 @@ class RlcardTable:
         return int(
             sum(player.remained_chips + player.in_chips for player in self.rl.game.players)
         )
+
+    def rng_state(self) -> Dict[str, Any]:
+        """Deck RNG and the button. Not the cards of the current hand.
+
+        rlcard only draws ``dealer_id`` when it is still ``None``. A fresh
+        table starts at ``None``, so the next ``reset`` would consume an
+        extra integer unless this cursor is put back first.
+        """
+
+        dealer = self.rl.game.dealer_id
+        if dealer is not None:
+            dealer = int(dealer)
+        return {"np_random": self.rl.np_random.get_state(), "dealer_id": dealer}
+
+    def set_rng_state(self, state: Dict[str, Any]) -> None:
+        np_state = _coerce_numpy_random_state(state["np_random"])
+        self.rl.np_random.set_state(np_state)
+        game = self.rl.game
+        if game.np_random is not self.rl.np_random:
+            game.np_random.set_state(np_state)
+        dealer = state["dealer_id"]
+        game.dealer_id = None if dealer is None else int(dealer)
 
     def state_dict(self) -> Dict[str, Any]:
         import pickle
@@ -541,6 +580,14 @@ class PokerkitTable:
         if self.is_over():
             return int(sum(self.state.stacks))
         return int(sum(self.state.stacks) + self.state.total_pot_amount)
+
+    def rng_state(self) -> Dict[str, Any]:
+        """PokerKit deck RNG. The button does not rotate on this table."""
+
+        return {"random": self._py_random.getstate()}
+
+    def set_rng_state(self, state: Dict[str, Any]) -> None:
+        self._py_random.setstate(_coerce_py_random_state(state["random"]))
 
     def state_dict(self) -> Dict[str, Any]:
         import pickle

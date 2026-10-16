@@ -101,6 +101,12 @@ class BotzoneEnvTable:
         self._table = BotzoneTable(rng=random.Random(self.seed), dealer=dealer)
         self._records: list[_TakenAction] = []
 
+    def rng_state(self) -> Dict[str, Any]:
+        return self._table.rng_state()
+
+    def set_rng_state(self, state: Dict[str, Any]) -> None:
+        self._table.set_rng_state(state)
+
     def reset(self, deck: Optional[Sequence] = None) -> None:
         self._table.start_hand(deck=_coerce_deck(deck))
         self._records = []

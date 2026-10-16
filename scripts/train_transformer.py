@@ -7,6 +7,7 @@ Does not train unless you run it. ``--dry-run`` only prints the model size.
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json
     python scripts/train_transformer.py --config configs/transformer/colab_l4.json --entropy-coef 0.02
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume   # newest ckpt
+    python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume auto
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb_conv.json --init-weights runs/bc_conv/bc.pt
 """
 
@@ -20,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from alphanl.transformer.config import ExperimentConfig, resolve_env_limits  # noqa: E402
+from alphanl.transformer.checkpoint import ConfigMismatchError  # noqa: E402
 from alphanl.transformer.train import describe_run, refuse_botzone_init_weights, run_training  # noqa: E402
 
 
@@ -38,12 +40,22 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
         "--resume", nargs="?", const="latest", default=None,
-        help="Resume. Bare --resume picks the newest checkpoint in train.checkpoint_dir; or pass a path.",
+        help=(
+            "Resume from train.checkpoint_dir. Bare --resume or 'latest' picks the newest "
+            "update_*.pt. 'auto' skips corrupt files and starts fresh when none load. "
+            "Or pass a checkpoint path."
+        ),
+    )
+    parser.add_argument(
+        "--allow-config-mismatch",
+        action="store_true",
+        help="With --resume auto, continue even if the checkpoint config hash differs. Off by default.",
     )
     parser.add_argument("--amp", dest="amp", action="store_true", default=None, help="Mixed precision (CUDA only; ignored on CPU)")
     parser.add_argument("--no-amp", dest="amp", action="store_false")
     parser.add_argument("--checkpoint-dir", type=str, default=None, help="Override train.checkpoint_dir")
     parser.add_argument("--checkpoint-every", type=int, default=None, help="Override train.checkpoint_every (updates)")
+    parser.add_argument("--keep-last", type=int, default=None, help="Override train.keep_last (default 3)")
     parser.add_argument(
         "--encoder",
         choices=("transformer", "alphanl_conv"),
@@ -77,6 +89,7 @@ def main() -> None:
         amp=args.amp,
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_every=args.checkpoint_every,
+        keep_last=args.keep_last,
         encoder=args.encoder,
     )
     small_blind, big_blind, starting_stack = resolve_env_limits(
@@ -89,12 +102,17 @@ def main() -> None:
     print(describe_run(cfg))
     if args.dry_run:
         return
-    out_dir = run_training(
-        cfg,
-        resume=args.resume,
-        init_weights=args.init_weights,
-        allow_cross_backend_init=args.allow_cross_backend_init,
-    )
+    try:
+        out_dir = run_training(
+            cfg,
+            resume=args.resume,
+            init_weights=args.init_weights,
+            allow_cross_backend_init=args.allow_cross_backend_init,
+            allow_config_mismatch=args.allow_config_mismatch,
+        )
+    except ConfigMismatchError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(ConfigMismatchError.exit_code) from exc
     print(f"wrote {out_dir}")
 
 

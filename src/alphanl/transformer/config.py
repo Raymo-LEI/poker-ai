@@ -202,6 +202,7 @@ class ExperimentConfig:
         amp: Optional[bool] = None,
         checkpoint_dir: Optional[str] = None,
         checkpoint_every: Optional[int] = None,
+        keep_last: Optional[int] = None,
         encoder: Optional[str] = None,
     ) -> "ExperimentConfig":
         if encoder is not None:
@@ -214,6 +215,8 @@ class ExperimentConfig:
             self.train.checkpoint_dir = str(checkpoint_dir)
         if checkpoint_every is not None:
             self.train.checkpoint_every = int(checkpoint_every)
+        if keep_last is not None:
+            self.train.keep_last = int(keep_last)
         if entropy_coef is not None:
             self.ppo.entropy_coef = float(entropy_coef)
         if num_updates is not None:

@@ -16,6 +16,7 @@ import shutil
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
+import time
 from uuid import uuid4
 
 import numpy as np
@@ -74,9 +75,16 @@ class SDCFRTrainer:
                  root_factory: Callable[[int], GameState] | None = None) -> None:
         self.config = copy.deepcopy(config)
         self.device = torch.device(resolve_device(config.device))
+        self.amp_enabled = self.device.type == "cuda" and config.amp_dtype == "bfloat16"
+        self.optimizer_fused = self.device.type == "cuda" and config.fused_optimizer
+        if self.amp_enabled and not torch.cuda.is_bf16_supported():
+            raise RuntimeError("bfloat16 autocast was requested, but this CUDA device does not support BF16")
+        if self.device.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = config.allow_tf32
         torch.manual_seed(config.seed)
         self.rng = np.random.default_rng(config.seed)
         self.iteration = 0
+        self.last_timing: dict[str, float | int] = {}
         self.strategy_paths: dict[int, Path] = {}
         self.models = {p: self._new_model() for p in (0, 1)}
         self.optimizers = {p: self._new_optimizer(p) for p in (0, 1)}
@@ -101,7 +109,12 @@ class SDCFRTrainer:
         return torch.optim.Adam(
             (p for p in self.models[player].parameters() if p.requires_grad),
             lr=self.config.learning_rate,
+            fused=self.optimizer_fused,
         )
+
+    def _sync_device(self) -> None:
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
 
     def _hunl_root(self, seed: int) -> HunlState:
         from alphanl.transformer.hunl import HunlTable, HunlTokenizer
@@ -145,7 +158,12 @@ class SDCFRTrainer:
             batch, target, iterations = self.buffers[player].sample(
                 self.config.minibatch_size, device=self.device
             )
-            loss = iteration_weighted_mse(model(batch), target, batch["legal_mask"], iterations)
+            if self.amp_enabled:
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    predicted = model(batch)
+            else:
+                predicted = model(batch)
+            loss = iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations)
             if not torch.isfinite(loss):
                 raise FloatingPointError("non-finite regret regression loss")
             optimizer = self.optimizers[player]
@@ -163,25 +181,42 @@ class SDCFRTrainer:
         if self.iteration == 0 and any(buffer.seen > 0 for buffer in self.buffers.values()):
             raise RuntimeError("existing regret memory requires load_checkpoint before continuation")
         iteration = self.iteration + 1
+        iteration_started = time.perf_counter()
         # sigma_t comes from theta_(t-1). Save exactly the profile used to
         # generate t's regrets, including uniform sigma_1 (zero regret heads).
         snapshot = self._snapshot(iteration)
         metrics = {"iteration": iteration}
+        timing: dict[str, float | int] = {"iteration": iteration}
         for player in (0, 1):
+            self._sync_device()
+            collect_started = time.perf_counter()
             seeds = self.rng.integers(0, 2**31 - 1, self.config.traversals_per_player)
             roots = [self.root_factory(int(seed)) for seed in seeds]
             stats = self.traverser.collect(
                 roots, traverser=player, iteration=iteration,
                 policies=self.models, buffer=self.buffers[player],
             )
+            self._sync_device()
+            collect_seconds = time.perf_counter() - collect_started
             metrics.update({f"p{player}_{k}": v for k, v in asdict(stats).items()})
             metrics[f"p{player}_buffer_size"] = len(self.buffers[player])
+            timing[f"p{player}_collect_s"] = collect_seconds
+            timing[f"p{player}_regret_samples_per_s"] = (
+                stats.regret_samples / collect_seconds if collect_seconds > 0 else 0.0
+            )
         # Simultaneous CFR: neither player's policy changes during collection.
         for player in (0, 1):
+            self._sync_device()
+            fit_started = time.perf_counter()
             metrics[f"p{player}_loss"] = self.train_player(player)
+            self._sync_device()
+            fit_seconds = time.perf_counter() - fit_started
             metrics[f"p{player}_train_steps"] = (
                 self.config.train_steps if len(self.buffers[player]) else 0
             )
+            draws = metrics[f"p{player}_train_steps"] * self.config.minibatch_size
+            timing[f"p{player}_fit_s"] = fit_seconds
+            timing[f"p{player}_training_draws_per_s"] = draws / fit_seconds if fit_seconds > 0 else 0.0
         self.iteration = iteration
         out = Path(self.config.out_dir)
         if iteration % self.config.snapshot_every == 0 or iteration == 1:
@@ -197,6 +232,15 @@ class SDCFRTrainer:
             if not exists:
                 writer.writeheader()
             writer.writerow(metrics)
+        timing["iteration_s"] = time.perf_counter() - iteration_started
+        self.last_timing = timing
+        timing_path = out / "performance.csv"
+        timing_exists = timing_path.exists() and timing_path.stat().st_size > 0
+        with timing_path.open("a", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(timing))
+            if not timing_exists:
+                writer.writeheader()
+            writer.writerow(timing)
         return metrics
 
     def save_checkpoint(self, path: str | Path) -> None:
@@ -226,11 +270,18 @@ class SDCFRTrainer:
             target = generation / "metrics.csv"
             shutil.copyfile(metrics_source, target)
             metrics_path = str(target.relative_to(path.parent))
+        profile_source = Path(self.config.out_dir) / "performance.csv"
+        profile_path = None
+        if profile_source.exists():
+            target = generation / "performance.csv"
+            shutil.copyfile(profile_source, target)
+            profile_path = str(target.relative_to(path.parent))
         payload = self._snapshot(self.iteration + 1)
         payload.update({
             "format": "sd_cfr_train_v2", "completed_iteration": self.iteration,
             "optimizers": {p: opt.state_dict() for p, opt in self.optimizers.items()},
-            "buffers": buffers, "strategy_archive": strategies, "metrics_path": metrics_path,
+            "buffers": buffers, "strategy_archive": strategies,
+            "metrics_path": metrics_path, "performance_path": profile_path,
             "rng": self.rng.bit_generator.state,
             "traverser_rng": self.traverser.rng.bit_generator.state,
             "torch_rng": torch.get_rng_state(),
@@ -250,9 +301,13 @@ class SDCFRTrainer:
             raise ValueError("CFR checkpoint rules or numeric feature version mismatch")
         previous = blob["config"]
         current = self.config.to_dict()
+        legacy_config_defaults = {"amp_dtype": "none", "fused_optimizer": False, "allow_tf32": False}
         for key in current:
             if key not in ("iterations", "out_dir", "device", "buffer_directory", "checkpoint_every"):
-                if previous[key] != current[key]:
+                previous_value = previous.get(key, legacy_config_defaults.get(key))
+                if key not in previous and key not in legacy_config_defaults:
+                    raise ValueError(f"CFR checkpoint config is missing: {key}")
+                if previous_value != current[key]:
                     raise ValueError(f"CFR checkpoint config mismatch: {key}")
         completed = int(blob["completed_iteration"])
         expected = [t for t in range(1, completed + 1)
@@ -293,6 +348,14 @@ class SDCFRTrainer:
             target.unlink()
         if blob["metrics_path"] is not None:
             shutil.copyfile(path.parent / blob["metrics_path"], target)
+        profile_target = Path(self.config.out_dir) / "performance.csv"
+        if profile_target.exists():
+            archive = profile_target.parent / "history" / f"performance_before_resume_{uuid4().hex}.csv"
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(profile_target, archive)
+            profile_target.unlink()
+        if blob.get("performance_path") is not None:
+            shutil.copyfile(path.parent / blob["performance_path"], profile_target)
 
     def run(self) -> list[dict]:
         metrics = []

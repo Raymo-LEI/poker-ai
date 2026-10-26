@@ -21,6 +21,9 @@ def main() -> None:
     parser.add_argument("--train-steps", type=int)
     parser.add_argument("--out-dir")
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"))
+    parser.add_argument("--amp-dtype", choices=("none", "bfloat16"))
+    parser.add_argument("--fused-optimizer", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--allow-tf32", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--resume", type=Path, help="trusted local train.pt (includes reservoirs)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--threads", type=int, default=1)
@@ -34,10 +37,26 @@ def main() -> None:
         value = getattr(args, arg)
         if value is not None:
             setattr(config, field, value)
+    if args.amp_dtype is not None:
+        config.amp_dtype = args.amp_dtype
+    if args.fused_optimizer is not None:
+        config.fused_optimizer = args.fused_optimizer
+    if args.allow_tf32 is not None:
+        config.allow_tf32 = args.allow_tf32
     config.__post_init__()
     if args.dry_run:
         from dataclasses import asdict
         report = config.to_dict()
+        resolved_device = torch.device("cuda" if config.device == "auto" and torch.cuda.is_available()
+                                       else ("cpu" if config.device == "auto" else config.device))
+        bf16_supported = bool(resolved_device.type == "cuda" and torch.cuda.is_available()
+                              and torch.cuda.is_bf16_supported())
+        cuda_available = torch.cuda.is_available()
+        report.update({"effective_device": str(resolved_device),
+                       "cuda_available": cuda_available,
+                       "effective_amp_dtype": config.amp_dtype if bf16_supported else "none",
+                       "effective_fused_optimizer": bool(config.fused_optimizer and resolved_device.type == "cuda" and cuda_available),
+                       "cuda_bf16_supported": bf16_supported})
         report.update({"backbone_parameters": count_parameters(PokerTransformer(**asdict(config.model))),
                        "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
                        "players": 2, "small_blind": 50, "big_blind": 100, "starting_stack": 20000})

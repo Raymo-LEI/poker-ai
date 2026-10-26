@@ -131,6 +131,49 @@ def test_vectorized_workers_reduce_forwards_without_changing_regrets():
         assert all(torch.equal(a, b) for a, b in zip(lhs, rhs))
 
 
+def test_finished_trees_are_replaced_before_the_longest_tree_finishes():
+    class Chain:
+        def __init__(self, depth, position=0):
+            self.depth = depth
+            self.position = position
+
+        def is_terminal(self):
+            return self.position == self.depth
+
+        def current_player(self):
+            return 0
+
+        def legal_actions(self):
+            return (0,)
+
+        def observation(self):
+            batch = BettingHistoryTokenizer(max_seq_len=8).blank()
+            batch["token_ids"][0, 1] = self.position
+            batch["numeric"][0, 0, 0] = self.position
+            batch["legal_mask"].zero_()
+            batch["legal_mask"][0, 0] = 1
+            return batch
+
+        def child(self, action):
+            assert action == 0
+            return Chain(self.depth, self.position + 1)
+
+        def returns(self):
+            return (0.0, 0.0)
+
+    roots = [Chain(5)] + [Chain(1) for _ in range(63)]
+    policy = _Policy({depth: [1., 0, 0, 0, 0] for depth in range(6)})
+    buffer = _RecordingBuffer()
+    stats = ExternalSamplingTraverser(seed=1, batch_size=32).collect(
+        roots, traverser=0, iteration=1, policies={0: policy, 1: policy}, buffer=buffer,
+    )
+    assert stats.inference_rows == 68
+    assert stats.inference_calls == 5  # fixed waves require 7 calls for this workload
+    assert stats.regret_samples == 68
+    assert max(policy.batch_sizes) == 32
+    assert min(policy.batch_sizes) == 1
+
+
 def test_opponent_stochastic_sampling_is_seeded_and_visits_only_one_child():
     tree, policies = _analytic_tree()
     # Start at an opponent decision whose children are terminal.

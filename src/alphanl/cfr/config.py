@@ -22,6 +22,10 @@ class CFRConfig:
     minibatch_size: int = 256
     learning_rate: float = 3e-4
     max_grad_norm: float = 1.0
+    # GPU-only training options. Defaults preserve the original FP32/Adam path.
+    amp_dtype: str = "none"
+    fused_optimizer: bool = False
+    allow_tf32: bool = False
     # Deep CFR fits each player's accumulated advantage memory from scratch.
     reinitialize: bool = True
     fallback: str = "uniform"
@@ -46,6 +50,10 @@ class CFRConfig:
             raise ValueError("fallback must be uniform or argmax")
         if self.device not in ("cpu", "cuda", "auto"):
             raise ValueError("device must be cpu, cuda, or auto")
+        if self.amp_dtype not in ("none", "bfloat16"):
+            raise ValueError("amp_dtype must be 'none' or 'bfloat16'")
+        if not isinstance(self.fused_optimizer, bool) or not isinstance(self.allow_tf32, bool):
+            raise ValueError("fused_optimizer and allow_tf32 must be booleans")
         if self.max_traversal_nodes is not None and self.max_traversal_nodes < 1:
             raise ValueError("max_traversal_nodes must be positive")
 

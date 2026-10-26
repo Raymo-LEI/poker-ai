@@ -72,7 +72,7 @@ class _Query:
 
 
 class ExternalSamplingTraverser:
-    """Cooperative DFS workers, one pending infoset per independent tree.
+    """Cooperative DFS workers with a replenished pool of independent trees.
 
     This vectorizes inference without multiprocessing/global engine patches.
     ``batch_size`` controls concurrent trees. Inference is further grouped by
@@ -131,45 +131,55 @@ class ExternalSamplingTraverser:
         for policy in policies.values():
             policy.eval()
         try:
-            for start in range(0, len(roots), self.batch_size):
-                active = []
-                for root in roots[start:start + self.batch_size]:
+            root_iter = iter(roots)
+            active = []
+            roots_exhausted = False
+            while active or not roots_exhausted:
+                # Start the next roots as soon as earlier trees finish. This
+                # keeps a wave full when tree depths vary substantially.
+                while len(active) < self.batch_size and not roots_exhausted:
+                    try:
+                        root = next(root_iter)
+                    except StopIteration:
+                        roots_exhausted = True
+                        break
                     worker = self._walk(root, traverser, iteration, buffer, stats)
                     try:
                         active.append((worker, next(worker)))
                     except StopIteration:
+                        continue
+                if not active:
+                    continue
+                responses = {}
+                for player in (0, 1):
+                    indexed = [(i, query) for i, (_, query) in enumerate(active)
+                               if query.player == player]
+                    if not indexed:
+                        continue
+                    policy = policies[player]
+                    device = next(policy.parameters()).device
+                    batch = batch_to_device(cat_batches([q.batch for _, q in indexed]), device)
+                    probs = policy.strategy(batch).detach().double().cpu().numpy()
+                    if probs.shape != tuple(batch["legal_mask"].shape):
+                        raise ValueError("policy strategy shape must match legal mask")
+                    if (not np.isfinite(probs).all() or (probs < 0).any()
+                            or not np.allclose(probs.sum(-1), 1, atol=1e-6)):
+                        raise ValueError("policy returned invalid strategy probabilities")
+                    legal = batch["legal_mask"].detach().cpu().numpy() > 0.5
+                    if (probs[~legal] != 0).any():
+                        raise ValueError("policy assigns mass to an illegal action")
+                    probs /= probs.sum(-1, keepdims=True)
+                    stats.inference_calls += 1
+                    stats.inference_rows += len(indexed)
+                    for (i, _), row in zip(indexed, probs):
+                        responses[i] = row
+                pending = []
+                for i, (worker, _) in enumerate(active):
+                    try:
+                        pending.append((worker, worker.send(responses[i])))
+                    except StopIteration:
                         pass
-                while active:
-                    responses = {}
-                    for player in (0, 1):
-                        indexed = [(i, query) for i, (_, query) in enumerate(active)
-                                   if query.player == player]
-                        if not indexed:
-                            continue
-                        policy = policies[player]
-                        device = next(policy.parameters()).device
-                        batch = batch_to_device(cat_batches([q.batch for _, q in indexed]), device)
-                        probs = policy.strategy(batch).detach().double().cpu().numpy()
-                        if probs.shape != tuple(batch["legal_mask"].shape):
-                            raise ValueError("policy strategy shape must match legal mask")
-                        if (not np.isfinite(probs).all() or (probs < 0).any()
-                                or not np.allclose(probs.sum(-1), 1, atol=1e-6)):
-                            raise ValueError("policy returned invalid strategy probabilities")
-                        legal = batch["legal_mask"].detach().cpu().numpy() > 0.5
-                        if (probs[~legal] != 0).any():
-                            raise ValueError("policy assigns mass to an illegal action")
-                        probs /= probs.sum(-1, keepdims=True)
-                        stats.inference_calls += 1
-                        stats.inference_rows += len(indexed)
-                        for (i, _), row in zip(indexed, probs):
-                            responses[i] = row
-                    pending = []
-                    for i, (worker, _) in enumerate(active):
-                        try:
-                            pending.append((worker, worker.send(responses[i])))
-                        except StopIteration:
-                            pass
-                    active = pending
+                active = pending
         finally:
             for player, was_training in training.items():
                 policies[player].train(was_training)

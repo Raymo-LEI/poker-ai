@@ -1,6 +1,7 @@
 """Neural fitting, simultaneous updates, snapshot semantics and exact resume."""
 
 from dataclasses import replace
+import csv
 import shutil
 
 import pytest
@@ -96,6 +97,39 @@ def test_player_with_no_visited_infoset_keeps_current_network(tmp_path):
     assert row["p0_regret_samples"] == row["p0_train_steps"] == row["p0_loss"] == 0
     assert row["p1_regret_samples"] > 0
     assert all(torch.equal(value, trainer.models[0].state_dict()[key]) for key, value in before.items())
+
+
+def test_cuda_training_options_are_noops_on_cpu_and_phase_metrics_are_written(tmp_path):
+    cfg = config(tmp_path, amp_dtype="bfloat16", fused_optimizer=True,
+                 allow_tf32=True, reinitialize=False)
+    cfg.train_steps = 1
+    trainer = SDCFRTrainer(cfg, root_factory=lambda seed: TinyGame())
+    assert trainer.amp_enabled is False
+    assert trainer.optimizer_fused is False
+    trainer.run_iteration()
+    rows = list(csv.DictReader((tmp_path / "performance.csv").open()))
+    assert len(rows) == 1
+    for key in ("p0_collect_s", "p1_collect_s", "p0_fit_s", "p1_fit_s",
+                "p0_regret_samples_per_s", "p1_training_draws_per_s", "iteration_s"):
+        assert float(rows[0][key]) >= 0
+
+
+def test_legacy_checkpoint_without_gpu_option_fields_still_resumes(tmp_path):
+    cfg = config(tmp_path / "original", reinitialize=False)
+    trainer = SDCFRTrainer(cfg, root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    checkpoint = tmp_path / "legacy.pt"
+    trainer.save_checkpoint(checkpoint)
+    blob = torch.load(checkpoint, weights_only=False)
+    for key in ("amp_dtype", "fused_optimizer", "allow_tf32"):
+        blob["config"].pop(key)
+    torch.save(blob, checkpoint)
+    restored = SDCFRTrainer(replace(cfg, out_dir=str(tmp_path / "restored")),
+                            root_factory=lambda seed: TinyGame())
+    restored.load_checkpoint(checkpoint)
+    assert restored.iteration == 1
+    profile_rows = list(csv.DictReader((tmp_path / "restored" / "performance.csv").open()))
+    assert len(profile_rows) == 1
 
 
 @pytest.mark.parametrize("disk", [False, True])

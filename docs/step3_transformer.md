@@ -1,5 +1,8 @@
 # Step 3：下注历史上的小型 Transformer 编码器
 
+后续 Phase 1/2 的标准双人 200BB 与独立 SD-CFR 包装层见
+[sd_cfr.md](sd_cfr.md)。本页描述的 PPO 模型、配置和旧环境语义保留。
+
 本步只写训练代码和测试，**不训练**。权重、bb/100 和 Slumbot 对照都不在这一步。
 
 ## 做了什么

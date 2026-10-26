@@ -1,8 +1,11 @@
 # Phase 1 / Phase 2：标准双人 200BB 与 SD-CFR
 
-本次实现对照 `CFR.md` 的前两个 Phase。现有 `PokerTransformer`、PPO、PFSP、
-PPO 配置和 checkpoint 格式保留；没有实现 Phase 3 的 50 手残差 exploiter，
-也没有进行 200BB 长时间训练或声称已得到不可剥削的 GTO 权重。
+This page describes the Phase 1/2 implementation. Existing `PokerTransformer`,
+PPO, PFSP, and PPO checkpoint formats are preserved. A minimal Phase 3
+50-hand residual PPO scaffold is now available; see
+[exploiter.md](exploiter.md) for implementation limits and CPU smoke commands.
+Long 200BB training, strategy-quality claims, and Phase 4 deployment remain
+outside this implementation.
 
 ## 规则与兼容性
 

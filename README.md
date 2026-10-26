@@ -1,24 +1,70 @@
 # poker-ai
 
-单挑无限注德州扑克（heads-up no-limit Texas Hold'em）AI。
+双人无限注德州扑克（heads-up no-limit Texas Hold'em）AI 的研究与工程仓库。当前包含标准 200BB 牌桌与 SD-CFR 训练路径、基于下注历史的 Transformer PPO 路径、50 手对手适应原型，以及 Botzone 规则机器人和模型推理入口。
 
-## 目标
+**项目状态：代码和本地校验已覆盖主要训练、规则与推理链路；仓库尚未发布经长时间训练和独立对战验证的 200BB 策略。** 测试通过或入口能运行，不代表已达到特定胜率、可利用度或 Botzone 排名。
 
-以 [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) 为基线，用 [pokerkit](https://github.com/uoftcprg/pokerkit) 做规则引擎。评测对标 Slumbot API 与 Botzone TexasHoldem2p。改造时一次只改一件事：先换成下注历史 token 上的小型 Transformer 编码器，保留 PPO 和概率策略头，并加上熵正则。
+## 已实现的内容
 
-算力：笔记本 RTX 3070、家中 RTX 4070 Super（经 Tailscale），Colab 作补充。
+- **标准 200BB SD-CFR：** [PokerKit](https://github.com/uoftcprg/pokerkit) 牌桌，双方各 20,000 筹码、盲注 50/100；五个抽象行动、regret matching、external sampling、双方独立 reservoir、迭代加权回归、历史策略快照与断点恢复。采样在单进程中交错推进多棵树，树结束后立即补入新根。细节见 [SD-CFR 说明](docs/sd_cfr.md)和[规则说明](docs/hunl_environment.md)。
+- **Transformer PPO：** 下注历史 token 编码器、策略与价值头、自博弈及 PFSP 对手池；支持 `rlcard`、`pokerkit` 和独立的 Botzone 规则后端。另有卷积控制组、行为克隆和旧 [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) 基线适配。不同后端的行动顺序与特征语义不能混用，见 [Transformer 路径](docs/step3_transformer.md)和[控制组说明](docs/bc_and_baseline.md)。
+- **50 手 residual exploiter 原型：** 冻结 SD-CFR 历史策略作为基础策略，收集对手的公开行动统计，用残差策略做短局 PPO 更新。目前是 CPU 接线和训练冒烟，未完成长期训练、质量评估或部署。见 [exploiter 说明](docs/exploiter.md)。
+- **Botzone 入口：** 有规则机器人与 NumPy 模型前向的打包代码。模型入口已用开发用随机初值验证结构；仓库不附带可用于正式对战的训练权重。正式使用需另行导出真实训练权重并核对目标比赛规则。见 [规则机器人](docs/botzone_rulebot_upload.md)和[模型入口](docs/botzone_model_upload.md)。
 
-## 路线
+标准 HUNL、旧 `rlcard` 环境和 Botzone simple 裁判并非同一套规则；不同深度或后端的对战指标也不能直接横比。
 
-1. **复现，并打过随机 / 规则机器人。** 跑通 AlphaNLHoldem，规则交给 pokerkit。先在随机对手和简单规则机器人上建立可训练、可对战的基线。
-2. **Slumbot 基线。** 对接 Slumbot API，按 bb/100 记录成绩，并同时接 Botzone TexasHoldem2p。AlphaNLHoldem 是 50bb，Slumbot 是 200bb，深度不同，两边的数字不能直接横比，报告里要写明这个差距。
-3. **换成小型 Transformer。** 用下注历史 token 上的小 Transformer 编码器替换原编码器。保留 PPO 与概率策略头，加入熵正则，防止策略坍缩。这一步只换编码器。训练环境可以用 `env.backend` 在 rlcard 和 pokerkit 之间切换（pokerkit 修正了单挑翻牌后的行动顺序）。代码与运行方式见 [docs/step3_transformer.md](docs/step3_transformer.md)（只实现，不在本步训练）。卷积控制组和 `c_1048` 行为克隆见 [docs/bc_and_baseline.md](docs/bc_and_baseline.md)。
-4. **标准 200BB SD-CFR 基础策略。** 独立包装现有 0.59M Transformer，新增标准双人行动顺序、Regret Matching、批量 external sampling、reservoir 与迭代加权训练。运行与验证见 [docs/sd_cfr.md](docs/sd_cfr.md)，原 PPO/PFSP 路径保留。
+## 快速开始：SD-CFR
 
-以后再做：对手建模、100bb、实时搜索。
+以下命令在仓库根目录运行，需要 Python 3.10+。PyTorch 的 CPU 或 CUDA 版本请按本机环境安装；`requirements-cfr.txt` 包含当前 CFR 路径依赖。
 
-调研笔记见 [docs/reference_survey.md](docs/reference_survey.md)。
+```bash
+git clone https://github.com/Raymo-LEI/poker-ai.git
+cd poker-ai
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-cfr.txt
+export PYTHONPATH=src
 
-## 许可
+# 只检查配置和模型规模，不启动训练
+python scripts/train_cfr.py --dry-run
 
-AlphaNLHoldem 为 **AGPL-3.0**。本仓库因此保持私有：在私有仓库内使用没有问题；若对外提供服务或发布衍生作品，需按 AGPL 开源。pokerkit 为 MIT。
+# CPU 短冒烟：真实牌桌采样、一次拟合和 checkpoint
+python scripts/train_cfr.py --config configs/cfr/hunl_200bb.json \
+  --device cpu --iterations 1 --traversals 1 --train-steps 1 \
+  --out-dir runs/cfr_smoke
+```
+
+完整训练入口为 `python scripts/train_cfr.py --config configs/cfr/hunl_200bb.json`。训练输出包括 `metrics.csv`、`performance.csv`、`strategies/`、`train.pt` 和 `checkpoint_data/`；移动或备份恢复点时，`train.pt` 与 `checkpoint_data/` 要放在一起。已有输出目录续训使用 `--resume`，不要直接重跑覆盖。
+
+RTX 4090 服务器可从 [4090 配置](configs/cfr/hunl_4090.json)开始，它显式启用 CUDA BF16、fused Adam 和 TF32；测量命令与尚待验证的性能假设见 [服务器效率与基准说明](docs/server_4090_efficiency.md)。目前没有仓库内的 4090 实测吞吐或策略质量结论。
+
+## 其他入口
+
+同一 Python 3.10+ 环境可检查 PPO 配置和 residual exploiter 原型：
+
+```bash
+python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --dry-run
+PYTHONPATH=src python scripts/train_exploiter.py --dry-run
+```
+
+PPO 训练配置在 `configs/transformer/`，运行细节见 [训练与续训](docs/training.md)。`train_exploiter.py` 默认寻找 `runs/cfr_s2_ref/strategies`；该目录不存在时会明确报告未训练的均匀策略替身，不能把其输出当作 SD-CFR 成绩。
+
+旧 AlphaNLHoldem 的 TensorFlow 1.15 / Python 3.7 环境使用独立的 `requirements-alphanl.txt`，与上述 PyTorch 环境分开。需要上游代码或 `c_1048` 权重时，先运行 `git submodule update --init --recursive`。
+
+## 验证与目录
+
+```bash
+PYTHONPATH=src python -m pytest -q
+PYTHONPATH=src python -m alphanl.cfr.kuhn --iterations 1000
+```
+
+- `src/alphanl/cfr/`：SD-CFR、reservoir、历史策略与 checkpoint。
+- `src/alphanl/transformer/`：牌桌适配、观测编码、PPO、PFSP 和模型。
+- `src/alphanl/exploiter/`：50 手上下文与残差策略。
+- `scripts/`：训练、基准、行为克隆和冒烟入口。
+- `eval/`、`botzone_bots/`、`tools/`：评测、Botzone 入口和导出工具。
+- `docs/`：规则、算法、训练和部署说明；[调研笔记](docs/reference_survey.md)记录早期基线与参考资料。
+
+## 许可与第三方代码
+
+仓库根目录目前没有 `LICENSE` 文件。`third_party/AlphaNLHoldem` 是独立的 Git 子模块；使用其代码以及其他依赖时，请分别查看相应上游项目的许可文件。

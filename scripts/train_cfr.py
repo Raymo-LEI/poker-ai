@@ -24,6 +24,11 @@ def main() -> None:
     parser.add_argument("--amp-dtype", choices=("none", "bfloat16"))
     parser.add_argument("--fused-optimizer", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--allow-tf32", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--workers", type=int, help="spawned CPU collectors; 0 uses the single-process path")
+    parser.add_argument("--tree-batch", type=int)
+    parser.add_argument("--inference-batch", type=int)
+    parser.add_argument("--inference-wait-ms", type=float)
+    parser.add_argument("--train-buffer-device", choices=("cpu", "cuda"))
     parser.add_argument("--resume", type=Path, help="trusted local train.pt (includes reservoirs)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--threads", type=int, default=1)
@@ -33,7 +38,10 @@ def main() -> None:
     torch.set_num_threads(args.threads)
     config = CFRConfig.from_json(args.config)
     for arg, field in (("iterations", "iterations"), ("traversals", "traversals_per_player"),
-                       ("train_steps", "train_steps"), ("out_dir", "out_dir"), ("device", "device")):
+                       ("train_steps", "train_steps"), ("out_dir", "out_dir"), ("device", "device"),
+                       ("workers", "traversal_workers"), ("tree_batch", "traversal_batch_size"),
+                       ("inference_batch", "inference_batch_size"), ("inference_wait_ms", "inference_wait_ms"),
+                       ("train_buffer_device", "train_buffer_device")):
         value = getattr(args, arg)
         if value is not None:
             setattr(config, field, value)
@@ -56,6 +64,8 @@ def main() -> None:
                        "cuda_available": cuda_available,
                        "effective_amp_dtype": config.amp_dtype if bf16_supported else "none",
                        "effective_fused_optimizer": bool(config.fused_optimizer and resolved_device.type == "cuda" and cuda_available),
+                       "effective_train_buffer_device": "cuda" if (config.train_buffer_device == "cuda"
+                           and resolved_device.type == "cuda" and cuda_available) else "cpu",
                        "cuda_bf16_supported": bf16_supported})
         report.update({"backbone_parameters": count_parameters(PokerTransformer(**asdict(config.model))),
                        "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
@@ -67,10 +77,10 @@ def main() -> None:
             parser.error("output directory already contains a run; use --resume or a new --out-dir")
         if config.buffer_directory and any(Path(config.buffer_directory).glob("player_*/metadata.json")):
             parser.error("buffer directory contains a previous run; use --resume or a new directory")
-    trainer = SDCFRTrainer(config)
-    if args.resume is not None:
-        trainer.load_checkpoint(args.resume)
-    trainer.run()
+    with SDCFRTrainer(config) as trainer:
+        if args.resume is not None:
+            trainer.load_checkpoint(args.resume)
+        trainer.run()
 
 
 if __name__ == "__main__":

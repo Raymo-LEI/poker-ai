@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
+import time
 
 import numpy as np
 import torch
@@ -63,6 +64,21 @@ class TraversalStats:
     regret_samples: int = 0
     inference_calls: int = 0
     inference_rows: int = 0
+    inference_singleton_calls: int = 0
+    inference_max_batch: int = 0
+    inference_batches_2_7: int = 0
+    inference_batches_8_31: int = 0
+    inference_batches_32_127: int = 0
+    inference_batches_128_plus: int = 0
+
+    def record_inference(self, count: int) -> None:
+        self.inference_calls += 1
+        self.inference_rows += count
+        self.inference_max_batch = max(self.inference_max_batch, count)
+        field = ("inference_singleton_calls" if count == 1 else "inference_batches_2_7" if count < 8
+                 else "inference_batches_8_31" if count < 32 else "inference_batches_32_127" if count < 128
+                 else "inference_batches_128_plus")
+        setattr(self, field, getattr(self, field) + 1)
 
 
 @dataclass
@@ -88,6 +104,7 @@ class ExternalSamplingTraverser:
         self.rng = np.random.default_rng(seed)
         self.batch_size = int(batch_size)
         self.max_nodes = max_nodes
+        self.last_timing = {}
 
     def _walk(self, state: GameState, traverser: int, iteration: int,
               buffer, stats: TraversalStats):
@@ -101,7 +118,9 @@ class ExternalSamplingTraverser:
         if player not in (0, 1):
             raise ValueError("external sampling requires a two-player game")
         legal = tuple(int(a) for a in state.legal_actions())
+        began = time.perf_counter()
         batch = state.observation()
+        self.last_timing["observation_s"] += time.perf_counter() - began
         mask_ids = tuple(torch.nonzero(batch["legal_mask"][0] > 0.5).flatten().tolist())
         if not legal or len(legal) != len(set(legal)) or tuple(sorted(legal)) != mask_ids:
             raise ValueError("game legal actions must match its observation mask")
@@ -117,7 +136,9 @@ class ExternalSamplingTraverser:
         value = float(np.dot(strategy, action_values))
         regret = np.zeros(len(strategy), dtype=np.float32)
         regret[list(legal)] = action_values[list(legal)] - value
+        began = time.perf_counter()
         buffer.add(batch, torch.from_numpy(regret).unsqueeze(0), iteration)
+        self.last_timing["buffer_insert_s"] += time.perf_counter() - began
         stats.regret_samples += 1
         return value
 
@@ -127,6 +148,8 @@ class ExternalSamplingTraverser:
         if traverser not in (0, 1) or iteration < 1:
             raise ValueError("traverser must be 0/1 and iteration must be >= 1")
         stats = TraversalStats()
+        self.last_timing = {"observation_s": 0.0, "buffer_insert_s": 0.0,
+                            "packing_s": 0.0, "inference_s": 0.0, "root_s": 0.0}
         training = {p: policies[p].training for p in (0, 1)}
         for policy in policies.values():
             policy.eval()
@@ -139,7 +162,9 @@ class ExternalSamplingTraverser:
                 # keeps a wave full when tree depths vary substantially.
                 while len(active) < self.batch_size and not roots_exhausted:
                     try:
+                        began = time.perf_counter()
                         root = next(root_iter)
+                        self.last_timing["root_s"] += time.perf_counter() - began
                     except StopIteration:
                         roots_exhausted = True
                         break
@@ -158,19 +183,23 @@ class ExternalSamplingTraverser:
                         continue
                     policy = policies[player]
                     device = next(policy.parameters()).device
-                    batch = batch_to_device(cat_batches([q.batch for _, q in indexed]), device)
+                    began = time.perf_counter()
+                    cpu_batch = cat_batches([q.batch for _, q in indexed])
+                    batch = batch_to_device(cpu_batch, device)
+                    self.last_timing["packing_s"] += time.perf_counter() - began
+                    began = time.perf_counter()
                     probs = policy.strategy(batch).detach().double().cpu().numpy()
+                    self.last_timing["inference_s"] += time.perf_counter() - began
                     if probs.shape != tuple(batch["legal_mask"].shape):
                         raise ValueError("policy strategy shape must match legal mask")
                     if (not np.isfinite(probs).all() or (probs < 0).any()
                             or not np.allclose(probs.sum(-1), 1, atol=1e-6)):
                         raise ValueError("policy returned invalid strategy probabilities")
-                    legal = batch["legal_mask"].detach().cpu().numpy() > 0.5
+                    legal = cpu_batch["legal_mask"].numpy() > 0.5
                     if (probs[~legal] != 0).any():
                         raise ValueError("policy assigns mass to an illegal action")
                     probs /= probs.sum(-1, keepdims=True)
-                    stats.inference_calls += 1
-                    stats.inference_rows += len(indexed)
+                    stats.record_inference(len(indexed))
                     for (i, _), row in zip(indexed, probs):
                         responses[i] = row
                 pending = []

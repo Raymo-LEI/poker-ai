@@ -3,6 +3,7 @@
 from dataclasses import replace
 import csv
 import shutil
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -197,6 +198,121 @@ def test_disk_checkpoint_directory_can_be_moved_with_its_data(tmp_path):
     for player in (0, 1):
         assert loaded.buffers[player].seen == trainer.buffers[player].seen
         assert len(loaded.buffers[player]) == len(trainer.buffers[player])
+
+
+def test_checkpoint_gc_bounds_disk_and_preserves_other_checkpoints(tmp_path):
+    cfg = config(tmp_path / "run", buffer_directory=str(tmp_path / "live"))
+    trainer = SDCFRTrainer(cfg, root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    path = tmp_path / "train.pt"
+    trainer.save_checkpoint(path)
+    # An older checkpoint copy without a sidecar must protect its data.
+    pinned = tmp_path / "pinned.pt"
+    shutil.copyfile(path, pinned)
+    first = set((tmp_path / "checkpoint_data").iterdir())
+    trainer.run_iteration()
+    for _ in range(3):
+        trainer.save_checkpoint(path)
+        assert len(list((tmp_path / "checkpoint_data").iterdir())) == 2
+        assert all(p.exists() for p in first)
+    loaded = SDCFRTrainer(replace(cfg, out_dir=str(tmp_path / "resumed")),
+                          root_factory=lambda seed: TinyGame())
+    loaded.load_checkpoint(pinned)
+    assert loaded.iteration == 1
+    pinned.unlink()
+    trainer.save_checkpoint(path)
+    assert len(list((tmp_path / "checkpoint_data").iterdir())) == 1
+    assert sorted(trainer.strategy_paths) == [1, 2]
+    loaded.load_checkpoint(path)
+    assert loaded.iteration == 2
+
+
+def test_checkpoint_failure_keeps_published_checkpoint_and_removes_partial_data(tmp_path):
+    cfg = config(tmp_path / "run", buffer_directory=str(tmp_path / "live"))
+    trainer = SDCFRTrainer(cfg, root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    path = tmp_path / "train.pt"
+    trainer.save_checkpoint(path)
+    expected = path.read_bytes()
+    generations = set((tmp_path / "checkpoint_data").iterdir())
+    with patch("alphanl.cfr.trainer.torch.save", side_effect=OSError("disk full")):
+        with pytest.raises(OSError, match="disk full"):
+            trainer.save_checkpoint(path)
+    assert path.read_bytes() == expected
+    assert set((tmp_path / "checkpoint_data").iterdir()) == generations
+    assert not path.with_suffix(".pt.tmp").exists()
+    with patch("alphanl.cfr.trainer.shutil.disk_usage", return_value=shutil._ntuple_diskusage(10, 9, 1)):
+        with pytest.raises(OSError, match="previous checkpoint retained"):
+            trainer.save_checkpoint(path)
+    assert path.read_bytes() == expected
+
+
+def test_resumed_legacy_csv_headers_are_upgraded_without_losing_history(tmp_path):
+    trainer = SDCFRTrainer(config(tmp_path), root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    for name in ("metrics.csv", "performance.csv"):
+        path = tmp_path / name
+        rows = list(csv.DictReader(path.open()))
+        # Model the earlier release's shorter CSV schema.
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["iteration"])
+            writer.writeheader()
+            writer.writerow({"iteration": rows[0]["iteration"]})
+    trainer.run_iteration()
+    for name in ("metrics.csv", "performance.csv"):
+        rows = list(csv.DictReader((tmp_path / name).open()))
+        assert [row["iteration"] for row in rows] == ["1", "2"]
+        assert None not in rows[1]
+        assert rows[1]["p0_collect_s" if name == "performance.csv" else "p0_regret_samples"]
+
+
+def test_checkpoint_post_publish_sync_failure_preserves_referenced_data(tmp_path):
+    import alphanl.cfr.trainer as module
+    cfg = config(tmp_path / "run", buffer_directory=str(tmp_path / "live"))
+    trainer = SDCFRTrainer(cfg, root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    path = tmp_path / "train.pt"
+    trainer.save_checkpoint(path)
+    trainer.run_iteration()
+    sync = module.sync_directory
+
+    def fail_after_publish(directory):
+        if directory == path.parent:
+            raise OSError("directory sync failure")
+        sync(directory)
+
+    with patch.object(module, "sync_directory", side_effect=fail_after_publish):
+        with pytest.raises(OSError, match="directory sync failure"):
+            trainer.save_checkpoint(path)
+    restored = SDCFRTrainer(replace(cfg, out_dir=str(tmp_path / "resumed")), root_factory=lambda seed: TinyGame())
+    restored.load_checkpoint(path)
+    assert restored.iteration == 2
+
+
+def test_gc_refuses_to_delete_when_another_checkpoint_cannot_be_read(tmp_path):
+    trainer = SDCFRTrainer(config(tmp_path / "run"), root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    path = tmp_path / "train.pt"
+    trainer.save_checkpoint(path)
+    original = set((tmp_path / "checkpoint_data").iterdir())
+    (tmp_path / "unreadable.pt").write_text("incomplete checkpoint")
+    with pytest.warns(RuntimeWarning, match="cleanup skipped"):
+        trainer.save_checkpoint(path)
+    assert all(p.exists() for p in original)
+
+
+def test_checkpoint_copy_fallback_preserves_complete_strategy_history(tmp_path):
+    cfg = config(tmp_path / "run", buffer_directory=str(tmp_path / "live"))
+    trainer = SDCFRTrainer(cfg, root_factory=lambda seed: TinyGame())
+    trainer.run_iteration()
+    trainer.run_iteration()
+    with patch("alphanl.cfr.trainer.os.link", side_effect=OSError("hardlink unsupported")):
+        trainer.save_checkpoint(tmp_path / "train.pt")
+        trainer.save_checkpoint(tmp_path / "train.pt")
+    assert len(list((tmp_path / "checkpoint_data").iterdir())) == 1
+    restored = SDCFRTrainer(replace(cfg, out_dir=str(tmp_path / "restored")), root_factory=lambda seed: TinyGame())
+    restored.load_checkpoint(tmp_path / "train.pt")
+    assert sorted(restored.strategy_paths) == [1, 2]
 
 
 def test_neural_regret_fit_reduces_loss(tmp_path):

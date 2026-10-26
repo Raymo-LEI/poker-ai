@@ -13,6 +13,7 @@ import csv
 import json
 import os
 import shutil
+import warnings
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
@@ -25,7 +26,8 @@ import torch
 from alphanl.transformer.config import resolve_device
 from alphanl.transformer.model import PokerTransformer
 from .config import CFRConfig
-from .checkpoint import restore_buffer, save_buffer
+from .checkpoint import (restore_buffer, save_buffer, _references, publish_references,
+                         prune_generations, sync_directory, checkpoint_lock)
 from .model import RegretNetwork
 from .reservoir import ReservoirBuffer
 from .traversal import ExternalSamplingTraverser, GameState, HunlState
@@ -52,22 +54,63 @@ def iteration_weighted_mse(predicted: torch.Tensor, target: torch.Tensor,
     return (weights * errors.square().sum(-1)).mean()
 
 
-def _atomic_save(payload: dict, path: Path) -> None:
+def _atomic_save(payload: dict, path: Path, *, after_replace=None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
-    torch.save(payload, temp)
-    temp.replace(path)
+    try:
+        torch.save(payload, temp)
+        with temp.open("rb") as handle:
+            os.fsync(handle.fileno())
+        temp.replace(path)
+        if after_replace is not None:
+            after_replace()
+        sync_directory(path.parent)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
-def _link_or_copy(source: Path, target: Path) -> None:
+def _link_or_copy(source: Path, target: Path, *, reserve_bytes: int = 0) -> None:
     """Immutable strategy files can share disk blocks with saved generations."""
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = target.with_name(target.name + f".{uuid4().hex}.tmp")
     try:
         os.link(source, temp)
     except OSError:
+        if shutil.disk_usage(target.parent).free < source.stat().st_size + reserve_bytes:
+            raise OSError("insufficient space for checkpoint strategy copy and reserve")
         shutil.copyfile(source, temp)
+    with temp.open("rb") as handle:
+        os.fsync(handle.fileno())
     temp.replace(target)
+
+
+def _append_csv(path: Path, row: dict) -> None:
+    """Upgrade older log headers when new performance counters are added."""
+    if path.exists() and path.stat().st_size:
+        with path.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            fields = list(reader.fieldnames or [])
+            extra = [key for key in row if key not in fields]
+            if extra:
+                history = list(reader)
+        if extra:
+            fields += extra
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            try:
+                with temporary.open("w", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=fields)
+                    writer.writeheader()
+                    writer.writerows(history)
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        with path.open("a", newline="") as handle:
+            csv.DictWriter(handle, fieldnames=fields).writerow(row)
+    else:
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(row))
+            writer.writeheader()
+            writer.writerow(row)
 
 
 class SDCFRTrainer:
@@ -85,6 +128,13 @@ class SDCFRTrainer:
         self.rng = np.random.default_rng(config.seed)
         self.iteration = 0
         self.last_timing: dict[str, float | int] = {}
+        self.last_fit_timing: dict[str, float | int] = {}
+        self.gpu_pool_enabled = self.device.type == "cuda" and config.train_buffer_device == "cuda"
+        self.gpu_sample_generators = {}
+        if self.gpu_pool_enabled:
+            self.gpu_sample_generators = {
+                p: torch.Generator(device=self.device).manual_seed(config.seed + 3000 + p) for p in (0, 1)
+            }
         self.strategy_paths: dict[int, Path] = {}
         self.models = {p: self._new_model() for p in (0, 1)}
         self.optimizers = {p: self._new_optimizer(p) for p in (0, 1)}
@@ -100,6 +150,12 @@ class SDCFRTrainer:
             max_nodes=config.max_traversal_nodes,
         )
         self.root_factory = root_factory or self._hunl_root
+        from alphanl.transformer.hunl import HunlTokenizer
+        self._hunl_tokenizer = HunlTokenizer(config.model.max_seq_len)
+        self.parallel_collector = None
+        if config.traversal_workers:
+            from .parallel import ParallelCollector
+            self.parallel_collector = ParallelCollector(self.config, root_factory)
 
     def _new_model(self) -> RegretNetwork:
         backbone = PokerTransformer(**asdict(self.config.model))
@@ -117,10 +173,10 @@ class SDCFRTrainer:
             torch.cuda.synchronize(self.device)
 
     def _hunl_root(self, seed: int) -> HunlState:
-        from alphanl.transformer.hunl import HunlTable, HunlTokenizer
+        from alphanl.transformer.hunl import HunlTable
         table = HunlTable(seed=seed)
         table.reset()
-        return HunlState(table, HunlTokenizer(self.config.model.max_seq_len))
+        return HunlState(table, self._hunl_tokenizer)
 
     def _snapshot(self, iteration: int) -> dict:
         from alphanl.transformer.hunl import NUMERIC_VERSION, RULES_VERSION
@@ -142,6 +198,7 @@ class SDCFRTrainer:
         temp.replace(directory / "index.json")
 
     def train_player(self, player: int) -> float:
+        self.last_fit_timing = {"pool_upload_s": 0.0, "pool_bytes": 0}
         if not len(self.buffers[player]):
             # For example, every sampled SB folds before the BB can act.
             # The empty player's uniform/current network remains unchanged.
@@ -153,29 +210,45 @@ class SDCFRTrainer:
         # As in the PPO path, suppress dropout during deterministic fitting.
         # eval() preserves gradients through the full encoder and regret head.
         model.eval()
+        pool = None
+        if self.gpu_pool_enabled:
+            from .device_pool import DeviceTrainingPool
+            self._sync_device()
+            began = time.perf_counter()
+            pool = DeviceTrainingPool(self.buffers[player], self.device,
+                                      reserve_bytes=self.config.gpu_pool_reserve_bytes)
+            self._sync_device()
+            self.last_fit_timing = {"pool_upload_s": time.perf_counter() - began, "pool_bytes": pool.nbytes}
         total = 0.0
-        for _ in range(self.config.train_steps):
-            batch, target, iterations = self.buffers[player].sample(
-                self.config.minibatch_size, device=self.device
-            )
-            if self.amp_enabled:
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        try:
+            for _ in range(self.config.train_steps):
+                if pool is not None:
+                    batch, target, iterations = pool.sample(self.config.minibatch_size, self.gpu_sample_generators[player])
+                else:
+                    batch, target, iterations = self.buffers[player].sample(
+                        self.config.minibatch_size, device=self.device
+                    )
+                if self.amp_enabled:
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                        predicted = model(batch)
+                else:
                     predicted = model(batch)
-            else:
-                predicted = model(batch)
-            loss = iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations)
-            if not torch.isfinite(loss):
-                raise FloatingPointError("non-finite regret regression loss")
-            optimizer = self.optimizers[player]
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                (p for p in model.parameters() if p.requires_grad),
-                self.config.max_grad_norm, error_if_nonfinite=True,
-            )
-            optimizer.step()
-            total += float(loss.detach())
-        return total / self.config.train_steps
+                loss = iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations)
+                if not torch.isfinite(loss):
+                    raise FloatingPointError("non-finite regret regression loss")
+                optimizer = self.optimizers[player]
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    (p for p in model.parameters() if p.requires_grad),
+                    self.config.max_grad_norm, error_if_nonfinite=True,
+                )
+                optimizer.step()
+                total += float(loss.detach())
+            return total / self.config.train_steps
+        finally:
+            if pool is not None:
+                pool.close()
 
     def run_iteration(self) -> dict:
         if self.iteration == 0 and any(buffer.seen > 0 for buffer in self.buffers.values()):
@@ -191,9 +264,10 @@ class SDCFRTrainer:
             self._sync_device()
             collect_started = time.perf_counter()
             seeds = self.rng.integers(0, 2**31 - 1, self.config.traversals_per_player)
-            roots = [self.root_factory(int(seed)) for seed in seeds]
-            stats = self.traverser.collect(
-                roots, traverser=player, iteration=iteration,
+            source = seeds if self.parallel_collector else (self.root_factory(int(seed)) for seed in seeds)
+            collector = self.parallel_collector or self.traverser
+            stats = collector.collect(
+                source, traverser=player, iteration=iteration,
                 policies=self.models, buffer=self.buffers[player],
             )
             self._sync_device()
@@ -201,6 +275,8 @@ class SDCFRTrainer:
             metrics.update({f"p{player}_{k}": v for k, v in asdict(stats).items()})
             metrics[f"p{player}_buffer_size"] = len(self.buffers[player])
             timing[f"p{player}_collect_s"] = collect_seconds
+            timing.update({f"p{player}_{key}": value
+                           for key, value in collector.last_timing.items()})
             timing[f"p{player}_regret_samples_per_s"] = (
                 stats.regret_samples / collect_seconds if collect_seconds > 0 else 0.0
             )
@@ -216,6 +292,7 @@ class SDCFRTrainer:
             )
             draws = metrics[f"p{player}_train_steps"] * self.config.minibatch_size
             timing[f"p{player}_fit_s"] = fit_seconds
+            timing.update({f"p{player}_{key}": value for key, value in self.last_fit_timing.items()})
             timing[f"p{player}_training_draws_per_s"] = draws / fit_seconds if fit_seconds > 0 else 0.0
         self.iteration = iteration
         out = Path(self.config.out_dir)
@@ -225,25 +302,19 @@ class SDCFRTrainer:
             self.strategy_paths[iteration] = path
         self._write_strategy_index()
         out.mkdir(parents=True, exist_ok=True)
-        csv_path = out / "metrics.csv"
-        exists = csv_path.exists() and csv_path.stat().st_size > 0
-        with csv_path.open("a", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(metrics))
-            if not exists:
-                writer.writeheader()
-            writer.writerow(metrics)
+        _append_csv(out / "metrics.csv", metrics)
         timing["iteration_s"] = time.perf_counter() - iteration_started
         self.last_timing = timing
         timing_path = out / "performance.csv"
-        timing_exists = timing_path.exists() and timing_path.stat().st_size > 0
-        with timing_path.open("a", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(timing))
-            if not timing_exists:
-                writer.writeheader()
-            writer.writerow(timing)
+        _append_csv(timing_path, timing)
         return metrics
 
     def save_checkpoint(self, path: str | Path) -> None:
+        path = Path(path).resolve()
+        with checkpoint_lock(path.parent):
+            self._save_checkpoint(path)
+
+    def _save_checkpoint(self, path: Path) -> None:
         """Restart state plus immutable sibling checkpoint_data generation.
 
         Disk reservoirs are copied in bounded chunks, and past strategies are
@@ -251,43 +322,93 @@ class SDCFRTrainer:
         with train.pt. Mutable live memmaps never back an older checkpoint.
         """
         path = Path(path).resolve()
+        checkpoint_started = time.perf_counter()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Old + new generations coexist until atomic publication. Refuse
+        # early rather than consuming the filesystem's final free blocks.
+        retained_bytes = sum(len(b) * sum(dtype.itemsize * int(np.prod(tail))
+                             for dtype, tail in b._schema.values()) for b in self.buffers.values())
+        model_bytes = sum(t.numel() * t.element_size() for m in self.models.values()
+                          for t in m.state_dict().values())
+        archive_bytes = sum(p.stat().st_size for p in self.strategy_paths.values()
+                            if p.stat().st_dev != path.parent.stat().st_dev)
+        required = retained_bytes + 4 * model_bytes + archive_bytes + self.config.checkpoint_min_free_bytes
+        free_before = shutil.disk_usage(path.parent).free
+        if free_before < required:
+            raise OSError(f"checkpoint requires {required} free bytes including reserve; previous checkpoint retained")
         generation = path.parent / "checkpoint_data" / f"iteration_{self.iteration:07d}_{uuid4().hex}"
         generation.mkdir(parents=True)
-        buffers = {}
-        for player, buffer in self.buffers.items():
-            saved = save_buffer(buffer, generation / f"player_{player}")
-            if saved.get("storage") == "memmap_snapshot_v1":
-                saved["directory"] = str(Path(saved["directory"]).relative_to(path.parent))
-            buffers[player] = saved
-        strategies = {}
-        for iteration, source in self.strategy_paths.items():
-            target = generation / "strategies" / source.name
-            _link_or_copy(source, target)
-            strategies[iteration] = str(target.relative_to(path.parent))
-        metrics_source = Path(self.config.out_dir) / "metrics.csv"
-        metrics_path = None
-        if metrics_source.exists():
-            target = generation / "metrics.csv"
-            shutil.copyfile(metrics_source, target)
-            metrics_path = str(target.relative_to(path.parent))
-        profile_source = Path(self.config.out_dir) / "performance.csv"
-        profile_path = None
-        if profile_source.exists():
-            target = generation / "performance.csv"
-            shutil.copyfile(profile_source, target)
-            profile_path = str(target.relative_to(path.parent))
-        payload = self._snapshot(self.iteration + 1)
-        payload.update({
-            "format": "sd_cfr_train_v2", "completed_iteration": self.iteration,
-            "optimizers": {p: opt.state_dict() for p, opt in self.optimizers.items()},
-            "buffers": buffers, "strategy_archive": strategies,
-            "metrics_path": metrics_path, "performance_path": profile_path,
-            "rng": self.rng.bit_generator.state,
-            "traverser_rng": self.traverser.rng.bit_generator.state,
-            "torch_rng": torch.get_rng_state(),
-            "cuda_rng": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
-        })
-        _atomic_save(payload, path)
+        published = False
+
+        def mark_published():
+            nonlocal published
+            published = True
+
+        try:
+            buffers = {}
+            for player, buffer in self.buffers.items():
+                saved = save_buffer(buffer, generation / f"player_{player}")
+                if saved.get("storage") == "memmap_snapshot_v1":
+                    saved["directory"] = str(Path(saved["directory"]).relative_to(path.parent))
+                buffers[player] = saved
+            strategies = {}
+            remaining_payload_bytes = sum(
+                len(b) * sum(dtype.itemsize * int(np.prod(tail)) for dtype, tail in b._schema.values())
+                for b in self.buffers.values() if b.directory is None)
+            for iteration, source in self.strategy_paths.items():
+                target = generation / "strategies" / source.name
+                _link_or_copy(source, target, reserve_bytes=self.config.checkpoint_min_free_bytes
+                              + remaining_payload_bytes + 4 * model_bytes)
+                strategies[iteration] = str(target.relative_to(path.parent))
+            metrics_source = Path(self.config.out_dir) / "metrics.csv"
+            metrics_path = None
+            if metrics_source.exists():
+                target = generation / "metrics.csv"
+                shutil.copyfile(metrics_source, target)
+                with target.open("rb") as handle:
+                    os.fsync(handle.fileno())
+                metrics_path = str(target.relative_to(path.parent))
+            profile_source = Path(self.config.out_dir) / "performance.csv"
+            profile_path = None
+            if profile_source.exists():
+                target = generation / "performance.csv"
+                shutil.copyfile(profile_source, target)
+                with target.open("rb") as handle:
+                    os.fsync(handle.fileno())
+                profile_path = str(target.relative_to(path.parent))
+            payload = self._snapshot(self.iteration + 1)
+            payload.update({
+                "format": "sd_cfr_train_v2", "completed_iteration": self.iteration,
+                "optimizers": {p: opt.state_dict() for p, opt in self.optimizers.items()},
+                "buffers": buffers, "strategy_archive": strategies,
+                "metrics_path": metrics_path, "performance_path": profile_path,
+                "rng": self.rng.bit_generator.state,
+                "traverser_rng": self.traverser.rng.bit_generator.state,
+                "worker_rng": self.parallel_collector.rng_states if self.parallel_collector else None,
+                "gpu_sample_rng": {p: g.get_state() for p, g in self.gpu_sample_generators.items()},
+                "torch_rng": torch.get_rng_state(),
+                "cuda_rng": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+            })
+            _references(payload, path.parent)
+            # Ensure external files/directories reach disk before publishing
+            # the checkpoint that makes earlier generations collectible.
+            for directory in (generation / "strategies", generation, generation.parent):
+                if directory.is_dir():
+                    sync_directory(directory)
+            _atomic_save(payload, path, after_replace=mark_published)
+        except BaseException:
+            if not published:
+                shutil.rmtree(generation)
+            raise
+        publish_references(path, payload)
+        prune_generations(path)
+        self.last_checkpoint_timing = {
+            "iteration": self.iteration, "checkpoint_s": time.perf_counter() - checkpoint_started,
+            "retained_buffer_bytes": retained_bytes, "free_before_bytes": free_before,
+            "free_after_bytes": shutil.disk_usage(path.parent).free,
+        }
+        with (path.parent / "checkpoint_performance.jsonl").open("a") as handle:
+            handle.write(json.dumps(self.last_checkpoint_timing) + "\n")
 
     def load_checkpoint(self, path: str | Path) -> None:
         # Only load locally trusted training files (contains reservoir arrays).
@@ -301,9 +422,14 @@ class SDCFRTrainer:
             raise ValueError("CFR checkpoint rules or numeric feature version mismatch")
         previous = blob["config"]
         current = self.config.to_dict()
-        legacy_config_defaults = {"amp_dtype": "none", "fused_optimizer": False, "allow_tf32": False}
+        legacy_config_defaults = {"amp_dtype": "none", "fused_optimizer": False, "allow_tf32": False,
+                                  "traversal_workers": 0, "train_buffer_device": "cpu"}
         for key in current:
-            if key not in ("iterations", "out_dir", "device", "buffer_directory", "checkpoint_every"):
+            if key not in ("iterations", "out_dir", "device", "buffer_directory", "checkpoint_every",
+                           "checkpoint_min_free_bytes", "gpu_pool_reserve_bytes", "traversal_workers",
+                           "train_buffer_device", "traversal_batch_size"):
+                if key in ("inference_batch_size", "inference_wait_ms", "worker_sample_batch", "worker_timeout_s"):
+                    continue
                 previous_value = previous.get(key, legacy_config_defaults.get(key))
                 if key not in previous and key not in legacy_config_defaults:
                     raise ValueError(f"CFR checkpoint config is missing: {key}")
@@ -328,6 +454,24 @@ class SDCFRTrainer:
         self.iteration = completed
         self.rng.bit_generator.state = blob["rng"]
         self.traverser.rng.bit_generator.state = blob["traverser_rng"]
+        if self.parallel_collector:
+            states = blob.get("worker_rng")
+            if states is not None and len(states) == self.config.traversal_workers:
+                self.parallel_collector.rng_states = copy.deepcopy(states)
+            else:
+                warnings.warn("collector mode/count changed on resume; initializing deterministic worker RNG streams", RuntimeWarning)
+                self.parallel_collector.rng_states = [
+                    np.random.default_rng(np.random.SeedSequence([self.config.seed, completed, i, 1000])).bit_generator.state
+                    for i in range(self.config.traversal_workers)]
+        if self.gpu_pool_enabled:
+            states = blob.get("gpu_sample_rng", {})
+            if set(states) == {0, 1}:
+                for player, generator in self.gpu_sample_generators.items():
+                    generator.set_state(states[player])
+            else:
+                warnings.warn("GPU sampling enabled on resume; initializing deterministic GPU sampler RNG streams", RuntimeWarning)
+                for player, generator in self.gpu_sample_generators.items():
+                    generator.manual_seed(self.config.seed + 3000 + player + completed * 100003)
         torch.set_rng_state(blob["torch_rng"])
         if blob["cuda_rng"] is not None and torch.cuda.is_available():
             torch.cuda.set_rng_state_all(blob["cuda_rng"])
@@ -369,3 +513,13 @@ class SDCFRTrainer:
                     or self.iteration == self.config.iterations):
                 self.save_checkpoint(Path(self.config.out_dir) / "train.pt")
         return metrics
+
+    def close(self) -> None:
+        if self.parallel_collector is not None:
+            self.parallel_collector.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()

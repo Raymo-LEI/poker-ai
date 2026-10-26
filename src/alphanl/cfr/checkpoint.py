@@ -12,15 +12,124 @@ import copy
 import json
 from pathlib import Path
 import shutil
+import re
+import warnings
+import os
+from contextlib import contextmanager
+import fcntl
 from typing import Any
 
 import numpy as np
+import torch
 
 from .reservoir import ReservoirBuffer
 
 
 COPY_CHUNK_BYTES = 8 * 1024 * 1024
 DISK_STORAGE = "memmap_snapshot_v1"
+
+
+@contextmanager
+def checkpoint_lock(parent: Path):
+    """Serialize publishers/GC in one run (Linux/macOS training hosts)."""
+    parent.mkdir(parents=True, exist_ok=True)
+    with (parent / ".checkpoint.lock").open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _references(payload: dict, parent: Path) -> set[Path]:
+    """Validate all external references before authorizing collection."""
+    paths = list(payload.get("strategy_archive", {}).values())
+    paths += [payload[key] for key in ("metrics_path", "performance_path") if payload.get(key)]
+    for buffer in payload.get("buffers", {}).values():
+        if buffer.get("storage") == DISK_STORAGE:
+            directory = (parent / buffer["directory"]).resolve()
+            metadata = buffer["metadata"]
+            if json.loads((directory / "metadata.json").read_text()) != metadata:
+                raise ValueError("checkpoint reservoir metadata mismatch")
+            for key, field in metadata["schema"].items():
+                field_path = directory / f"{key}.dat"
+                expected = metadata["size"] * int(np.prod(field["shape"])) * np.dtype(field["dtype"]).itemsize
+                if field_path.stat().st_size != expected:
+                    raise ValueError(f"checkpoint reservoir size mismatch: {field_path}")
+            paths.append(str(directory))
+    references = set()
+    data = (parent / "checkpoint_data").resolve()
+    for filename in paths:
+        target = (parent / filename).resolve()
+        if not target.exists():
+            raise ValueError(f"missing checkpoint reference: {target}")
+        relative = target.relative_to(data)
+        references.add(data / relative.parts[0])
+    return references
+
+
+def _fingerprint(path: Path) -> list[int]:
+    stat = path.stat()
+    return [stat.st_size, stat.st_mtime_ns, stat.st_ino]
+
+
+def sync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def publish_references(path: Path, payload: dict) -> None:
+    """Small sidecar avoids repeatedly loading multi-GB embedded RAM pools."""
+    refs = _references(payload, path.parent)
+    sidecar = path.with_name(path.name + ".refs.json")
+    temporary = sidecar.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps({"fingerprint": _fingerprint(path),
+                                     "generations": [p.name for p in sorted(refs)]}))
+    temporary.replace(sidecar)
+
+
+def prune_generations(path: Path) -> None:
+    """Collect only unreferenced generations, failing closed on unreadable refs.
+
+    Checkpoints live beside checkpoint_data. Discover legacy .pt/.pth/.ckpt
+    files once; subsequent saves use fingerprinted, small reference sidecars.
+    Copies of a checkpoint in this directory retain their generations too.
+    A whole run must be copied with checkpoint_data when moved elsewhere.
+    """
+    parent = path.parent
+    data = parent / "checkpoint_data"
+    protected = set()
+    candidates = {p for pattern in ("*.pt", "*.pth", "*.ckpt") for p in parent.glob(pattern)}
+    candidates.add(path)
+    candidates.update(parent / p.name.removesuffix(".refs.json") for p in parent.glob("*.refs.json")
+                      if (parent / p.name.removesuffix(".refs.json")).is_file())
+    try:
+        for checkpoint in candidates:
+            sidecar = checkpoint.with_name(checkpoint.name + ".refs.json")
+            cached = json.loads(sidecar.read_text()) if sidecar.exists() else None
+            if cached is None or cached["fingerprint"] != _fingerprint(checkpoint):
+                blob = torch.load(checkpoint, map_location="cpu", weights_only=False)
+                if blob.get("format") != "sd_cfr_train_v2":
+                    raise ValueError(f"unrecognized checkpoint beside checkpoint_data: {checkpoint}")
+                publish_references(checkpoint, blob)
+                cached = json.loads(sidecar.read_text())
+                del blob
+            for name in cached["generations"]:
+                if not re.fullmatch(r"iteration_\d{7,}_[0-9a-f]{32}", name):
+                    raise ValueError("invalid generation reference")
+                if not (data / name).is_dir():
+                    raise ValueError("referenced checkpoint generation is missing")
+                protected.add(name)
+    except Exception as exc:
+        warnings.warn(f"checkpoint published; generation cleanup skipped: {exc}", RuntimeWarning)
+        return
+    for generation in data.iterdir():
+        if (re.fullmatch(r"iteration_\d{7,}_[0-9a-f]{32}", generation.name)
+                and generation.name not in protected and generation.is_dir() and not generation.is_symlink()):
+            shutil.rmtree(generation)
 
 
 def _field_elements(size: int, tail: tuple[int, ...]) -> int:
@@ -56,10 +165,15 @@ def save_buffer(buffer: ReservoirBuffer, directory: str | Path) -> dict[str, Any
                 for start in range(0, source.size, step):
                     chunk = np.array(source[start:start + step], copy=True)
                     chunk.tofile(handle)
+                handle.flush()
+                os.fsync(handle.fileno())
             field_path.chmod(0o444)
         metadata_path = target / "metadata.json"
         metadata_path.write_text(json.dumps(metadata))
         metadata_path.chmod(0o444)
+        with metadata_path.open("rb") as handle:
+            os.fsync(handle.fileno())
+        sync_directory(target)
     except BaseException:
         # Only remove the fresh generation created by this call.
         shutil.rmtree(target)

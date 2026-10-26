@@ -8,9 +8,13 @@ the flop, with 50/100 blinds and 20,000 starting chips every hand.
 from __future__ import annotations
 
 import copy
+from collections import deque
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Sequence, Tuple
+
+import numpy as np
+import torch
 
 from .buckets import nearest_pot_fraction_bucket
 from .schema import ActionEvent, normalize_card
@@ -22,6 +26,24 @@ BIG_BLIND = 100
 STARTING_STACK = 20_000
 NUMERIC_VERSION = "hunl_exact_fraction_v1"
 RULES_VERSION = "standard_hunl_200bb_v1"
+
+
+def _branch_container(value):
+    """Copy PokerKit's mutable containers, sharing its frozen value objects.
+
+    Cards, streets, operations and rule tuples are immutable in PokerKit
+    0.7.7. Lists may nest lists/deques (hole cards and dealing statuses).
+    No engine method mutates a historical operation or a card in place.
+    """
+    if isinstance(value, list):
+        return [_branch_container(item) for item in value]
+    if isinstance(value, deque):
+        return deque(value)
+    if isinstance(value, set):
+        return value.copy()
+    if isinstance(value, dict):
+        return {key: _branch_container(item) for key, item in value.items()}
+    return value
 
 
 @lru_cache(maxsize=1)
@@ -76,6 +98,27 @@ class HunlTokenizer(BettingHistoryTokenizer):
         legacy = super()._action_numeric(event, blind)
         return (float(event.pot_fraction) / 10.0, *legacy[1:])
 
+    def _pad(self, sequences):
+        # A DFS frame retains its observation while visiting descendants, so
+        # outputs must own their storage. Pack entire sequences in NumPy,
+        # avoiding a small Tensor allocation and four indexed writes/token.
+        shape = (len(sequences), self.max_seq_len)
+        arrays = {"token_ids": np.zeros(shape, dtype=np.int64),
+                  "type_ids": np.zeros(shape, dtype=np.int64),
+                  "numeric": np.zeros((*shape, self.num_numeric), dtype=np.float32),
+                  "pad_mask": np.ones(shape, dtype=bool),
+                  "legal_mask": np.zeros((len(sequences), self.num_actions), dtype=np.float32)}
+        for row, sequence in enumerate(sequences):
+            if not sequence:
+                continue
+            ids, types, numeric = zip(*sequence)
+            count = len(sequence)
+            arrays["token_ids"][row, :count] = ids
+            arrays["type_ids"][row, :count] = types
+            arrays["numeric"][row, :count] = numeric
+            arrays["pad_mask"][row, :count] = False
+        return {key: torch.from_numpy(value) for key, value in arrays.items()}
+
 
 class HunlTable(PokerkitTable):
     """Locked standard HUNL rules with branchable, pre-sampled chance.
@@ -97,6 +140,11 @@ class HunlTable(PokerkitTable):
             _evaluator()
 
     def reset(self, deck=None) -> None:
+        # RNG is read-only during a pre-sampled hand. Detach on reset so
+        # sibling clones can reset independently without copying 625 RNG
+        # integers at every action branch.
+        rng = copy.copy(self._py_random)
+        self._py_random = rng
         super().reset(deck)
         if self.fast_evaluator:
             self.state.hand_types = (_LookupHand,)
@@ -105,7 +153,17 @@ class HunlTable(PokerkitTable):
 
     def clone(self) -> "HunlTable":
         self._require_hand()
-        return copy.deepcopy(self)
+        branch = copy.copy(self)
+        branch._records = self._records.copy()  # frozen _TakenAction values
+        branch.state = copy.copy(self.state)
+        branch.state.__dict__ = {
+            key: _branch_container(value) for key, value in vars(self.state).items()
+        }
+        return branch
+
+    def set_rng_state(self, state) -> None:
+        self._py_random = copy.copy(self._py_random)
+        super().set_rng_state(state)
 
     def events_for(self, me_seat: int) -> Tuple[ActionEvent, ...]:
         return tuple(

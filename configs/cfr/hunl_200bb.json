@@ -1,0 +1,27 @@
+{
+  "seed": 1,
+  "device": "auto",
+  "iterations": 1000,
+  "traversals_per_player": 128,
+  "traversal_batch_size": 32,
+  "buffer_capacity": 2000000,
+  "buffer_directory": null,
+  "train_steps": 512,
+  "minibatch_size": 256,
+  "learning_rate": 0.0003,
+  "max_grad_norm": 1.0,
+  "reinitialize": true,
+  "fallback": "uniform",
+  "snapshot_every": 1,
+  "checkpoint_every": 10,
+  "out_dir": "runs/sd_cfr_hunl",
+  "max_traversal_nodes": null,
+  "model": {
+    "d_model": 128,
+    "nhead": 4,
+    "num_layers": 4,
+    "dim_feedforward": 256,
+    "dropout": 0.1,
+    "max_seq_len": 64
+  }
+}

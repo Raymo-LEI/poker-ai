@@ -32,6 +32,7 @@ from .schema import (
     RANKS,
     SUITS,
     HandSnapshot,
+    ActionEvent,
     normalize_cards,
 )
 
@@ -101,6 +102,16 @@ class BettingHistoryTokenizer:
         self.num_types = NUM_TYPES
         self.num_numeric = NUM_NUMERIC
         self.num_actions = NUM_ACTIONS
+
+    def _action_numeric(self, event: ActionEvent, blind: float) -> Tuple[float, float, float, float]:
+        """Legacy four channels; specialized formats can override explicitly."""
+
+        return (
+            _norm_fraction(event.pot_fraction),
+            _norm_chips(event.pot_before, blind),
+            _norm_chips(event.stack_before, blind),
+            _norm_chips(event.to_call_before, blind),
+        )
 
     def blank(self) -> TensorBatch:
         """Padded batch used only as a placeholder after a terminal step."""
@@ -183,12 +194,7 @@ class BettingHistoryTokenizer:
             token_id = action_token_id(
                 event.action_type, event.position, event.actor_is_me, event.size_bucket
             )
-            numeric = (
-                _norm_fraction(event.pot_fraction),
-                _norm_chips(event.pot_before, blind),
-                _norm_chips(event.stack_before, blind),
-                _norm_chips(event.to_call_before, blind),
-            )
+            numeric = self._action_numeric(event, blind)
             actions_by_street[event.street].append((token_id, TYPE_ACTION, numeric))
 
         last_street = max(0, min(3, int(snapshot.street)))

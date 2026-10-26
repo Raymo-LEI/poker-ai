@@ -1,0 +1,4 @@
+# Standard HUNL / SD-CFR path. Legacy PPO dependencies and APIs are unchanged.
+-r requirements-transformer.txt
+# Perfect-hash lookup evaluation of 5/6/7 cards (no 21-combination Python loop).
+phevaluator==0.6.0

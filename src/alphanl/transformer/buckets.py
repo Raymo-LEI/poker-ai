@@ -18,3 +18,17 @@ def pot_fraction_bucket(pot_fraction: float) -> int:
         if pot_fraction <= edge:
             return index
     return NUM_BUCKETS - 1
+
+
+def nearest_pot_fraction_bucket(pot_fraction: float) -> int:
+    """Nearest existing positive bucket representative for off-tree HUNL bets.
+
+    Bucket ids and vocabulary width are unchanged. A tie uses the smaller
+    representative; a zero-chip action remains bucket 0. Overflow uses 8x pot.
+    The continuous feature records the actual fraction independently.
+    """
+
+    if pot_fraction <= 0:
+        return 0
+    representatives = (*BUCKET_RIGHT_EDGES, 8.0)
+    return 1 + min(range(len(representatives)), key=lambda i: abs(representatives[i] - pot_fraction))

@@ -162,7 +162,7 @@ def _normalize_deck(deck: Sequence[str]) -> Tuple[str, ...]:
 class _TakenAction:
     street: int
     actor_seat: int
-    action_id: int
+    action_id: Optional[int]
     pot_before: int
     chips_added: int
     to_call_before: int

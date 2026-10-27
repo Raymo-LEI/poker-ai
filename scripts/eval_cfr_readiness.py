@@ -58,6 +58,9 @@ def parse_args(argv=None):
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--cache-size", type=int, default=64, help="LRU CPU snapshot count per actor")
     parser.add_argument("--skip-ladder", action="store_true")
+    parser.add_argument("--spr-action-guard", action=argparse.BooleanOptionalAction, default=None,
+                        help="Explicit evaluation-only intervention; archive is unchanged")
+    parser.add_argument("--guard-max-pot-ratio", type=float)
     parser.add_argument("--resume", action="store_true", help="Reuse completed tasks only with identical inputs and code")
     args = parser.parse_args(argv)
     args.opponents = [x for x in args.opponents.split(",") if x]
@@ -72,6 +75,8 @@ def parse_args(argv=None):
             or args.cache_size < 0 or args.equity_samples < 1
             or (args.hero_iteration is not None and args.hero_iteration < 1)):
         parser.error("positive budgets required; pairs>=2 and cache-size>=0")
+    if args.guard_max_pot_ratio is not None and (not np.isfinite(args.guard_max_pot_ratio) or args.guard_max_pot_ratio <= 0):
+        parser.error("guard-max-pot-ratio must be positive and finite")
     return args
 
 
@@ -118,6 +123,8 @@ def run(args):
                   "runtime": runtime,
                   "notes": ["All tiers here use standard HUNL; not the legacy Botzone simple referee.",
                             "Mixtures sample t proportional to iteration once per player per hand.",
+                            "An explicit guard override evaluates a mask-modified mixture, not a retrained policy.",
+                            "Guard overrides affect the hero only, except health self-play where both use the override.",
                             "Latest single archive is sigma_T (pre-fit), not post-fit theta_T.",
                             "Rule opponents are reproducible heuristics, not a local best response.",
                             "Intervals are pointwise; no guarantee of monotonic CFR improvement.",
@@ -135,9 +142,11 @@ def run(args):
         atomic_json(path, report)
 
     publish()
-    def actor(iteration, seed, single=False):
+    def actor(iteration, seed, single=False, intervention=False):
         return CFRActor(args.strategies, seed=seed, through=iteration,
-                        iterations=[iteration] if single else None, cache_size=args.cache_size)
+                        iterations=[iteration] if single else None, cache_size=args.cache_size,
+                        spr_guard=args.spr_action_guard if intervention else None,
+                        max_pot_ratio=args.guard_max_pot_ratio if intervention else None)
 
     def run_task(key, kind, hero_iteration, opponent_name, single=False):
         if key in report["results"]:
@@ -148,11 +157,11 @@ def run(args):
             print(f"reuse {key}", flush=True)
             return
         task_seed = args.seed + int.from_bytes(hashlib.sha256(key.encode()).digest()[:4], "little")
-        hero = actor(hero_iteration, task_seed + 11)
+        hero = actor(hero_iteration, task_seed + 11, intervention=True)
         opponent = (actor(opponent_name, task_seed + 19, single=single) if isinstance(opponent_name, int)
                     else RuleActor(opponent_name, seed=task_seed + 19, equity_samples=args.equity_samples))
         if kind == "health":
-            opponent = actor(hero_iteration, task_seed + 19)
+            opponent = actor(hero_iteration, task_seed + 19, intervention=True)
         print(f"start {key}", flush=True)
         raw = args.out / (key.replace(":", "_") + ".jsonl")
         with raw.open("w") as handle:
@@ -173,6 +182,8 @@ def run(args):
                                    "hero_audit": hero.audit.summary()}
                 publish()
                 raise
+        result["hero_guard_override"] = {"enabled": args.spr_action_guard,
+                                          "max_pot_ratio": args.guard_max_pot_ratio}
         result["raw_log"] = raw.name
         result["raw_log_sha256"] = sha256_file(raw)
         report["results"][key] = result
@@ -184,6 +195,8 @@ def run(args):
         if not args.skip_ladder:
             milestones = sorted({target} | {m for m in args.milestones if m <= target})
             matchups = {(target, m) for m in milestones if m < target}
+            if target > 1:
+                matchups.update({(target, 1), (target, target - 1)})
             matchups.update(zip(milestones[1:], milestones[:-1]))
             for later, earlier in sorted(matchups):
                 run_task(f"duplicate:{later}_vs_{earlier}", "duplicate", later, earlier)

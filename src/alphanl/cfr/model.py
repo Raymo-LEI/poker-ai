@@ -35,8 +35,8 @@ def regret_matching(
     An empty legal set is an invalid decision state and raises an error.
     """
 
-    if fallback not in ("uniform", "argmax"):
-        raise ValueError("fallback must be 'uniform' or 'argmax'")
+    if fallback not in ("uniform", "argmax", "softmax"):
+        raise ValueError("fallback must be uniform, argmax or softmax")
     if regrets.ndim < 1 or regrets.shape != legal_mask.shape:
         raise ValueError("regrets and legal_mask must have the same non-scalar shape")
     if regrets.shape[-1] == 0:
@@ -61,9 +61,15 @@ def regret_matching(
     matched = scaled / total.clamp_min(1.0)
     if fallback == "uniform":
         default = legal.float() / legal.sum(dim=-1, keepdim=True)
-    else:
+    elif fallback == "argmax":
         best = raw.masked_fill(~legal, -torch.inf).argmax(dim=-1)
         default = F.one_hot(best, num_classes=raw.shape[-1]).float()
+    else:
+        # Unit-temperature smoothing + 5% exploration floor. Subtracting
+        # the legal maximum avoids overflow; equal/zero regrets are uniform.
+        logits = raw.masked_fill(~legal, -torch.inf)
+        logits = logits - logits.amax(-1, keepdim=True)
+        default = .95 * logits.softmax(-1) + .05 * legal.float() / legal.sum(-1, keepdim=True)
     return torch.where(total > 0, matched, default)
 
 
@@ -87,8 +93,8 @@ class RegretNetwork(nn.Module):
         fallback: str = "uniform",
     ) -> None:
         super().__init__()
-        if fallback not in ("uniform", "argmax"):
-            raise ValueError("fallback must be 'uniform' or 'argmax'")
+        if fallback not in ("uniform", "argmax", "softmax"):
+            raise ValueError("fallback must be uniform, argmax or softmax")
         if backbone is not None and not isinstance(backbone, PokerTransformer):
             raise TypeError("backbone must be a PokerTransformer")
         self.backbone = PokerTransformer() if backbone is None else copy.deepcopy(backbone)

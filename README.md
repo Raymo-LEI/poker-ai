@@ -72,3 +72,5 @@ PYTHONPATH=src python -m alphanl.cfr.kuhn --iterations 1000
 ## 许可与第三方代码
 
 仓库根目录目前没有 `LICENSE` 文件。`third_party/AlphaNLHoldem` 是独立的 Git 子模块；使用其代码以及其他依赖时，请分别查看相应上游项目的许可文件。
+
+Deep-stack CFR action abstraction and evaluation: [all-street SPR guard](docs/cfr_spr_guard.md). The supporting shared position-conditioned training path is documented in [Unified SD-CFR](docs/cfr_unified.md).

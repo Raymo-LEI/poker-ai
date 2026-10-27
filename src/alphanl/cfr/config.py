@@ -23,19 +23,32 @@ class CFRConfig:
     worker_timeout_s: float = 120.0
     buffer_capacity: int = 2_000_000
     buffer_directory: str | None = None
-    train_steps: int = 512
-    minibatch_size: int = 256
+    train_steps: int = 1200
+    minibatch_size: int = 1024
     learning_rate: float = 3e-4
     max_grad_norm: float = 1.0
-    # GPU-only training options. Defaults preserve the original FP32/Adam path.
-    amp_dtype: str = "none"
-    fused_optimizer: bool = False
-    allow_tf32: bool = False
+    # CUDA acceleration; CPU transparently retains FP32 and ordinary Adam.
+    amp_dtype: str = "bfloat16"
+    fused_optimizer: bool = True
+    allow_tf32: bool = True
     train_buffer_device: str = "cpu"
     gpu_pool_reserve_bytes: int = 2 * 1024 ** 3
-    # Deep CFR fits each player's accumulated advantage memory from scratch.
-    reinitialize: bool = True
-    fallback: str = "uniform"
+    # Warm-start by default; reinitialization remains an explicit ablation.
+    reinitialize: bool = False
+    separate_player_models: bool = False
+    position_conditioning: bool = True
+    # Targets arrive in BB, NOT chips. A 200BB outlier becomes 2.0.
+    regret_target_scale: float = 100.0
+    loss: str = "huber"
+    huber_beta: float = 1.0
+    fallback: str = "softmax"
+    preflop_action_guard: bool = True
+    # New runs use the SPR guard on every street. Old archives opt out on load.
+    spr_action_guard: bool = True
+    guard_max_pot_ratio: float = 3.0
+    guard_short_stack_bb: float = 20.0
+    guard_unlock_invested_bb: float = 15.0
+    guard_unlock_raises: int = 2  # open + 3-bet already in the history
     snapshot_every: int = 1
     checkpoint_every: int = 10
     checkpoint_min_free_bytes: int = 1024 ** 3
@@ -67,8 +80,23 @@ class CFRConfig:
             raise ValueError("worker_timeout_s must be positive and finite")
         if self.learning_rate <= 0 or self.max_grad_norm <= 0:
             raise ValueError("learning rate and gradient norm must be positive")
-        if self.fallback not in ("uniform", "argmax"):
-            raise ValueError("fallback must be uniform or argmax")
+        if self.fallback not in ("uniform", "argmax", "softmax"):
+            raise ValueError("fallback must be uniform, argmax or softmax")
+        import math
+        for name in ("regret_target_scale", "huber_beta", "guard_short_stack_bb", "guard_unlock_invested_bb", "guard_max_pot_ratio"):
+            if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive and finite")
+        if self.loss not in ("huber", "mse"):
+            raise ValueError("loss must be huber or mse")
+        if not self.separate_player_models and self.minibatch_size % 2:
+            raise ValueError("shared training requires an even minibatch_size for exact 1:1 seat sampling")
+        if not self.separate_player_models and not self.position_conditioning:
+            raise ValueError("shared training requires explicit hero position conditioning")
+        for name in ("separate_player_models", "position_conditioning", "preflop_action_guard", "spr_action_guard", "reinitialize"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be boolean")
+        if isinstance(self.guard_unlock_raises, bool) or not isinstance(self.guard_unlock_raises, int) or self.guard_unlock_raises < 1:
+            raise ValueError("guard_unlock_raises must be a positive integer")
         if self.device not in ("cpu", "cuda", "auto"):
             raise ValueError("device must be cpu, cuda, or auto")
         if self.amp_dtype not in ("none", "bfloat16"):
@@ -93,3 +121,16 @@ class CFRConfig:
     @classmethod
     def from_json(cls, path: str | Path) -> "CFRConfig":
         return cls(**json.loads(Path(path).read_text()))
+
+    @classmethod
+    def from_checkpoint(cls, data: dict) -> "CFRConfig":
+        """Old archives retain their original encoding, units and action tree."""
+        data = dict(data)
+        data.setdefault("spr_action_guard", False)
+        if "separate_player_models" not in data:
+            data.update(separate_player_models=True, position_conditioning=False,
+                        regret_target_scale=1.0, loss="mse", huber_beta=1.0,
+                        preflop_action_guard=False)
+        for key, value in (("amp_dtype", "none"), ("fused_optimizer", False), ("allow_tf32", False)):
+            data.setdefault(key, value)
+        return cls(**data)

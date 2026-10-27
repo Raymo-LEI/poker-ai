@@ -101,9 +101,11 @@ def main() -> None:
             current = {key: value for key, value in trainer.last_timing.items()}
             current["iteration_s"] = time.perf_counter() - began
             collect_s = sum(current[f"p{p}_collect_s"] for p in (0, 1))
-            fit_s = sum(current[f"p{p}_fit_s"] for p in (0, 1))
+            fit_s = (sum(current[f"p{p}_fit_s"] for p in (0, 1)) if config.separate_player_models
+                     else current["shared_fit_s"])
             samples = sum(metrics[f"p{p}_regret_samples"] for p in (0, 1))
-            draws = sum(metrics[f"p{p}_train_steps"] * config.minibatch_size for p in (0, 1))
+            draws = (sum(metrics[f"p{p}_train_steps"] for p in (0, 1)) if config.separate_player_models
+                     else metrics["shared_train_steps"]) * config.minibatch_size
             calls = sum(metrics[f"p{p}_inference_calls"] for p in (0, 1))
             rows = sum(metrics[f"p{p}_inference_rows"] for p in (0, 1))
             current.update(
@@ -121,7 +123,7 @@ def main() -> None:
         sync()
         checkpoint_s = time.perf_counter() - began
         elapsed_s = time.perf_counter() - start
-        fields = trainer.buffers[0]._schema.values()
+        fields = next(iter(trainer.buffers.values()))._schema.values()
         row_bytes = sum(dtype.itemsize * math.prod(tail) for dtype, tail in fields)
         report = {
             "environment": environment, "config": asdict(config),
@@ -150,7 +152,10 @@ def main() -> None:
                     reasons.append(f"environment.{key}")
             for key in ("seed", "iterations", "traversals_per_player", "buffer_capacity", "train_steps",
                         "minibatch_size", "learning_rate", "max_grad_norm", "max_traversal_nodes",
-                        "reinitialize", "fallback", "model"):
+                        "reinitialize", "fallback", "model", "separate_player_models", "position_conditioning",
+                        "regret_target_scale", "loss", "huber_beta", "preflop_action_guard",
+                        "guard_short_stack_bb", "guard_unlock_invested_bb", "guard_unlock_raises",
+                        "spr_action_guard", "guard_max_pot_ratio"):
                 if baseline["config"].get(key) != report["config"].get(key):
                     reasons.append(f"config.{key}")
             comparison = {"baseline": str(args.baseline.resolve()), "comparable": not reasons,
@@ -161,7 +166,8 @@ def main() -> None:
                     {"iteration": old["iteration"],
                      "collect_wall_speedup": sum(old[f"p{p}_collect_s"] for p in (0, 1)) / sum(new[f"p{p}_collect_s"] for p in (0, 1)),
                      "regret_throughput_speedup": new["regret_samples_per_s"] / old["regret_samples_per_s"],
-                     "fit_wall_speedup": sum(old[f"p{p}_fit_s"] for p in (0, 1)) / sum(new[f"p{p}_fit_s"] for p in (0, 1)),
+                     "fit_wall_speedup": (sum(old[f"p{p}_fit_s"] for p in (0, 1)) if config.separate_player_models else old["shared_fit_s"]) /
+                                         (sum(new[f"p{p}_fit_s"] for p in (0, 1)) if config.separate_player_models else new["shared_fit_s"]),
                      "iteration_wall_speedup": old["iteration_s"] / new["iteration_s"],
                      "same_node_count": sum(old["metrics"][f"p{p}_nodes"] for p in (0, 1)) == sum(new["metrics"][f"p{p}_nodes"] for p in (0, 1)),
                      "same_regret_count": sum(old["metrics"][f"p{p}_regret_samples"] for p in (0, 1)) == sum(new["metrics"][f"p{p}_regret_samples"] for p in (0, 1))}

@@ -86,7 +86,7 @@ class SnapshotPolicy:
         if blob is None:
             blob = torch.load(self.paths[index], map_location="cpu", weights_only=True)
             self.disk_loads += 1
-        if (blob.get("format") != "sd_cfr_strategy_v1"
+        if (blob.get("format") not in ("sd_cfr_strategy_v1", "sd_cfr_strategy_v2")
                 or blob["iteration"] != int(self.iterations[index])
                 or blob["weight"] != blob["iteration"]
                 or blob.get("rules_version") != RULES_VERSION
@@ -96,15 +96,18 @@ class SnapshotPolicy:
             self._cache[index] = blob
             while len(self._cache) > self.cache_size:
                 self._cache.popitem(last=False)
-        config = CFRConfig(**blob["config"])
+        config = CFRConfig.from_checkpoint(blob["config"])
         if self.model is None:
             self.model = RegretNetwork(PokerTransformer(**asdict(config.model)),
                                        fallback=config.fallback).to(self.device)
             self.config = config
         elif (asdict(config.model) != asdict(self.config.model)
-              or config.fallback != self.config.fallback):
+              or any(getattr(config, key) != getattr(self.config, key) for key in (
+                  "fallback", "separate_player_models", "position_conditioning", "regret_target_scale",
+                  "preflop_action_guard", "guard_short_stack_bb", "guard_unlock_invested_bb", "guard_unlock_raises",
+                  "spr_action_guard", "guard_max_pot_ratio"))):
             raise ValueError("snapshots use different network configurations")
-        self.model.load_state_dict(blob["models"][player], strict=True)
+        self.model.load_state_dict(blob["models"][player if config.separate_player_models else "shared"], strict=True)
         self.model.eval()
         self.hand_iteration = int(blob["iteration"])
         self.player = player

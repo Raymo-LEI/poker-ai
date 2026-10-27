@@ -112,7 +112,7 @@ def prune_generations(path: Path) -> None:
             cached = json.loads(sidecar.read_text()) if sidecar.exists() else None
             if cached is None or cached["fingerprint"] != _fingerprint(checkpoint):
                 blob = torch.load(checkpoint, map_location="cpu", weights_only=False)
-                if blob.get("format") != "sd_cfr_train_v2":
+                if blob.get("format") not in ("sd_cfr_train_v2", "sd_cfr_train_v3"):
                     raise ValueError(f"unrecognized checkpoint beside checkpoint_data: {checkpoint}")
                 publish_references(checkpoint, blob)
                 cached = json.loads(sidecar.read_text())
@@ -245,4 +245,6 @@ def restore_buffer(buffer: ReservoirBuffer, payload: dict[str, Any]) -> None:
     buffer.size = size
     buffer.seen = int(metadata["seen"])
     buffer._rng.bit_generator.state = copy.deepcopy(metadata["rng_state"])
+    if "hero_seat" in buffer._schema:
+        buffer._seat_cache = None
     buffer.flush()

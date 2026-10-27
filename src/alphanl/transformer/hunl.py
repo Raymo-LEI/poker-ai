@@ -94,6 +94,21 @@ class HunlTokenizer(BettingHistoryTokenizer):
 
     numeric_version = NUMERIC_VERSION
 
+    def __init__(self, max_seq_len=64, *, position_conditioning=True):
+        super().__init__(max_seq_len)
+        self.position_conditioning = position_conditioning
+
+    def _tokens(self, snapshot):
+        tokens = super()._tokens(snapshot)
+        if self.position_conditioning:
+            if snapshot.me_seat not in (0, 1) or snapshot.sb_seat != 1:
+                raise ValueError("HUNL position encoding requires seat 0=BB, seat 1=SB/button")
+            token, kind, _ = tokens[1]
+            # HOLE is never truncated. One-hot position even at an empty
+            # preflop history; no opponent private information is added.
+            tokens[1] = (token, kind, (float(snapshot.me_seat == 0), float(snapshot.me_seat == 1), 0., 0.))
+        return tokens
+
     def _action_numeric(self, event: ActionEvent, blind: float) -> Tuple[float, float, float, float]:
         legacy = super()._action_numeric(event, blind)
         return (float(event.pot_fraction) / 10.0, *legacy[1:])

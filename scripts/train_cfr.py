@@ -19,6 +19,14 @@ def main() -> None:
     parser.add_argument("--iterations", type=int)
     parser.add_argument("--traversals", type=int)
     parser.add_argument("--train-steps", type=int)
+    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--separate-player-models", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--reinitialize", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--preflop-action-guard", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--spr-action-guard", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--guard-max-pot-ratio", type=float)
+    parser.add_argument("--target-scale", type=float)
+    parser.add_argument("--loss", choices=("huber", "mse"))
     parser.add_argument("--out-dir")
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"))
     parser.add_argument("--amp-dtype", choices=("none", "bfloat16"))
@@ -36,12 +44,17 @@ def main() -> None:
     if args.threads < 1:
         parser.error("--threads must be positive")
     torch.set_num_threads(args.threads)
-    config = CFRConfig.from_json(args.config)
+    raw_config = json.loads(args.config.read_text())
+    config = (CFRConfig.from_checkpoint(raw_config) if args.resume
+              else CFRConfig(**raw_config))
     for arg, field in (("iterations", "iterations"), ("traversals", "traversals_per_player"),
                        ("train_steps", "train_steps"), ("out_dir", "out_dir"), ("device", "device"),
                        ("workers", "traversal_workers"), ("tree_batch", "traversal_batch_size"),
                        ("inference_batch", "inference_batch_size"), ("inference_wait_ms", "inference_wait_ms"),
-                       ("train_buffer_device", "train_buffer_device")):
+                       ("train_buffer_device", "train_buffer_device"), ("batch_size", "minibatch_size"),
+                       ("separate_player_models", "separate_player_models"), ("reinitialize", "reinitialize"),
+                       ("preflop_action_guard", "preflop_action_guard"), ("spr_action_guard", "spr_action_guard"),
+                       ("guard_max_pot_ratio", "guard_max_pot_ratio"), ("target_scale", "regret_target_scale"), ("loss", "loss")):
         value = getattr(args, arg)
         if value is not None:
             setattr(config, field, value)
@@ -70,12 +83,15 @@ def main() -> None:
         report.update({"backbone_parameters": count_parameters(PokerTransformer(**asdict(config.model))),
                        "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
                        "players": 2, "small_blind": 50, "big_blind": 100, "starting_stack": 20000})
+        report.update(network_count=2 if config.separate_player_models else 1,
+                      effective_buffer_capacity=config.buffer_capacity * (1 if config.separate_player_models else 2),
+                      seat_balanced_sampling=not config.separate_player_models)
         print(json.dumps(report, indent=2))
         return
     if args.resume is None:
         if (Path(config.out_dir) / "metrics.csv").exists():
             parser.error("output directory already contains a run; use --resume or a new --out-dir")
-        if config.buffer_directory and any(Path(config.buffer_directory).glob("player_*/metadata.json")):
+        if config.buffer_directory and any(Path(config.buffer_directory).glob("*/metadata.json")):
             parser.error("buffer directory contains a previous run; use --resume or a new directory")
     with SDCFRTrainer(config) as trainer:
         if args.resume is not None:

@@ -32,9 +32,11 @@ class GameState(Protocol):
 class HunlState:
     """Adapter for the locked 200BB table; terminal utilities are in BB."""
 
-    def __init__(self, table, tokenizer) -> None:
+    def __init__(self, table, tokenizer, action_guard=None) -> None:
         self.table = table
         self.tokenizer = tokenizer
+        self.action_guard = action_guard
+        self._decision_snapshot = None
 
     def is_terminal(self) -> bool:
         return self.table.is_over()
@@ -43,15 +45,21 @@ class HunlState:
         return self.table.current_player()
 
     def legal_actions(self) -> Sequence[int]:
-        return self.table.legal_action_ids()
+        return self._snapshot().legal_action_ids
+
+    def _snapshot(self):
+        if self._decision_snapshot is None:
+            snapshot = self.table.snapshot(self.current_player())
+            self._decision_snapshot = self.action_guard.apply(snapshot) if self.action_guard else snapshot
+        return self._decision_snapshot
 
     def observation(self) -> TensorBatch:
-        return self.tokenizer.encode(self.table.snapshot(self.current_player()))
+        return self.tokenizer.encode(self._snapshot())
 
     def child(self, action: int) -> "HunlState":
         table = self.table.clone()
         table.step(action)
-        return HunlState(table, self.tokenizer)
+        return HunlState(table, self.tokenizer, self.action_guard)
 
     def returns(self) -> Sequence[float]:
         return tuple(value / self.table.big_blind for value in self.table.payoffs())

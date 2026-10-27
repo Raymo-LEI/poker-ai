@@ -13,22 +13,35 @@ class DeviceTrainingPool:
     limited kernel support. IDs widen to long only for a drawn minibatch.
     This adds 128 bytes per length-64 sample (2M rows: 2.882 GB total).
     CPU is supported here for schema tests; the trainer opts in on CUDA.
+
+    Allocate once at a fixed ``capacity`` (reservoir capacity) so the CUDA
+    caching allocator reuses the same blocks across iterations. Staging only
+    the live ``len(buffer)`` prefix; sampling indexes that prefix alone.
+    Growing ``torch.empty(len(buffer))`` each fit otherwise leaves unequally
+    sized freed blocks that stair-step ``memory_reserved`` / nvidia-smi.
     """
 
-    def __init__(self, buffer, device, *, reserve_bytes=0, chunk_rows=16384):
+    def __init__(self, buffer, device, *, reserve_bytes=0, chunk_rows=16384, capacity=None):
         self.device = torch.device(device)
         self.size = len(buffer)
         if not self.size:
             raise ValueError("cannot stage an empty reservoir")
+        self.capacity = int(buffer.capacity if capacity is None else capacity)
+        if self.capacity < self.size:
+            raise ValueError("device pool capacity must cover the live reservoir size")
         dtypes = {key: torch.int32 if key == "token_ids" else torch.from_numpy(np.empty((), dtype=dtype)).dtype
                   for key, (dtype, _) in buffer._schema.items()}
-        self.nbytes = sum(self.size * int(np.prod(tail)) * torch.empty((), dtype=dtypes[key]).element_size()
+        # Bill the fixed allocation (not just the live prefix) so the free-memory
+        # guard matches what CUDA will actually reserve.
+        self.nbytes = sum(self.capacity * int(np.prod(tail)) * torch.empty((), dtype=dtypes[key]).element_size()
                           for key, (_, tail) in buffer._schema.items())
+        if "hero_seat" in buffer._schema:
+            self.nbytes += self.capacity * 8  # device seat-index cache upper bound
         if self.device.type == "cuda":
             free, _ = torch.cuda.mem_get_info(self.device)
             if self.nbytes + reserve_bytes > free:
                 raise RuntimeError(f"full training pool needs {self.nbytes} bytes plus {reserve_bytes} reserve; CUDA free={free}")
-        self.arrays = {key: torch.empty((self.size,) + tail, dtype=dtypes[key], device=self.device)
+        self.arrays = {key: torch.empty((self.capacity,) + tail, dtype=dtypes[key], device=self.device)
                        for key, (_, tail) in buffer._schema.items()}
         # Read contiguous bounded prefixes, without duplicating a full 2M
         # RAM pool or performing a large random gather during transfer.
@@ -45,9 +58,23 @@ class DeviceTrainingPool:
                 if key == "token_ids":
                     array = array.astype(np.int32)
                 self.arrays[key][start:start + count].copy_(torch.from_numpy(array))
+        self.seat_indexes = None
+        if "hero_seat" in self.arrays:
+            # Only the live prefix is valid; capacity tail is uninitialized.
+            live_seats = self.arrays["hero_seat"][:self.size]
+            self.seat_indexes = {p: torch.nonzero(live_seats == p).flatten() for p in (0, 1)}
 
     def sample(self, batch_size, generator):
-        indexes = torch.randint(self.size, (batch_size,), device=self.device, generator=generator)
+        if self.seat_indexes is None:
+            indexes = torch.randint(self.size, (batch_size,), device=self.device, generator=generator)
+        else:
+            if batch_size < 2 or batch_size % 2:
+                raise ValueError("balanced sampling requires a positive even batch size")
+            if any(not len(self.seat_indexes[p]) for p in (0, 1)):
+                raise ValueError("balanced sampling requires both seats")
+            indexes = torch.cat([self.seat_indexes[p][torch.randint(len(self.seat_indexes[p]),
+                (batch_size // 2,), device=self.device, generator=generator)] for p in (0, 1)])
+            indexes = indexes[torch.randperm(batch_size, device=self.device, generator=generator)]
         selected = {key: value.index_select(0, indexes) for key, value in self.arrays.items()}
         batch = {key: selected[key] for key in
                  ("token_ids", "type_ids", "numeric", "pad_mask", "legal_mask")}
@@ -58,3 +85,4 @@ class DeviceTrainingPool:
 
     def close(self):
         self.arrays.clear()
+        self.seat_indexes = None

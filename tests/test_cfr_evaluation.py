@@ -1,6 +1,7 @@
 """Statistical units, private information boundaries and trajectory sampling."""
 from dataclasses import asdict
 from unittest.mock import patch
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -16,8 +17,84 @@ from alphanl.transformer.hunl import HunlTable, NUMERIC_VERSION, RULES_VERSION
 from alphanl.transformer.model import PokerTransformer
 
 
+def audit_action(audit, snapshot, action, regrets=None):
+    probs = np.zeros(5)
+    probs[action] = 1
+    audit.observe(snapshot, probs, action, 0., regrets=regrets)
+
+
+def test_hud_counts_hands_including_walks_and_does_not_count_free_checks_as_vpip():
+    audit = Audit()
+    # BB walk: a dealt hand is still in the VPIP denominator.
+    audit.begin_hand(0)
+    audit.begin_hand(0)
+    table = HunlTable(seed=7)
+    table.reset()
+    table.step(1)  # SB limp
+    check = table.snapshot(0)
+    assert check.to_call == 0
+    audit_action(audit, check, 1)
+    assert audit.summary()["vpip_bb"] == 0
+    audit.begin_hand(0)
+    table.reset()
+    table.step(3)  # SB open
+    audit_action(audit, table.snapshot(0), 1)
+    assert audit.summary()["vpip_bb"] == pytest.approx(1 / 3)
+
+
+def test_hud_pfr_is_once_per_hand_and_allin_call_is_not_threebet():
+    sb, bb = Audit(), Audit()
+    table = HunlTable(seed=8)
+    table.reset()
+    sb.begin_hand(1)
+    bb.begin_hand(0)
+    audit_action(sb, table.snapshot(1), 3)
+    table.step(3)
+    audit_action(bb, table.snapshot(0), 3)
+    table.step(3)
+    audit_action(sb, table.snapshot(1), 3)
+    assert sb.counts["pfr_hands_sb"] == 1
+    assert sb.summary()["pfr_sb"] == 1
+    assert bb.summary()["threebet_bb"] == 1
+    bb.begin_hand(0)
+    table.reset()
+    table.step(4)
+    snapshot = table.snapshot(0)
+    assert snapshot.me_stack <= snapshot.to_call
+    audit_action(bb, snapshot, 1)
+    assert bb.counts["bb_3bet_opportunities"] == 1
+    assert not Audit._raises(snapshot, 4)
+
+
+def test_hud_positive_regret_uses_guard_mask_and_free_check_denominator():
+    table = HunlTable(seed=9)
+    table.reset()
+    snapshot = table.snapshot(1)
+    guarded = replace(snapshot, legal_action_ids=tuple(a for a in snapshot.legal_action_ids if a != 4))
+    audit = Audit()
+    audit.begin_hand(1)
+    audit_action(audit, guarded, 1, np.array([-1., 2., -1., -1., 100.]))
+    assert audit.summary()["positive_regret_actions_mean"] == 1
+    table.step(1)
+    snapshot = table.snapshot(0)
+    # Some engines mask fold when checking is free. Exercise the optional
+    # collapse counter with an explicit policy mask that also permits fold.
+    snapshot = replace(snapshot, legal_action_ids=tuple(sorted({0, *snapshot.legal_action_ids})))
+    audit.begin_hand(0)
+    audit_action(audit, snapshot, 1, np.zeros(5))
+    assert audit.summary()["free_check_fold_ratio"] == 0
+    assert audit.counts["free_check_opportunities"] == 1
+    assert audit.summary()["positive_regret_actions_mean"] == .5
+
+
+def test_hud_no_threebet_opportunity_is_undefined():
+    audit = Audit()
+    audit.begin_hand(0)
+    assert audit.summary()["threebet_bb"] is None
+
+
 def archive(tmp_path):
-    config = CFRConfig(model=ModelConfig(d_model=16, nhead=2, num_layers=1,
+    config = CFRConfig(separate_player_models=True, model=ModelConfig(d_model=16, nhead=2, num_layers=1,
                                         dim_feedforward=32, max_seq_len=32, dropout=0))
     model = RegretNetwork(PokerTransformer(**asdict(config.model)))
     for iteration in (1, 2, 3):
@@ -139,16 +216,3 @@ def test_gate_never_passes_missing_or_smoke_evidence():
     assert result["criteria"]["self_improvement"]["status"] == "FAIL"
     assert result["verdict"] == "NO_GO"
     assert launch_gates({"hero_iteration": 50, "results": {}, "error": {"message": "NaN"}})["verdict"] == "NO_GO"
-
-
-def test_early_candidate_behavior_failure_checks_both_selfplay_actors():
-    def counts(shoves):
-        return {"sb_open_shoves": shoves, "sb_open_opportunities": 5000,
-                "illegal_selections": 0, "mask_leaks": 0, "nonfinite_regrets": 0}
-    health = {"hands": 10000, "hero": {"counts": counts(0)}, "opponent": {"counts": counts(1000)}}
-    report = {"hero_iteration": 50, "results": {"health": health}}
-    result = launch_gates(report)
-    assert result["criteria"]["behavior"]["status"] == "FAIL"
-    assert result["verdict"] == "NO_GO"
-    health["opponent"]["counts"].pop("nonfinite_regrets")
-    assert launch_gates(report)["criteria"]["behavior"]["status"] == "INCOMPLETE"

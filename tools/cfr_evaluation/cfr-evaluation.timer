@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for new SD-CFR evaluation milestones every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+Unit=cfr-evaluation.service
+
+[Install]
+WantedBy=timers.target

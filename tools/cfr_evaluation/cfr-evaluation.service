@@ -1,0 +1,11 @@
+[Unit]
+Description=Evaluate newly completed SD-CFR milestones
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/poker-ai/cfr-evaluation.env
+Environment=OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+ExecStart=/bin/sh -c 'exec "$$CFR_PYTHON" "$$CFR_REPO/scripts/eval_cfr_periodic.py" --config "$$CFR_EVAL_CONFIG"'
+Nice=10
+CPUQuota=100%
+TimeoutStartSec=infinity

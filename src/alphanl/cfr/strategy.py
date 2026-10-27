@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from collections import OrderedDict
 import json
 from pathlib import Path
 
@@ -22,9 +23,16 @@ class SnapshotPolicy:
     infoset, or averaging local probabilities without own-reach weights, is
     not the SD-CFR average strategy. Sparse archives approximate the average
     over retained iterations only; snapshot_every=1 preserves every profile.
+    ``through_iteration`` freezes a prefix; ``snapshot_iterations`` selects
+    an explicit subset. ``cache_size`` bounds an optional LRU of CPU weights.
     """
 
-    def __init__(self, directory: str | Path, *, seed: int = 1, device="cpu") -> None:
+    def __init__(self, directory: str | Path, *, seed: int = 1, device="cpu",
+                 through_iteration: int | None = None,
+                 snapshot_iterations: list[int] | None = None,
+                 cache_size: int = 0) -> None:
+        if isinstance(cache_size, bool) or not isinstance(cache_size, int) or cache_size < 0:
+            raise ValueError("cache_size must be a nonnegative integer")
         directory = Path(directory)
         index_path = directory / "index.json"
         if index_path.exists():
@@ -37,6 +45,19 @@ class SnapshotPolicy:
                 raise ValueError("strategy archive is missing an indexed snapshot")
         else:
             paths = sorted(directory.glob("iteration_*.pt"))
+        if through_iteration is not None:
+            if (isinstance(through_iteration, bool) or not isinstance(through_iteration, int)
+                    or through_iteration < 1):
+                raise ValueError("through_iteration must be positive")
+            paths = [p for p in paths if int(p.stem.split("_")[-1]) <= through_iteration]
+        if snapshot_iterations is not None:
+            selected = set(snapshot_iterations)
+            if (not selected or len(selected) != len(snapshot_iterations)
+                    or any(isinstance(i, bool) or not isinstance(i, int) or i < 1 for i in selected)):
+                raise ValueError("snapshot_iterations must be distinct positive integers")
+            paths = [p for p in paths if int(p.stem.split("_")[-1]) in selected]
+            if {int(p.stem.split("_")[-1]) for p in paths} != selected:
+                raise ValueError("requested strategy snapshot is not in the archive")
         if not paths:
             raise ValueError("no strategy snapshots in directory")
         self.paths = paths
@@ -49,6 +70,11 @@ class SnapshotPolicy:
         self.config: CFRConfig | None = None
         self.hand_iteration: int | None = None
         self.player: int | None = None
+        # Cache CPU state dictionaries, not one inference module per iteration.
+        # Eviction never changes the sampling distribution or the active hand.
+        self.cache_size = cache_size
+        self._cache: OrderedDict[int, dict] = OrderedDict()
+        self.disk_loads = 0
 
     def begin_hand(self, player: int) -> int:
         if player not in (0, 1):
@@ -56,13 +82,20 @@ class SnapshotPolicy:
         from alphanl.transformer.hunl import NUMERIC_VERSION, RULES_VERSION
         weights = self.iterations.astype(np.float64)
         index = int(self.rng.choice(len(self.paths), p=weights / weights.sum()))
-        blob = torch.load(self.paths[index], map_location="cpu", weights_only=True)
+        blob = self._cache.pop(index, None)
+        if blob is None:
+            blob = torch.load(self.paths[index], map_location="cpu", weights_only=True)
+            self.disk_loads += 1
         if (blob.get("format") != "sd_cfr_strategy_v1"
                 or blob["iteration"] != int(self.iterations[index])
                 or blob["weight"] != blob["iteration"]
                 or blob.get("rules_version") != RULES_VERSION
                 or blob.get("numeric_version") != NUMERIC_VERSION):
             raise ValueError("incompatible SD-CFR strategy snapshot")
+        if self.cache_size:
+            self._cache[index] = blob
+            while len(self._cache) > self.cache_size:
+                self._cache.popitem(last=False)
         config = CFRConfig(**blob["config"])
         if self.model is None:
             self.model = RegretNetwork(PokerTransformer(**asdict(config.model)),

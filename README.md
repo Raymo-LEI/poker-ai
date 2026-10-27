@@ -38,6 +38,10 @@ python scripts/train_cfr.py --config configs/cfr/hunl_200bb.json \
 
 RTX 4090 服务器可从 [4090 配置](configs/cfr/hunl_4090.json)开始，它显式启用 CUDA BF16、fused Adam 和 TF32；测量命令与尚待验证的性能假设见 [服务器效率与基准说明](docs/server_4090_efficiency.md)。目前没有仓库内的 4090 实测吞吐或策略质量结论。
 
+SD-CFR 可使用 `scripts/eval_cfr_readiness.py` 做配对对战、50 手比赛和自博弈健康检查。
+`scripts/eval_cfr_periodic.py` 根据新到达的里程碑冻结策略并评测，支持完成任务跳过、
+中断续跑和定时器调用。配置与 systemd 示例见 [离线及定期评测](docs/cfr_evaluation.md)。
+
 ## 其他入口
 
 同一 Python 3.10+ 环境可检查 PPO 配置和 residual exploiter 原型：

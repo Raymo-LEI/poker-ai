@@ -98,7 +98,9 @@ action = policy.act(batch).item()
 
 默认 `snapshot_every=1` 保存全部轮次。改为 K>1 时，仅对保留的轮次按 t
 加权，属于稀疏近似。最新 regret 网络的策略不等于 SD-CFR 平均策略，
-当前没有把快照蒸馏为单个部署模型。
+现提供独立的[平均策略蒸馏准备工具](cfr_distillation.md)，通过整手快照采样
+与 hero 实际到达的软标签训练单个候选策略；尚未完成真实长训模型的棋力、
+Stage 2 和 Botzone 部署验收。
 
 算法依据：[Deep CFR](https://proceedings.mlr.press/v97/brown19b.html)、
 [Single Deep CFR](https://arxiv.org/abs/1901.07621)。

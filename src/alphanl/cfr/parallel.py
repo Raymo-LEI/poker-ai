@@ -23,6 +23,7 @@ import torch
 
 from alphanl.transformer.tokenizer import cat_batches, batch_to_device
 from .traversal import ExternalSamplingTraverser, HunlState, TraversalStats
+from .actions import CFRActionGuard
 
 
 class _Slot:
@@ -124,7 +125,8 @@ def _cpu_worker(worker_id, name, rows, length, tree_batch, max_nodes,
                 return
             try:
                 from alphanl.transformer.hunl import HunlTable, HunlTokenizer
-                tokenizer = HunlTokenizer(length)
+                tokenizer = HunlTokenizer(length, position_conditioning=job["position_conditioning"])
+                action_guard = CFRActionGuard(**job["action_guard"])
 
                 def roots():
                     for seed in job["seeds"]:
@@ -133,7 +135,7 @@ def _cpu_worker(worker_id, name, rows, length, tree_batch, max_nodes,
                         else:
                             table = HunlTable(seed=int(seed))
                             table.reset()
-                            yield HunlState(table, tokenizer)
+                            yield HunlState(table, tokenizer, action_guard)
 
                 channel = _Channel(worker_id, slot, requests, connection, job["version"])
                 sink = _SampleSink(channel, job["player"], sample_batch)
@@ -239,6 +241,8 @@ class ParallelCollector:
             for worker, chunk in enumerate(np.array_split(seeds, workers)):
                 self.connections[worker].send({"seeds": chunk.tolist(), "player": traverser,
                                                "iteration": iteration, "version": version,
+                                               "position_conditioning": self.config.position_conditioning,
+                                               "action_guard": asdict(CFRActionGuard.from_config(self.config)),
                                                "rng": self.rng_states[worker]})
             last_activity = time.perf_counter()
             while len(completed) < workers:

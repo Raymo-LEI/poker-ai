@@ -168,7 +168,7 @@ def test_configuration_rejects_invalid_inputs(tmp_path, field, value):
 def test_real_cli_poll_resume_and_completed_skip(tmp_path):
     source = tmp_path / "source"
     source.mkdir()
-    cfg = CFRConfig(model=ModelConfig(d_model=16, nhead=2, num_layers=1,
+    cfg = CFRConfig(separate_player_models=True, model=ModelConfig(d_model=16, nhead=2, num_layers=1,
                                      dim_feedforward=32, dropout=0, max_seq_len=32))
     model = RegretNetwork(PokerTransformer(**asdict(cfg.model)))
     torch.save({"format": "sd_cfr_strategy_v1", "iteration": 1, "weight": 1,

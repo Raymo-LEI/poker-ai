@@ -42,6 +42,8 @@ class TinyGame:
 
 
 def config(tmp_path, **kwargs):
+    kwargs = {"separate_player_models": True, "regret_target_scale": 1., "loss": "mse",
+              "amp_dtype": "none", "fused_optimizer": False, "allow_tf32": False, **kwargs}
     return CFRConfig(
         iterations=2, traversals_per_player=4, traversal_batch_size=4,
         buffer_capacity=100, train_steps=3, minibatch_size=8,

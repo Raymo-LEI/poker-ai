@@ -67,6 +67,9 @@ class ReservoirBuffer:
             "regrets": (np.dtype("float32"), (NUM_ACTIONS,)),
             "iterations": (np.dtype("int64"), ()),
         }
+        if isinstance(self, UnifiedReservoir):
+            self._schema["hero_seat"] = (np.dtype("uint8"), ())
+            self._seat_cache = None
         self._chunks: list[dict[str, np.ndarray]] = []
         self._maps: dict[str, np.memmap] = {}
         if self.directory is not None:
@@ -131,6 +134,8 @@ class ReservoirBuffer:
                                  for key, (dtype, tail) in self._schema.items()})
 
     def _write_row(self, index: int, arrays: dict[str, np.ndarray], row: int) -> None:
+        if "hero_seat" in self._schema:
+            self._seat_cache = None
         self._ensure_slot(index)
         if self.directory is not None:
             storage, offset = self._maps, index
@@ -139,7 +144,7 @@ class ReservoirBuffer:
         for key in self._schema:
             storage[key][offset] = arrays[key][row]
 
-    def add(self, batch: TensorBatch, regrets: torch.Tensor, iteration: int) -> None:
+    def add(self, batch: TensorBatch, regrets: torch.Tensor, iteration: int, *, hero_seat=None) -> None:
         """Add all rows atomically after validation, with uniform retention."""
         if isinstance(iteration, bool) or not isinstance(iteration, (int, np.integer)) or iteration < 1:
             raise ValueError("iteration must be a positive integer")
@@ -149,6 +154,10 @@ class ReservoirBuffer:
             raise ValueError(f"batch must contain exactly {self._BATCH_KEYS}")
         count = int(batch["token_ids"].shape[0])
         arrays: dict[str, np.ndarray] = {}
+        if "hero_seat" in self._schema:
+            if hero_seat not in (0, 1):
+                raise ValueError("unified reservoir requires hero_seat=0 (BB) or 1 (SB)")
+            arrays["hero_seat"] = np.full(count, hero_seat, dtype=np.uint8)
         for key in self._BATCH_KEYS:
             dtype, tail = self._schema[key]
             value = batch[key].detach().cpu().numpy()
@@ -213,14 +222,19 @@ class ReservoirBuffer:
         return result
 
     def sample(
-        self, batch_size: int, device: str | torch.device = "cpu"
+        self, batch_size: int, device: str | torch.device = "cpu", *,
+        rng: np.random.Generator | None = None,
     ) -> tuple[TensorBatch, torch.Tensor, torch.Tensor]:
         """Uniform minibatch with replacement; return inputs, targets, iterations."""
         if isinstance(batch_size, bool) or not isinstance(batch_size, (int, np.integer)) or batch_size < 1:
             raise ValueError("batch_size must be a positive integer")
         if not self.size:
             raise ValueError("cannot sample an empty reservoir")
-        arrays = self._read_rows(self._rng.integers(self.size, size=int(batch_size)))
+        sampler = self._rng if rng is None else rng
+        arrays = self._read_rows(sampler.integers(self.size, size=int(batch_size)))
+        return self._tensor_sample(arrays, device)
+
+    def _tensor_sample(self, arrays, device):
         batch = {}
         for key in self._BATCH_KEYS:
             value = torch.from_numpy(arrays[key])
@@ -285,4 +299,64 @@ class ReservoirBuffer:
         self.size = size
         self.seen = seen
         self._rng.bit_generator.state = copy.deepcopy(state["rng_state"])
+        if "hero_seat" in self._schema:
+            self._seat_cache = None
         self.flush()
+
+
+class UnifiedReservoir(ReservoirBuffer):
+    """One global Algorithm-R memory, with exact 1:1 seat-stratified draws.
+
+    Retention is uniform across ALL infosets, not two seat-local reservoirs.
+    Seat indexes are built once per fit phase, never scanned per minibatch.
+    Sampling within each stratum is uniform with replacement. An absent
+    stratum is an explicit error; the trainer defers fitting until both exist.
+    """
+
+    VERSION = 2
+
+    def seat_indices(self):
+        if self._seat_cache is None:
+            if self.directory is not None:
+                seats = self._maps["hero_seat"][:self.size]
+            else:
+                seats = np.concatenate([c["hero_seat"][:min(self.chunk_size, self.size - i * self.chunk_size)]
+                                        for i, c in enumerate(self._chunks)]) if self.size else np.empty(0, dtype=np.uint8)
+            self._seat_cache = {seat: np.flatnonzero(seats == seat) for seat in (0, 1)}
+        return self._seat_cache
+
+    def seat_counts(self):
+        return {seat: len(indexes) for seat, indexes in self.seat_indices().items()}
+
+    def sample(self, batch_size, device="cpu", *, rng=None, seat=None, balanced=True):
+        if isinstance(batch_size, bool) or not isinstance(batch_size, (int, np.integer)) or batch_size < 1:
+            raise ValueError("batch_size must be a positive integer")
+        sampler = self._rng if rng is None else rng
+        if seat is not None:
+            if seat not in (0, 1):
+                raise ValueError("seat must be 0 or 1")
+            candidates = self.seat_indices()[seat]
+            if not len(candidates):
+                raise ValueError(f"no retained samples for seat {seat}")
+            indexes = sampler.choice(candidates, int(batch_size), replace=True)
+        elif balanced:
+            if batch_size % 2:
+                raise ValueError("balanced sampling requires an even batch size")
+            strata = self.seat_indices()
+            if any(not len(strata[p]) for p in (0, 1)):
+                raise ValueError("balanced sampling requires retained samples from both seats")
+            indexes = np.concatenate([sampler.choice(strata[p], batch_size // 2, replace=True) for p in (0, 1)])
+            sampler.shuffle(indexes)
+        else:
+            return super().sample(batch_size, device, rng=rng)
+        return self._tensor_sample(self._read_rows(indexes), device)
+
+
+class SeatReservoirWriter:
+    """Tag collection at its traverser boundary, including parallel workers."""
+
+    def __init__(self, reservoir, seat):
+        self.reservoir, self.seat = reservoir, seat
+
+    def add(self, batch, regrets, iteration):
+        self.reservoir.add(batch, regrets, iteration, hero_seat=self.seat)

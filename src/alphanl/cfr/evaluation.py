@@ -60,12 +60,43 @@ class Audit:
         self.entropy_sum = 0.
         self.latency_ms = []
         self.snapshot_counts = Counter()
+        self.seat_actions = Counter()
+        self.seat_counts = Counter()
+        self.positive_regret_sum = 0
+        self.positive_regret_decisions = 0
+        self._hand = None
 
-    def observe(self, snapshot, probs, action, elapsed_ms):
+    def begin_hand(self, seat):
+        """Count dealt hands, including BB walks; reset once-per-hand flags."""
+        self.counts[f"hands_{'bb' if seat == 0 else 'sb'}"] += 1
+        self._hand = {"seat": seat, "vpip": False, "pfr": False, "threebet": False}
+
+    def observe_guard(self, snapshot, guard, action):
+        """Record the intervention and residual early deep shoves by street."""
+        prefix = f"spr_{snapshot.me_seat}_{snapshot.street}"
+        self.counts[prefix + "_decisions"] += 1
+        blocked = guard.blocks_all_in(snapshot)
+        self.counts[prefix + "_blocked"] += int(blocked)
+        high = guard.all_in_pot_ratio(snapshot) > guard.max_pot_ratio
+        early = guard.street_raises(snapshot) < guard.unlock_raises
+        self.counts[prefix + "_high_spr_shoves"] += int(action == 4 and high)
+        self.counts[prefix + "_early_high_spr_shoves"] += int(action == 4 and high and early)
+
+    @staticmethod
+    def _raises(snapshot, action):
+        # A short-stack all-in call is not a raise.
+        return action in (2, 3) or (action == 4 and snapshot.me_stack > snapshot.to_call)
+
+    def observe(self, snapshot, probs, action, elapsed_ms, *, regrets=None):
         c = self.counts
         c["decisions"] += 1
         self.latency_ms.append(elapsed_ms)
         self.actions[f"{snapshot.street}:{action}"] += 1
+        self.seat_actions[f"{snapshot.me_seat}:{snapshot.street}:{action}"] += 1
+        if snapshot.street == 0:
+            self.seat_counts[f"{snapshot.me_seat}:preflop_decisions"] += 1
+            self.seat_counts[f"{snapshot.me_seat}:preflop_fold"] += int(action == 0)
+            self.seat_counts[f"{snapshot.me_seat}:preflop_all_in"] += int(action == 4)
         legal = snapshot.legal_action_ids
         if action not in legal:
             c["illegal_selections"] += 1
@@ -74,11 +105,36 @@ class Audit:
         if any(probs[i] != 0 for i in illegal):
             c["mask_leaks"] += 1
             raise ValueError("nonzero illegal probability")
+        if regrets is not None:
+            self.positive_regret_sum += int(np.sum(np.asarray(regrets)[list(legal)] > 0))
+            self.positive_regret_decisions += 1
+        if self._hand is not None and snapshot.street == 0:
+            position = "sb" if snapshot.me_seat == snapshot.sb_seat else "bb"
+            voluntary = action in (2, 3, 4) or (action == 1 and snapshot.to_call > 0)
+            if voluntary and not self._hand["vpip"]:
+                c[f"vpip_hands_{position}"] += 1
+                self._hand["vpip"] = True
+            if self._raises(snapshot, action) and not self._hand["pfr"]:
+                c[f"pfr_hands_{position}"] += 1
+                self._hand["pfr"] = True
+            raises = [e for e in snapshot.events if e.street == 0
+                      and e.action_type in ("bet", "raise", "all_in")
+                      and e.chips_added > e.to_call_before]
+            can_raise = any(self._raises(snapshot, a) for a in legal)
+            if (position == "bb" and snapshot.to_call > 0 and len(raises) == 1
+                    and raises[0].actor_seat == snapshot.sb_seat and can_raise
+                    and not self._hand["threebet"]):
+                c["bb_3bet_opportunities"] += 1
+                c["bb_3bets"] += int(self._raises(snapshot, action))
+                self._hand["threebet"] = True
         if len(legal) > 1:
             c["nonforced_decisions"] += 1
             positive = probs[probs > 0]
             self.entropy_sum -= float(np.sum(positive * np.log(positive)))
             c["near_deterministic"] += int(float(probs.max()) >= .999)
+            if snapshot.to_call == 0 and 0 in legal and 1 in legal:
+                c["free_check_opportunities"] += 1
+                c["free_check_folds"] += int(action == 0)
         if snapshot.street == 0 and snapshot.me_seat == snapshot.sb_seat and not snapshot.events:
             c["sb_open_opportunities"] += 1
             c["sb_vpip"] += int(action != 0)
@@ -97,6 +153,17 @@ class Audit:
             return c[numerator] / c[denominator] if c[denominator] else None
         counts = {**{key: 0 for key in ("illegal_selections", "mask_leaks", "nonfinite_regrets")}, **dict(c)}
         return {"counts": counts, "action_counts_by_street": dict(self.actions),
+                "action_counts_by_seat_street": dict(self.seat_actions),
+                "counts_by_seat": dict(self.seat_counts),
+                "positive_regret_actions_sum": self.positive_regret_sum,
+                "positive_regret_decisions": self.positive_regret_decisions,
+                "positive_regret_actions_mean": self.positive_regret_sum / self.positive_regret_decisions
+                if self.positive_regret_decisions else None,
+                "vpip_bb": ratio("vpip_hands_bb", "hands_bb"),
+                "vpip_sb": ratio("vpip_hands_sb", "hands_sb"),
+                "pfr_sb": ratio("pfr_hands_sb", "hands_sb"),
+                "threebet_bb": ratio("bb_3bets", "bb_3bet_opportunities"),
+                "free_check_fold_ratio": ratio("free_check_folds", "free_check_opportunities"),
                 "sampled_snapshot_counts": dict(self.snapshot_counts),
                 "sb_vpip": ratio("sb_vpip", "sb_open_opportunities"),
                 "sb_open_shove": ratio("sb_open_shoves", "sb_open_opportunities"),
@@ -109,21 +176,41 @@ class Audit:
 
 
 class CFRActor:
-    def __init__(self, directory, *, seed, through=None, iterations=None, cache_size=64):
+    def __init__(self, directory, *, seed, through=None, iterations=None, cache_size=64,
+                 spr_guard=None, max_pot_ratio=None):
         self.policy = SnapshotPolicy(directory, seed=seed, device="cpu",
                                      through_iteration=through, snapshot_iterations=iterations,
                                      cache_size=cache_size)
         self.audit = Audit()
         self.tokenizer = None
+        if spr_guard is not None and not isinstance(spr_guard, bool):
+            raise ValueError("spr_guard must be boolean or None")
+        if max_pot_ratio is not None and (not math.isfinite(max_pot_ratio) or max_pot_ratio <= 0):
+            raise ValueError("max_pot_ratio must be positive and finite")
+        self.spr_guard_override = spr_guard
+        self.max_pot_ratio_override = max_pot_ratio
 
     def begin_hand(self, seat):
+        self.audit.begin_hand(seat)
         iteration = self.policy.begin_hand(seat)
         self.audit.snapshot_counts[iteration] += 1
-        self.tokenizer = HunlTokenizer(self.policy.config.model.max_seq_len)
+        self.tokenizer = HunlTokenizer(self.policy.config.model.max_seq_len,
+                                       position_conditioning=self.policy.config.position_conditioning)
+        from .actions import CFRActionGuard
+        self.action_guard = CFRActionGuard.from_config(self.policy.config)
+        from dataclasses import replace
+        overrides = {}
+        if self.spr_guard_override is not None:
+            overrides["spr_enabled"] = self.spr_guard_override
+        if self.max_pot_ratio_override is not None:
+            overrides["max_pot_ratio"] = self.max_pot_ratio_override
+        self.action_guard = replace(self.action_guard, **overrides)
 
     @torch.inference_mode()
     def act(self, snapshot):
         started = time.perf_counter()
+        original = snapshot
+        snapshot = self.action_guard.apply(snapshot)
         batch = self.tokenizer.encode(snapshot)
         raw = self.policy.model(batch)
         if not torch.isfinite(raw).all():
@@ -131,7 +218,9 @@ class CFRActor:
             raise ValueError("NaN/Inf regret prediction")
         probs = regret_matching(raw, batch["legal_mask"], fallback=self.policy.config.fallback)[0].double().numpy()
         action = int(self.policy.rng.choice(5, p=probs / probs.sum()))
-        self.audit.observe(snapshot, probs, action, (time.perf_counter() - started) * 1000)
+        self.audit.observe(snapshot, probs, action, (time.perf_counter() - started) * 1000,
+                           regrets=raw[0].double().numpy())
+        self.audit.observe_guard(original, self.action_guard, action)
         return action
 
 

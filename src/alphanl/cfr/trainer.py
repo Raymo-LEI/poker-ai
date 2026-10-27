@@ -1,4 +1,4 @@
-"""Linear external-sampling SD-CFR, separate memories/networks per player.
+"""Position-conditioned external-sampling SD-CFR with a shared regret model.
 
 No average-policy network, PPO modification, or synthetic terminal values.
 The fitted network estimates a weighted average of signed sampled regrets;
@@ -29,7 +29,8 @@ from .config import CFRConfig
 from .checkpoint import (restore_buffer, save_buffer, _references, publish_references,
                          prune_generations, sync_directory, checkpoint_lock)
 from .model import RegretNetwork
-from .reservoir import ReservoirBuffer
+from .reservoir import ReservoirBuffer, UnifiedReservoir, SeatReservoirWriter
+from .actions import CFRActionGuard
 from .traversal import ExternalSamplingTraverser, GameState, HunlState
 
 
@@ -52,6 +53,20 @@ def iteration_weighted_mse(predicted: torch.Tensor, target: torch.Tensor,
     weights = iterations.to(predicted.device, dtype=torch.float32)
     errors = torch.where(legal, predicted.float() - target.float(), 0.0)
     return (weights * errors.square().sum(-1)).mean()
+
+
+def iteration_weighted_huber(predicted, target, legal_mask, iterations, *, beta=1.0):
+    """FP32 linear-iteration weighted Smooth L1 over legal scaled targets."""
+    if predicted.shape != target.shape or predicted.shape != legal_mask.shape:
+        raise ValueError("predictions, targets and legal mask must have the same shape")
+    if iterations.shape != predicted.shape[:-1] or (iterations < 1).any():
+        raise ValueError("one positive iteration weight is required per sample")
+    legal = legal_mask > .5
+    if not legal.any(-1).all():
+        raise ValueError("regret training requires a legal action in every row")
+    errors = torch.where(legal, predicted.float() - target.float(), 0.)
+    losses = torch.nn.functional.smooth_l1_loss(errors, torch.zeros_like(errors), reduction="none", beta=beta)
+    return (iterations.to(predicted.device, dtype=torch.float32) * losses.sum(-1)).mean()
 
 
 def _atomic_save(payload: dict, path: Path, *, after_replace=None) -> None:
@@ -130,20 +145,23 @@ class SDCFRTrainer:
         self.last_timing: dict[str, float | int] = {}
         self.last_fit_timing: dict[str, float | int] = {}
         self.gpu_pool_enabled = self.device.type == "cuda" and config.train_buffer_device == "cuda"
+        self.model_keys = (0, 1) if config.separate_player_models else ("shared",)
         self.gpu_sample_generators = {}
         if self.gpu_pool_enabled:
             self.gpu_sample_generators = {
-                p: torch.Generator(device=self.device).manual_seed(config.seed + 3000 + p) for p in (0, 1)
+                p: torch.Generator(device=self.device).manual_seed(config.seed + 3000 + i)
+                for i, p in enumerate(self.model_keys)
             }
         self.strategy_paths: dict[int, Path] = {}
-        self.models = {p: self._new_model() for p in (0, 1)}
-        self.optimizers = {p: self._new_optimizer(p) for p in (0, 1)}
+        self.models = {p: self._new_model() for p in self.model_keys}
+        self.optimizers = {p: self._new_optimizer(p) for p in self.model_keys}
         self.buffers = {
-            p: ReservoirBuffer(config.buffer_capacity, config.model.max_seq_len,
-                               seed=config.seed + 100 + p,
-                               directory=(Path(config.buffer_directory) / f"player_{p}"
+            p: (ReservoirBuffer if config.separate_player_models else UnifiedReservoir)(
+                               config.buffer_capacity * (1 if config.separate_player_models else 2),
+                               config.model.max_seq_len, seed=config.seed + 100 + i,
+                               directory=(Path(config.buffer_directory) / (f"player_{p}" if p != "shared" else "shared")
                                           if config.buffer_directory else None))
-            for p in (0, 1)
+            for i, p in enumerate(self.model_keys)
         }
         self.traverser = ExternalSamplingTraverser(
             seed=config.seed + 200, batch_size=config.traversal_batch_size,
@@ -151,11 +169,24 @@ class SDCFRTrainer:
         )
         self.root_factory = root_factory or self._hunl_root
         from alphanl.transformer.hunl import HunlTokenizer
-        self._hunl_tokenizer = HunlTokenizer(config.model.max_seq_len)
+        self._hunl_tokenizer = HunlTokenizer(config.model.max_seq_len, position_conditioning=config.position_conditioning)
+        self.action_guard = CFRActionGuard.from_config(config)
         self.parallel_collector = None
         if config.traversal_workers:
             from .parallel import ParallelCollector
             self.parallel_collector = ParallelCollector(self.config, root_factory)
+
+    @property
+    def shared_regret_net(self):
+        return self.models.get("shared")
+
+    @property
+    def shared_reservoir(self):
+        return self.buffers.get("shared")
+
+    @property
+    def policies(self):
+        return self.models if self.config.separate_player_models else {0: self.shared_regret_net, 1: self.shared_regret_net}
 
     def _new_model(self) -> RegretNetwork:
         backbone = PokerTransformer(**asdict(self.config.model))
@@ -176,12 +207,12 @@ class SDCFRTrainer:
         from alphanl.transformer.hunl import HunlTable
         table = HunlTable(seed=seed)
         table.reset()
-        return HunlState(table, self._hunl_tokenizer)
+        return HunlState(table, self._hunl_tokenizer, self.action_guard)
 
     def _snapshot(self, iteration: int) -> dict:
         from alphanl.transformer.hunl import NUMERIC_VERSION, RULES_VERSION
         return {
-            "format": "sd_cfr_strategy_v1", "iteration": iteration,
+            "format": "sd_cfr_strategy_v2", "iteration": iteration,
             "weight": iteration, "config": self.config.to_dict(),
             "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
             "models": {p: {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -197,11 +228,19 @@ class SDCFRTrainer:
         temp.write_text(json.dumps(index, indent=2) + "\n")
         temp.replace(directory / "index.json")
 
-    def train_player(self, player: int) -> float:
+    def train_player(self, player: int | str) -> float:
         self.last_fit_timing = {"pool_upload_s": 0.0, "pool_bytes": 0}
+        self.last_fit_diagnostics = {}
         if not len(self.buffers[player]):
             # For example, every sampled SB folds before the BB can act.
             # The empty player's uniform/current network remains unchanged.
+            return 0.0
+        shared = player == "shared"
+        buffer = self.buffers[player]
+        if shared and any(not n for n in buffer.seat_counts().values()):
+            # Never silently violate the 1:1 contract if collection produced
+            # no BB decisions. Log the deferral instead of inventing samples.
+            self.last_fit_diagnostics = {"fit_deferred_missing_seat": 1}
             return 0.0
         if self.config.reinitialize:
             self.models[player] = self._new_model()
@@ -210,16 +249,29 @@ class SDCFRTrainer:
         # As in the PPO path, suppress dropout during deterministic fitting.
         # eval() preserves gradients through the full encoder and regret head.
         model.eval()
+        # Independent RNG preserves reservoir draws and exact resume semantics.
+        # Both measurements use the SAME retained-data batch, without dropout.
+        from .diagnostics import regression_probe, probe_comparison
+        probes = {}
+        for seat in ((0, 1) if shared else (player,)):
+            count = min(1024, buffer.seat_counts()[seat] if shared else len(buffer))
+            probes[seat] = buffer.sample(count, self.device, **({"seat": seat} if shared else {}),
+                rng=np.random.default_rng(np.random.SeedSequence([self.config.seed, self.iteration + 1, seat, 91827])))
+        scale = self.config.regret_target_scale
+        with torch.no_grad():
+            start_probes = {seat: regression_probe(model(probe[0]), probe[1] / scale, probe[0]["legal_mask"], probe[2])
+                            for seat, probe in probes.items()}
         pool = None
         if self.gpu_pool_enabled:
             from .device_pool import DeviceTrainingPool
             self._sync_device()
             began = time.perf_counter()
             pool = DeviceTrainingPool(self.buffers[player], self.device,
-                                      reserve_bytes=self.config.gpu_pool_reserve_bytes)
+                                      reserve_bytes=self.config.gpu_pool_reserve_bytes,
+                                      capacity=self.buffers[player].capacity)
             self._sync_device()
             self.last_fit_timing = {"pool_upload_s": time.perf_counter() - began, "pool_bytes": pool.nbytes}
-        total = 0.0
+        total = torch.zeros((), dtype=torch.float64, device=self.device)
         try:
             for _ in range(self.config.train_steps):
                 if pool is not None:
@@ -233,7 +285,10 @@ class SDCFRTrainer:
                         predicted = model(batch)
                 else:
                     predicted = model(batch)
-                loss = iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations)
+                target = target.float() / scale
+                loss = (iteration_weighted_huber(predicted, target, batch["legal_mask"], iterations, beta=self.config.huber_beta)
+                        if self.config.loss == "huber" else
+                        iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations))
                 if not torch.isfinite(loss):
                     raise FloatingPointError("non-finite regret regression loss")
                 optimizer = self.optimizers[player]
@@ -244,11 +299,24 @@ class SDCFRTrainer:
                     self.config.max_grad_norm, error_if_nonfinite=True,
                 )
                 optimizer.step()
-                total += float(loss.detach())
-            return total / self.config.train_steps
+                total.add_(loss.detach().to(total.dtype))
+            with torch.no_grad():
+                for seat, probe in probes.items():
+                    end = regression_probe(model(probe[0]), probe[1] / scale, probe[0]["legal_mask"], probe[2])
+                    values = probe_comparison(start_probes[seat], end)
+                    values["probe_samples"] = len(probe[1])
+                    values["fit_acceptance"] = int(values["probe_r2"] > .5 and values["probe_loss_ratio"] < .3)
+                    self.last_fit_diagnostics.update({(f"p{seat}_{k}" if shared else k): v for k, v in values.items()})
+            return float((total / self.config.train_steps).cpu())
         finally:
             if pool is not None:
                 pool.close()
+                del pool
+                if self.device.type == "cuda":
+                    # Return unequally-sized cache blocks to the driver when a
+                    # prior build staged growing prefixes; fixed-capacity
+                    # staging makes this cheap / usually a no-op.
+                    torch.cuda.empty_cache()
 
     def run_iteration(self) -> dict:
         if self.iteration == 0 and any(buffer.seen > 0 for buffer in self.buffers.values()):
@@ -268,12 +336,15 @@ class SDCFRTrainer:
             collector = self.parallel_collector or self.traverser
             stats = collector.collect(
                 source, traverser=player, iteration=iteration,
-                policies=self.models, buffer=self.buffers[player],
+                policies=self.policies, buffer=(self.buffers[player] if self.config.separate_player_models
+                                               else SeatReservoirWriter(self.shared_reservoir, player)),
             )
             self._sync_device()
             collect_seconds = time.perf_counter() - collect_started
             metrics.update({f"p{player}_{k}": v for k, v in asdict(stats).items()})
-            metrics[f"p{player}_buffer_size"] = len(self.buffers[player])
+            metrics[f"p{player}_buffer_size"] = (len(self.buffers[player]) if self.config.separate_player_models
+                                                else self.shared_reservoir.seat_counts()[player])
+            metrics[f"p{player}_samples_per_root"] = stats.regret_samples / self.config.traversals_per_player
             timing[f"p{player}_collect_s"] = collect_seconds
             timing.update({f"p{player}_{key}": value
                            for key, value in collector.last_timing.items()})
@@ -281,19 +352,33 @@ class SDCFRTrainer:
                 stats.regret_samples / collect_seconds if collect_seconds > 0 else 0.0
             )
         # Simultaneous CFR: neither player's policy changes during collection.
-        for player in (0, 1):
+        for player in self.model_keys:
             self._sync_device()
             fit_started = time.perf_counter()
-            metrics[f"p{player}_loss"] = self.train_player(player)
+            prefix = "shared" if player == "shared" else f"p{player}"
+            metrics[f"{prefix}_loss"] = self.train_player(player)
+            metrics.update({(key if player == "shared" else f"p{player}_{key}"): value
+                            for key, value in self.last_fit_diagnostics.items()})
             self._sync_device()
             fit_seconds = time.perf_counter() - fit_started
-            metrics[f"p{player}_train_steps"] = (
-                self.config.train_steps if len(self.buffers[player]) else 0
+            metrics[f"{prefix}_train_steps"] = (
+                self.config.train_steps if len(self.buffers[player]) and not self.last_fit_diagnostics.get("fit_deferred_missing_seat") else 0
             )
-            draws = metrics[f"p{player}_train_steps"] * self.config.minibatch_size
-            timing[f"p{player}_fit_s"] = fit_seconds
-            timing.update({f"p{player}_{key}": value for key, value in self.last_fit_timing.items()})
-            timing[f"p{player}_training_draws_per_s"] = draws / fit_seconds if fit_seconds > 0 else 0.0
+            draws = metrics[f"{prefix}_train_steps"] * self.config.minibatch_size
+            timing[f"{prefix}_fit_s"] = fit_seconds
+            timing.update({f"{prefix}_{key}": value for key, value in self.last_fit_timing.items()})
+            timing[f"{prefix}_training_draws_per_s"] = draws / fit_seconds if fit_seconds > 0 else 0.0
+            if player == "shared":
+                counts = self.shared_reservoir.seat_counts()
+                metrics["shared_buffer_size"] = len(self.shared_reservoir)
+                for seat in (0, 1):
+                    metrics[f"p{seat}_buffer_size"] = counts[seat]
+                    metrics[f"p{seat}_buffer_fraction"] = counts[seat] / max(1, len(self.shared_reservoir))
+                    metrics[f"p{seat}_training_draws"] = draws // 2
+                    # Compatibility labels refer to the SAME shared fit.
+                    metrics[f"p{seat}_loss"] = metrics["shared_loss"]
+                    metrics[f"p{seat}_train_steps"] = metrics["shared_train_steps"]
+                metrics["seat_balanced_sampling"] = 1
         self.iteration = iteration
         out = Path(self.config.out_dir)
         if iteration % self.config.snapshot_every == 0 or iteration == 1:
@@ -378,7 +463,7 @@ class SDCFRTrainer:
                 profile_path = str(target.relative_to(path.parent))
             payload = self._snapshot(self.iteration + 1)
             payload.update({
-                "format": "sd_cfr_train_v2", "completed_iteration": self.iteration,
+                "format": "sd_cfr_train_v3", "completed_iteration": self.iteration,
                 "optimizers": {p: opt.state_dict() for p, opt in self.optimizers.items()},
                 "buffers": buffers, "strategy_archive": strategies,
                 "metrics_path": metrics_path, "performance_path": profile_path,
@@ -414,13 +499,13 @@ class SDCFRTrainer:
         # Only load locally trusted training files (contains reservoir arrays).
         path = Path(path).resolve()
         blob = torch.load(path, map_location="cpu", weights_only=False)
-        if blob.get("format") != "sd_cfr_train_v2":
+        if blob.get("format") not in ("sd_cfr_train_v2", "sd_cfr_train_v3"):
             raise ValueError("expected an SD-CFR training checkpoint")
         from alphanl.transformer.hunl import NUMERIC_VERSION, RULES_VERSION
         if (blob.get("rules_version") != RULES_VERSION
                 or blob.get("numeric_version") != NUMERIC_VERSION):
             raise ValueError("CFR checkpoint rules or numeric feature version mismatch")
-        previous = blob["config"]
+        previous = CFRConfig.from_checkpoint(blob["config"]).to_dict()
         current = self.config.to_dict()
         legacy_config_defaults = {"amp_dtype": "none", "fused_optimizer": False, "allow_tf32": False,
                                   "traversal_workers": 0, "train_buffer_device": "cpu"}
@@ -443,7 +528,7 @@ class SDCFRTrainer:
         for filename in blob["strategy_archive"].values():
             if not (path.parent / filename).is_file():
                 raise ValueError("checkpoint strategy data is missing; keep checkpoint_data with train.pt")
-        for player in (0, 1):
+        for player in self.model_keys:
             self.models[player].load_state_dict(blob["models"][player], strict=True)
             self.optimizers[player].load_state_dict(blob["optimizers"][player])
             buffer_state = blob["buffers"][player]
@@ -465,13 +550,13 @@ class SDCFRTrainer:
                     for i in range(self.config.traversal_workers)]
         if self.gpu_pool_enabled:
             states = blob.get("gpu_sample_rng", {})
-            if set(states) == {0, 1}:
+            if set(states) == set(self.model_keys):
                 for player, generator in self.gpu_sample_generators.items():
                     generator.set_state(states[player])
             else:
                 warnings.warn("GPU sampling enabled on resume; initializing deterministic GPU sampler RNG streams", RuntimeWarning)
-                for player, generator in self.gpu_sample_generators.items():
-                    generator.manual_seed(self.config.seed + 3000 + player + completed * 100003)
+                for i, generator in enumerate(self.gpu_sample_generators.values()):
+                    generator.manual_seed(self.config.seed + 3000 + i + completed * 100003)
         torch.set_rng_state(blob["torch_rng"])
         if blob["cuda_rng"] is not None and torch.cuda.is_available():
             torch.cuda.set_rng_state_all(blob["cuda_rng"])

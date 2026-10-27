@@ -50,3 +50,5 @@ python scripts/eval_cfr_slumbot.py --strategies /path/to/strategies --iteration 
 各 4000 手自博弈，Flop 的真实 index 4 使用率：BB **447/1394=32.07% → 63/1483=4.25%**；SB **207/1073=19.29% → 33/1170=2.82%**。早期高 SPR 全下次数 BB **435→0**、SB **204→0**；其余全下仍遵守低 SPR/本街两次主动加注解锁规则。该种子不同于原面板，因此原始比例不必等于面板的 34.3%/21.2%。
 
 原始完整报告与快照/源码哈希：[原策略](benchmarks/cfr_spr_t100_20261027/baseline.json)、[门控消融](benchmarks/cfr_spr_t100_20261027/guarded.json)。远端原始逐手日志保留于 `/root/autodl-tmp/cfr_spr_ablation_20261027/{baseline,guarded}/`。服务器评测源码为独立部署快照，实际哈希见报告；PR 同时保留最新 main 的输出锁、依赖版本和原始日志哈希校验。此阶段没有重训，下一步需要新树的新 run 验证 Equity 的剩余亏损。
+
+[Slumbot 100 手诊断](benchmarks/cfr_spr_t100_20261027/slumbot.json) 已完成，均值 **+615**、95% CI **[−7368, +8598] mbb/hand**，非法选择、掩码泄漏、非有限遗憾和各街早期高 SPR 全下均为 0。小样本区间很宽，只确认外部 200BB 适配与完整采集跑通，不证明正盈利。

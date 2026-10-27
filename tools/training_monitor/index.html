@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101413">
+  <title>Overwatch · 扑克训练监控</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Overwatch 首页"><span class="brand-mark">♠</span><span>OVERWATCH<small>POKER RESEARCH LAB</small></span></a>
+    <div class="workspace-label">WORKSPACE <span>LOCAL</span></div>
+    <label class="field-label" for="run-select">训练实验</label>
+    <select id="run-select"><option>读取实验中…</option></select>
+    <nav aria-label="监控面板">
+      <a class="nav-link active" href="#overview"><span>◫</span>训练总览<small>01</small></a>
+      <a class="nav-link" href="#strength"><span>♧</span>棋力与收敛<small>02</small></a>
+      <a class="nav-link" href="#strategy"><span>◎</span>策略健康<small>03</small></a>
+      <a class="nav-link" href="#performance"><span>↗</span>运行性能<small>04</small></a>
+      <a class="nav-link" href="#details"><span>≡</span>日志与配置<small>05</small></a>
+    </nav>
+    <div class="sidebar-bottom"><span class="side-light"></span> 只读监控<p>直接读取训练日志<br>无需加载模型或 GPU</p><div class="tiny">SD-CFR / PPO · 200 BB</div></div>
+  </aside>
+  <main>
+    <header class="topbar"><div class="breadcrumb">Poker AI <span>/</span> Training observatory</div><div class="top-actions"><label class="auto-label"><input type="checkbox" id="auto-refresh" checked>每 5 秒刷新</label><button id="refresh" class="icon-button" title="立即刷新" aria-label="立即刷新">↻</button><button id="export" class="button secondary">导出数据 <span>↓</span></button></div></header>
+    <div class="page-content">
+      <section id="overview" class="page-heading"><div><div class="eyebrow">TRAINING OBSERVATORY <span> / </span> <span id="run-kind">SD-CFR</span></div><h1>每一轮，都看得见<span class="green-dot">.</span></h1><p>从训练信号到策略表现，跟踪你的扑克 AI。</p></div><div class="connection"><span class="status-badge" id="connection">连接中</span><div id="refreshed">等待日志</div></div></section>
+      <div id="error" class="notice error hidden" role="alert"></div>
+      <div id="notices" aria-live="polite"></div>
+      <div class="run-strip"><div><span class="run-icon">⌁</span><strong id="run-name">正在读取实验</strong><span id="run-device" class="tag">—</span></div><div id="run-age">—</div></div>
+      <div class="metric-grid" id="summary"></div>
+      <section class="section-block" id="optimization"><div class="section-title"><h2><span class="section-index">A</span> 神经优化诊断</h2><label class="chart-control" for="window">显示范围 <select id="window"><option value="100">最近 100 轮</option><option value="500">最近 500 轮</option><option value="5000">全部保留记录</option></select></label></div><div class="two-columns"><article class="panel"><div class="panel-heading"><div><h3 id="loss-title">Regret 回归损失</h3><p id="loss-description">迭代加权 MSE · 两个独立玩家</p></div><span class="micro-label">LOWER IS NOT STRONGER</span></div><div id="loss-chart" class="chart"></div><div class="panel-foot">Loss 用于诊断拟合情况；棋力需要独立对战验证。</div></article><article class="panel"><div class="panel-heading"><div><h3 id="buffer-title">样本与训练进度</h3><p id="buffer-description">Reservoir 中保留的 regret 样本</p></div><span class="micro-label" id="buffer-unit">SAMPLES</span></div><div id="buffer-chart" class="chart"></div><div class="panel-foot" id="buffer-foot">标准 HUNL：P0 = BB，P1 = SB / Button；外采样不保证双方样本数相等。</div></article></div><div id="optimization-extra" class="mini-grid"></div>
+<div class="two-columns diagnostic-row"><article class="panel"><div class="panel-heading"><div><h3>固定批次拟合诊断</h3><p id="probe-note">等待探针记录</p></div><label class="chart-control" for="probe-metric"><select id="probe-metric" aria-label="拟合诊断指标"><option value="probe_r2">加权 R²</option><option value="probe_loss_ratio">End / Start</option><option value="probe_end_zero_ratio">Checkpoint End / Zero</option><option value="probe_normalized_mse">按权重归一 MSE</option><option value="fixed_probe_r2">跨分支共同探针 R²</option><option value="fixed_probe_normalized_mse">跨分支共同探针归一 MSE</option></select></label></div><div id="probe-chart" class="chart"></div><div class="panel-foot">同一批保留样本的训练集诊断，非独立验证集。R² &lt; 0 表示不及每个行动的加权常数均值预测。</div></article><article class="panel"><div class="panel-heading"><div><h3>每轮新增 Regret 样本</h3><p>双方每轮相同 root 预算，树内信息集数可不同</p></div></div><div id="samples-chart" class="chart"></div><div class="panel-foot">P1 的树会采样 BB 行动；BB 高频弃牌可减少 P1 后续访问。累计 buffer 不能单独证明策略退化。</div></article></div></section>
+      <section class="section-block" id="strength"><div class="section-title evaluation-title"><h2><span class="section-index">B</span> 棋力与均衡收敛</h2><label class="chart-control" for="eval-select">评测轮次 <select id="eval-select"><option value="latest">最新评测</option></select></label><span class="section-note" id="eval-step">等待评测</span></div><div class="two-columns"><article class="panel"><div class="panel-heading"><div><h3>对手基线胜率</h3><p>mbb / hand · 有记录时显示 95% CI</p></div><span class="tag" id="eval-tag">未采集</span></div><div id="winrate-chart" class="chart"></div><div class="panel-foot" id="eval-history-note">等待独立对战评测；不会从训练 Loss 推算。</div></article><article class="panel"><div class="panel-heading"><div><h3>评测快照</h3><p>正值为盈利 · 1,000 mbb = 1 BB</p></div></div><div id="opponents" class="opponent-list"></div></article></div><div id="eval-extra" class="mini-grid"></div></section>
+      <section class="section-block" id="strategy"><div class="section-title"><h2><span class="section-index">C</span> 策略健康 · Tactical HUD</h2><span class="section-note" id="hud-eval-note">仅展示实际采集的决策统计</span></div><p id="hud-context" class="panel-foot hidden"></p><div id="hud-cards" class="mini-grid"></div><article class="panel"><div class="panel-heading"><div><h3>各街行动分布</h3><p>按评测轨迹记录 · 翻前 all-in 超过 10% 时告警</p></div><div id="action-legend" class="legend"></div></div><div id="street-bars"></div></article></section>
+      <section class="section-block" id="performance"><div class="section-title"><h2><span class="section-index">D</span> 运行性能</h2><span class="section-note">不调用 nvidia-smi，不触发 GPU 同步</span></div><div class="two-columns"><article class="panel"><div class="panel-heading"><div><h3>每轮耗时分解</h3><p>采样与拟合 · seconds</p></div></div><div id="timing-chart" class="chart"></div></article><article class="panel"><div class="panel-heading"><div><h3>有效采样吞吐</h3><p>双方 regret 样本总数 / 双方采样总耗时</p></div><span class="micro-label">SAMPLES / SEC</span></div><div id="throughput-chart" class="chart"></div></article></div><div id="performance-extra" class="mini-grid"></div></section>
+      <section class="section-block" id="details"><div class="section-title"><h2><span class="section-index">E</span> 数据来源与实验配置</h2><button id="expand-config" class="text-button" aria-expanded="false">展开配置 ＋</button></div><article class="panel sources-panel"><div class="table-scroll"><table><thead><tr><th>日志文件</th><th>大小</th><th>最后写入</th><th>访问方式</th></tr></thead><tbody id="sources"></tbody></table></div><pre id="config" class="hidden"></pre></article></section>
+      <footer><span><span class="footer-spade">♠</span> OVERWATCH <span class="footer-sub">训练可观察，结论有依据。</span></span><span id="history-note">只读 · 本地文件</span></footer>
+    </div>
+  </main>
+</body>
+</html>

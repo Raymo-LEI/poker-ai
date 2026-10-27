@@ -31,6 +31,7 @@ from .checkpoint import (restore_buffer, save_buffer, _references, publish_refer
 from .model import RegretNetwork
 from .reservoir import ReservoirBuffer, UnifiedReservoir, SeatReservoirWriter
 from .actions import CFRActionGuard
+from .retention import archive_due, archive_checkpoint
 from .traversal import ExternalSamplingTraverser, GameState, HunlState
 
 
@@ -73,7 +74,10 @@ def _atomic_save(payload: dict, path: Path, *, after_replace=None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
     try:
-        torch.save(payload, temp)
+        # Full RAM reservoirs can contain NumPy byte strings over 4 GiB.
+        # Strategy snapshots keep the weights-only-compatible default protocol.
+        protocol = 4 if payload.get("format") in ("sd_cfr_train_v2", "sd_cfr_train_v3") else 2
+        torch.save(payload, temp, pickle_protocol=protocol)
         with temp.open("rb") as handle:
             os.fsync(handle.fileno())
         temp.replace(path)
@@ -487,6 +491,15 @@ class SDCFRTrainer:
             raise
         publish_references(path, payload)
         prune_generations(path)
+        if archive_due(self.config, self.iteration):
+            capacity_bytes = sum(b.capacity * sum(dtype.itemsize * int(np.prod(tail))
+                                 for dtype, tail in b._schema.values()) for b in self.buffers.values())
+            archive_checkpoint(path, payload, iteration=self.iteration,
+                remaining=max(0, (self.config.iterations - self.iteration) // self.config.checkpoint_archive_every)
+                          + self.config.checkpoint_archive_extra_count,
+                min_free_bytes=self.config.checkpoint_archive_min_free_bytes,
+                growth_factor=max(1., capacity_bytes / max(1, retained_bytes),
+                                  self.config.iterations / max(1, self.iteration)))
         self.last_checkpoint_timing = {
             "iteration": self.iteration, "checkpoint_s": time.perf_counter() - checkpoint_started,
             "retained_buffer_bytes": retained_bytes, "free_before_bytes": free_before,
@@ -495,7 +508,7 @@ class SDCFRTrainer:
         with (path.parent / "checkpoint_performance.jsonl").open("a") as handle:
             handle.write(json.dumps(self.last_checkpoint_timing) + "\n")
 
-    def load_checkpoint(self, path: str | Path) -> None:
+    def load_checkpoint(self, path: str | Path, *, branch_train_steps: bool = False) -> None:
         # Only load locally trusted training files (contains reservoir arrays).
         path = Path(path).resolve()
         blob = torch.load(path, map_location="cpu", weights_only=False)
@@ -507,12 +520,24 @@ class SDCFRTrainer:
             raise ValueError("CFR checkpoint rules or numeric feature version mismatch")
         previous = CFRConfig.from_checkpoint(blob["config"]).to_dict()
         current = self.config.to_dict()
+        if branch_train_steps:
+            destination = Path(self.config.out_dir).resolve()
+            if destination == path.parent or destination == Path(previous["out_dir"]).resolve():
+                raise ValueError("training-budget branch requires a new output directory")
+            if any((destination / name).exists() for name in ("metrics.csv", "train.pt", "strategies")):
+                raise ValueError("training-budget branch output already contains a run")
+            if self.config.buffer_directory and any(b.seen for b in self.buffers.values()):
+                raise ValueError("training-budget branch requires an empty destination reservoir")
         legacy_config_defaults = {"amp_dtype": "none", "fused_optimizer": False, "allow_tf32": False,
                                   "traversal_workers": 0, "train_buffer_device": "cpu"}
         for key in current:
+            if branch_train_steps and key == "train_steps":
+                continue
             if key not in ("iterations", "out_dir", "device", "buffer_directory", "checkpoint_every",
                            "checkpoint_min_free_bytes", "gpu_pool_reserve_bytes", "traversal_workers",
                            "train_buffer_device", "traversal_batch_size"):
+                if key.startswith("checkpoint_archive_"):
+                    continue  # Operational retention policy does not change training semantics.
                 if key in ("inference_batch_size", "inference_wait_ms", "worker_sample_batch", "worker_timeout_s"):
                     continue
                 previous_value = previous.get(key, legacy_config_defaults.get(key))
@@ -566,7 +591,21 @@ class SDCFRTrainer:
         for iteration, filename in blob["strategy_archive"].items():
             source = path.parent / filename
             target = Path(self.config.out_dir) / "strategies" / source.name
-            _link_or_copy(source, target)
+            if branch_train_steps:
+                # Legacy trusted v2 runs wrote protocol-4 strategy files while
+                # fixing >4 GiB RAM checkpoints. Torch 2.8's weights-only reader
+                # cannot decode those files. Re-encode ONLY this new branch's
+                # copies, never loosen the ordinary SnapshotPolicy loader.
+                profile = torch.load(source, map_location="cpu", weights_only=False)
+                if (profile.get("format") not in ("sd_cfr_strategy_v1", "sd_cfr_strategy_v2")
+                        or profile.get("iteration") != iteration
+                        or profile.get("weight") != iteration
+                        or profile.get("rules_version") != RULES_VERSION
+                        or profile.get("numeric_version") != NUMERIC_VERSION):
+                    raise ValueError("invalid trusted branch strategy profile")
+                _atomic_save(profile, target)
+            else:
+                _link_or_copy(source, target)
             self.strategy_paths[iteration] = target
         self._write_strategy_index()
         target = Path(self.config.out_dir) / "metrics.csv"
@@ -585,6 +624,17 @@ class SDCFRTrainer:
             profile_target.unlink()
         if blob.get("performance_path") is not None:
             shutil.copyfile(path.parent / blob["performance_path"], profile_target)
+        if branch_train_steps:
+            provenance = Path(self.config.out_dir) / "ops" / "branch.json"
+            provenance.parent.mkdir(parents=True, exist_ok=True)
+            provenance.write_text(json.dumps({
+                "format": "sd_cfr_training_budget_branch_v1",
+                "source_checkpoint": str(path), "completed_iteration": completed,
+                "source_config": previous, "branch_config": current,
+                "intervention": {"train_steps": {"before": previous["train_steps"],
+                                                  "after": current["train_steps"]}},
+                "note": "Full model, optimizer, reservoir and RNG restore; inherited strategy prefix retained."
+            }, indent=2) + "\n")
 
     def run(self) -> list[dict]:
         metrics = []
@@ -595,7 +645,8 @@ class SDCFRTrainer:
                   f"samples={row['p0_regret_samples']}/{row['p1_regret_samples']} "
                   f"loss={row['p0_loss']:.4g}/{row['p1_loss']:.4g}", flush=True)
             if (self.iteration % self.config.checkpoint_every == 0
-                    or self.iteration == self.config.iterations):
+                    or self.iteration == self.config.iterations
+                    or archive_due(self.config, self.iteration)):
                 self.save_checkpoint(Path(self.config.out_dir) / "train.pt")
         return metrics
 

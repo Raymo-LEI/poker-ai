@@ -52,6 +52,10 @@ class CFRConfig:
     snapshot_every: int = 1
     checkpoint_every: int = 10
     checkpoint_min_free_bytes: int = 1024 ** 3
+    checkpoint_archive_from: int | None = None
+    checkpoint_archive_every: int = 10
+    checkpoint_archive_min_free_bytes: int = 2 * 1024 ** 3
+    checkpoint_archive_extra_count: int = 0
     out_dir: str = "runs/sd_cfr_hunl"
     max_traversal_nodes: int | None = None
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -61,7 +65,7 @@ class CFRConfig:
             self.model = ModelConfig(**self.model)
         for name in ("iterations", "traversals_per_player", "traversal_batch_size",
                      "buffer_capacity", "train_steps", "minibatch_size",
-                     "snapshot_every", "checkpoint_every"):
+                     "snapshot_every", "checkpoint_every", "checkpoint_archive_every"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
@@ -114,6 +118,12 @@ class CFRConfig:
                 or not isinstance(self.checkpoint_min_free_bytes, int)
                 or self.checkpoint_min_free_bytes < 0):
             raise ValueError("checkpoint_min_free_bytes must be a nonnegative integer")
+        if self.checkpoint_archive_from is not None and (isinstance(self.checkpoint_archive_from, bool)
+                or not isinstance(self.checkpoint_archive_from, int) or self.checkpoint_archive_from < 1):
+            raise ValueError("checkpoint_archive_from must be positive or None")
+        for name in ("checkpoint_archive_min_free_bytes", "checkpoint_archive_extra_count"):
+            if isinstance(getattr(self, name), bool) or not isinstance(getattr(self, name), int) or getattr(self, name) < 0:
+                raise ValueError(f"{name} must be a nonnegative integer")
 
     def to_dict(self) -> dict:
         return asdict(self)

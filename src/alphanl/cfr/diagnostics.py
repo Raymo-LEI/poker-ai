@@ -18,14 +18,14 @@ def regression_probe(prediction, target, legal_mask, iterations):
     error = torch.where(legal, prediction.to(torch.float64) - target, 0.)
     safe_target = torch.where(legal, target, 0.)
     sse = (weight * error.square()).sum()
-    mean = (weight * safe_target).sum(0) / weight.sum(0).clamp_min(1.)
+    mean = (weight * safe_target).sum(0) / weight.sum(0).clamp_min(1e-30)
     sst = (weight * torch.where(legal, target - mean, 0.).square()).sum()
-    err_mean = (weight * error).sum(0) / weight.sum(0).clamp_min(1.)
+    err_mean = (weight * error).sum(0) / weight.sum(0).clamp_min(1e-30)
     centered_sse = (weight * torch.where(legal, error - err_mean, 0.).square()).sum()
     nan = torch.full_like(sse, float("nan"))
     return {
         "weighted_mse": sse / prediction.shape[0],
-        "normalized_mse": sse / iterations.to(sse).sum().clamp_min(1.),
+        "normalized_mse": sse / iterations.to(sse).sum().clamp_min(1e-30),
         "unweighted_mse": error.square().sum() / prediction.shape[0],
         "r2": torch.where(sst > 0, 1 - sse / sst.clamp_min(1e-30), nan),
         "explained_variance": torch.where(sst > 0, 1 - centered_sse / sst.clamp_min(1e-30), nan),

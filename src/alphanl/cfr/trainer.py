@@ -32,12 +32,14 @@ from .model import RegretNetwork
 from .reservoir import ReservoirBuffer, UnifiedReservoir, SeatReservoirWriter
 from .actions import CFRActionGuard
 from .retention import archive_due, archive_checkpoint
+from .weighting import polynomial_weights, fit_learning_rate
 from .traversal import ExternalSamplingTraverser, GameState, HunlState
 
 
 def iteration_weighted_mse(predicted: torch.Tensor, target: torch.Tensor,
-                           legal_mask: torch.Tensor, iterations: torch.Tensor) -> torch.Tensor:
-    """Linear-CFR loss E[t * sum_legal (prediction-target)^2].
+                           legal_mask: torch.Tensor, iterations: torch.Tensor, *,
+                           power: float = 1.0, reference: float = 1.0) -> torch.Tensor:
+    """E[(t/reference)**power * sum_legal (prediction-target)^2].
 
     Do not normalize weights by a random minibatch mean (a batch of size one
     would lose all iteration weighting). Do not divide rows by action count:
@@ -51,13 +53,13 @@ def iteration_weighted_mse(predicted: torch.Tensor, target: torch.Tensor,
     legal = legal_mask > 0.5
     if not legal.any(-1).all():
         raise ValueError("regret training requires a legal action in every row")
-    weights = iterations.to(predicted.device, dtype=torch.float32)
+    weights = polynomial_weights(iterations.to(predicted.device), power=power, reference=reference)
     errors = torch.where(legal, predicted.float() - target.float(), 0.0)
     return (weights * errors.square().sum(-1)).mean()
 
 
-def iteration_weighted_huber(predicted, target, legal_mask, iterations, *, beta=1.0):
-    """FP32 linear-iteration weighted Smooth L1 over legal scaled targets."""
+def iteration_weighted_huber(predicted, target, legal_mask, iterations, *, beta=1.0, power=1.0, reference=1.0):
+    """FP32 polynomial-iteration weighted Smooth L1 over legal scaled targets."""
     if predicted.shape != target.shape or predicted.shape != legal_mask.shape:
         raise ValueError("predictions, targets and legal mask must have the same shape")
     if iterations.shape != predicted.shape[:-1] or (iterations < 1).any():
@@ -67,7 +69,8 @@ def iteration_weighted_huber(predicted, target, legal_mask, iterations, *, beta=
         raise ValueError("regret training requires a legal action in every row")
     errors = torch.where(legal, predicted.float() - target.float(), 0.)
     losses = torch.nn.functional.smooth_l1_loss(errors, torch.zeros_like(errors), reduction="none", beta=beta)
-    return (iterations.to(predicted.device, dtype=torch.float32) * losses.sum(-1)).mean()
+    weights = polynomial_weights(iterations.to(predicted.device), power=power, reference=reference)
+    return (weights * losses.sum(-1)).mean()
 
 
 def _atomic_save(payload: dict, path: Path, *, after_replace=None) -> None:
@@ -170,10 +173,13 @@ class SDCFRTrainer:
         self.traverser = ExternalSamplingTraverser(
             seed=config.seed + 200, batch_size=config.traversal_batch_size,
             max_nodes=config.max_traversal_nodes,
+            scripted_opponent_prob=config.scripted_opponent_prob,
+            scripted_opponent_pool=config.scripted_opponent_pool,
+            scripted_opponent_equity_samples=config.scripted_opponent_equity_samples,
         )
         self.root_factory = root_factory or self._hunl_root
         from alphanl.transformer.hunl import HunlTokenizer
-        self._hunl_tokenizer = HunlTokenizer(config.model.max_seq_len, position_conditioning=config.position_conditioning)
+        self._hunl_tokenizer = HunlTokenizer(config.model.max_seq_len, **config.tokenizer_kwargs())
         self.action_guard = CFRActionGuard.from_config(config)
         self.parallel_collector = None
         if config.traversal_workers:
@@ -218,7 +224,7 @@ class SDCFRTrainer:
         return {
             "format": "sd_cfr_strategy_v2", "iteration": iteration,
             "weight": iteration, "config": self.config.to_dict(),
-            "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
+            "rules_version": RULES_VERSION, "numeric_version": self.config.numeric_version,
             "models": {p: {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
                        for p, model in self.models.items()},
         }
@@ -262,8 +268,11 @@ class SDCFRTrainer:
             probes[seat] = buffer.sample(count, self.device, **({"seat": seat} if shared else {}),
                 rng=np.random.default_rng(np.random.SeedSequence([self.config.seed, self.iteration + 1, seat, 91827])))
         scale = self.config.regret_target_scale
+        weight_reference = self.iteration + 1 if self.config.normalize_iteration_weights else 1.0
+        def probe_weights(iterations):
+            return polynomial_weights(iterations, power=self.config.iteration_weight_power, reference=weight_reference)
         with torch.no_grad():
-            start_probes = {seat: regression_probe(model(probe[0]), probe[1] / scale, probe[0]["legal_mask"], probe[2])
+            start_probes = {seat: regression_probe(model(probe[0]), probe[1] / scale, probe[0]["legal_mask"], probe_weights(probe[2]))
                             for seat, probe in probes.items()}
         pool = None
         if self.gpu_pool_enabled:
@@ -277,7 +286,7 @@ class SDCFRTrainer:
             self.last_fit_timing = {"pool_upload_s": time.perf_counter() - began, "pool_bytes": pool.nbytes}
         total = torch.zeros((), dtype=torch.float64, device=self.device)
         try:
-            for _ in range(self.config.train_steps):
+            for fit_step in range(self.config.train_steps):
                 if pool is not None:
                     batch, target, iterations = pool.sample(self.config.minibatch_size, self.gpu_sample_generators[player])
                 else:
@@ -290,12 +299,16 @@ class SDCFRTrainer:
                 else:
                     predicted = model(batch)
                 target = target.float() / scale
-                loss = (iteration_weighted_huber(predicted, target, batch["legal_mask"], iterations, beta=self.config.huber_beta)
+                loss = (iteration_weighted_huber(predicted, target, batch["legal_mask"], iterations, beta=self.config.huber_beta,
+                                                power=self.config.iteration_weight_power, reference=weight_reference)
                         if self.config.loss == "huber" else
-                        iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations))
+                        iteration_weighted_mse(predicted, target, batch["legal_mask"], iterations,
+                                              power=self.config.iteration_weight_power, reference=weight_reference))
                 if not torch.isfinite(loss):
                     raise FloatingPointError("non-finite regret regression loss")
                 optimizer = self.optimizers[player]
+                for group in optimizer.param_groups:
+                    group["lr"] = fit_learning_rate(self.config, fit_step)
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -306,11 +319,14 @@ class SDCFRTrainer:
                 total.add_(loss.detach().to(total.dtype))
             with torch.no_grad():
                 for seat, probe in probes.items():
-                    end = regression_probe(model(probe[0]), probe[1] / scale, probe[0]["legal_mask"], probe[2])
+                    end = regression_probe(model(probe[0]), probe[1] / scale, probe[0]["legal_mask"], probe_weights(probe[2]))
                     values = probe_comparison(start_probes[seat], end)
                     values["probe_samples"] = len(probe[1])
                     values["fit_acceptance"] = int(values["probe_r2"] > .5 and values["probe_loss_ratio"] < .3)
                     self.last_fit_diagnostics.update({(f"p{seat}_{k}" if shared else k): v for k, v in values.items()})
+            self.last_fit_diagnostics.update(iteration_weight_power=self.config.iteration_weight_power,
+                iteration_weight_reference=weight_reference, learning_rate_first=fit_learning_rate(self.config, 0),
+                learning_rate_last=fit_learning_rate(self.config, self.config.train_steps - 1))
             return float((total / self.config.train_steps).cpu())
         finally:
             if pool is not None:
@@ -327,6 +343,8 @@ class SDCFRTrainer:
             raise RuntimeError("existing regret memory requires load_checkpoint before continuation")
         iteration = self.iteration + 1
         iteration_started = time.perf_counter()
+        if self.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(self.device)
         # sigma_t comes from theta_(t-1). Save exactly the profile used to
         # generate t's regrets, including uniform sigma_1 (zero regret heads).
         snapshot = self._snapshot(iteration)
@@ -384,6 +402,8 @@ class SDCFRTrainer:
                     metrics[f"p{seat}_train_steps"] = metrics["shared_train_steps"]
                 metrics["seat_balanced_sampling"] = 1
         self.iteration = iteration
+        from .study import memory_usage
+        metrics.update(memory_usage())
         out = Path(self.config.out_dir)
         if iteration % self.config.snapshot_every == 0 or iteration == 1:
             path = out / "strategies" / f"iteration_{iteration:07d}.pt"
@@ -516,7 +536,7 @@ class SDCFRTrainer:
             raise ValueError("expected an SD-CFR training checkpoint")
         from alphanl.transformer.hunl import NUMERIC_VERSION, RULES_VERSION
         if (blob.get("rules_version") != RULES_VERSION
-                or blob.get("numeric_version") != NUMERIC_VERSION):
+                or blob.get("numeric_version") != self.config.numeric_version):
             raise ValueError("CFR checkpoint rules or numeric feature version mismatch")
         previous = CFRConfig.from_checkpoint(blob["config"]).to_dict()
         current = self.config.to_dict()

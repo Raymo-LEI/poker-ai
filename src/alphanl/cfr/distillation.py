@@ -34,8 +34,14 @@ SEMANTIC_FIELDS = (
     "model", "fallback", "separate_player_models", "position_conditioning",
     "regret_target_scale", "preflop_action_guard", "spr_action_guard",
     "guard_max_pot_ratio", "guard_short_stack_bb", "guard_unlock_invested_bb",
-    "guard_unlock_raises",
+    "guard_unlock_raises", "equity_features", "equity_samples", "equity_seed",
 )
+
+
+def semantics_match(semantics, config):
+    legacy = {"equity_features": False, "equity_samples": 32, "equity_seed": 17}
+    actual = {**legacy, **semantics}
+    return actual == {key: config.to_dict()[key] for key in SEMANTIC_FIELDS}
 
 
 def _positive_integer(value, name):
@@ -66,12 +72,12 @@ def prepare_archive(directory, *, through=None, after=0, stride=1):
             continue
         data = path.read_bytes()
         blob = torch.load(io.BytesIO(data), map_location="cpu", weights_only=True)
+        config = CFRConfig.from_checkpoint(blob["config"])
         if (blob.get("format") not in ("sd_cfr_strategy_v1", "sd_cfr_strategy_v2")
                 or blob.get("iteration") != t or blob.get("weight") != t
                 or blob.get("rules_version") != RULES_VERSION
-                or blob.get("numeric_version") != NUMERIC_VERSION):
+                or blob.get("numeric_version") != config.numeric_version):
             raise ValueError(f"incompatible strategy snapshot: {path.name}")
-        config = CFRConfig.from_checkpoint(blob["config"])
         if config.separate_player_models or not config.position_conditioning:
             raise ValueError("single-student distillation requires unified position-conditioned snapshots")
         semantics = {key: config.to_dict()[key] for key in SEMANTIC_FIELDS}
@@ -89,7 +95,7 @@ def prepare_archive(directory, *, through=None, after=0, stride=1):
     full_prefix = list(range(1, max(available) + 1))
     return first_config, {
         "format": "sd_cfr_distillation_manifest_v1",
-        "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
+        "rules_version": RULES_VERSION, "numeric_version": config.numeric_version,
         "selection": {"through": through, "after_exclusive": after, "stride": stride},
         "iterations": selected, "snapshots": records,
         "approximation": selected != full_prefix,
@@ -165,13 +171,13 @@ def collect_trajectories(directory, config, manifest, *, hands, seed, hand_offse
             raise ValueError(f"{name} must be a nonnegative integer")
     if hand_offset + hands >= 2**63:
         raise ValueError("hand ids must fit in int64")
-    if manifest["semantics"] != {key: config.to_dict()[key] for key in SEMANTIC_FIELDS}:
+    if not semantics_match(manifest["semantics"], config):
         raise ValueError("collector and teacher semantics disagree")
     verify_archive(directory, manifest)
     policy_seed = int(np.random.SeedSequence([seed, hand_offset, 1]).generate_state(1)[0])
     policy = SnapshotPolicy(directory, seed=policy_seed, device=teacher_device,
                             snapshot_iterations=manifest["iterations"], cache_size=8)
-    tokenizer = HunlTokenizer(config.model.max_seq_len, position_conditioning=True)
+    tokenizer = HunlTokenizer(config.model.max_seq_len, **config.tokenizer_kwargs())
     guard = CFRActionGuard.from_config(config)
     rows, counts = [], Counter()
     for hand in range(hand_offset, hand_offset + hands):
@@ -296,12 +302,12 @@ def cpu_latency(model, dataset, *, decisions=100):
 
 
 def save_student(path, model, manifest, report):
-    if manifest["semantics"] != {key: model.config.to_dict()[key] for key in SEMANTIC_FIELDS}:
+    if not semantics_match(manifest["semantics"], model.config):
         raise ValueError("student and teacher semantics disagree")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"format": FORMAT, "config": model.config.to_dict(),
-                "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
+                "rules_version": RULES_VERSION, "numeric_version": model.config.numeric_version,
                 "model": {key: value.detach().cpu() for key, value in model.state_dict().items()},
                 "teacher": manifest, "report": report}, path)
 
@@ -309,10 +315,10 @@ def save_student(path, model, manifest, report):
 def load_student(path, *, device="cpu"):
     blob = torch.load(path, map_location="cpu", weights_only=True)
     if (blob.get("format") != FORMAT or blob.get("rules_version") != RULES_VERSION
-            or blob.get("numeric_version") != NUMERIC_VERSION):
+            or blob.get("numeric_version") != CFRConfig.from_checkpoint(blob["config"]).numeric_version):
         raise ValueError("incompatible distilled policy checkpoint")
     config = CFRConfig.from_checkpoint(blob["config"])
-    if blob["teacher"]["semantics"] != {key: config.to_dict()[key] for key in SEMANTIC_FIELDS}:
+    if not semantics_match(blob["teacher"]["semantics"], config):
         raise ValueError("student checkpoint semantics disagree with teacher manifest")
     model = PolicyNetwork(config).to(device)
     model.load_state_dict(blob["model"], strict=True)

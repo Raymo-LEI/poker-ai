@@ -89,14 +89,22 @@ class HunlTokenizer(BettingHistoryTokenizer):
 
     Legacy PPO tokenizers still clip their first action channel to 1. This
     explicit CFR format divides the true fraction by 10 without clipping.
-    Checkpoints must record :attr:`numeric_version` to distinguish them.
+    Optional equity/odds/margin use the first hole-card token's numeric channels
+    without changing tensor shapes. Checkpoints record numeric_version.
     """
 
     numeric_version = NUMERIC_VERSION
 
-    def __init__(self, max_seq_len=64, *, position_conditioning=True):
+    def __init__(self, max_seq_len=64, *, position_conditioning=True,
+                 equity_features=False, equity_samples=32, equity_seed=17):
         super().__init__(max_seq_len)
         self.position_conditioning = position_conditioning
+        self.equity_features = equity_features
+        self.equity_samples = equity_samples
+        self.equity_seed = equity_seed
+        if equity_features:
+            from .equity import equity_numeric_version
+            self.numeric_version = equity_numeric_version()
 
     def _tokens(self, snapshot):
         tokens = super()._tokens(snapshot)
@@ -107,6 +115,14 @@ class HunlTokenizer(BettingHistoryTokenizer):
             # HOLE is never truncated. One-hot position even at an empty
             # preflop history; no opponent private information is added.
             tokens[1] = (token, kind, (float(snapshot.me_seat == 0), float(snapshot.me_seat == 1), 0., 0.))
+        if self.equity_features:
+            from .equity import equity_features
+            equity, odds, margin = equity_features(snapshot, samples=self.equity_samples, seed=self.equity_seed)
+            # This existing hole-card token is retained even at max_seq_len=8.
+            # Its unused numeric channels share the existing numeric projection;
+            # CLS chip context, position, tensor shapes and parameter keys survive.
+            token, kind, _ = tokens[2]
+            tokens[2] = (token, kind, (equity, odds, margin, 0.))
         return tokens
 
     def _action_numeric(self, event: ActionEvent, blind: float) -> Tuple[float, float, float, float]:

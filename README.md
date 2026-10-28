@@ -78,3 +78,5 @@ PYTHONPATH=src python -m alphanl.cfr.kuhn --iterations 1000
 Deep-stack CFR action abstraction and evaluation: [all-street SPR guard](docs/cfr_spr_guard.md). The supporting shared position-conditioned training path is documented in [Unified SD-CFR](docs/cfr_unified.md).
 
 Offline average-strategy compression is available through [SD-CFR distillation preparation](docs/cfr_distillation.md): frozen archive validation, own-reach-preserving trajectory labels, a single policy student, held-out diagnostics, and a portable checkpoint. Playing-strength and Stage 2/Botzone acceptance remain separate gates.
+
+The opt-in [Stage 1 full-capacity profile](docs/cfr_fullupgrade.md) combines equity/odds inputs, a 1.49M model, one 8M reservoir, polynomial regret regression and a 15% fixed-opponent root mixture. CPU wiring and frozen T200 loss diagnostics are available; this profile has not yet been deployed or validated on CUDA.

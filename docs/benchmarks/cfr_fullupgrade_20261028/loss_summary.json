@@ -1,0 +1,540 @@
+{
+  "format": "cfr_fullupgrade_loss_summary_v1",
+  "date": "2026-10-28 Asia/Tokyo",
+  "scope": "New 2500 deck pairs per retained pre-fit sigma_200; no training; NOT replay of the original historical mixtures.",
+  "unit": "mbb/hand",
+  "historical_burnin_status": "Unavailable: sigma_1..199 and original pair logs were removed by earlier cleanup.",
+  "original_report_sha256": "d1f6b28d2f75a96a5477aaad877326df0c76aeaacbf609716bf30c91bfe143bd",
+  "original_linear_mixtures": {
+    "steps1200_same_iteration": {
+      "pairs": 2500,
+      "hands": 5000,
+      "mbb_per_hand": -8872.8,
+      "ci95": [
+        -10483.83925476781,
+        -7261.760745232188
+      ],
+      "sb_mbb_per_hand": -4125.6,
+      "bb_mbb_per_hand": -13620.0,
+      "hero_iteration": 200,
+      "sb_open_fold_rate": 0.5504,
+      "sb_open_fold_direct_contribution_mbb_per_all_hands": -137.6
+    },
+    "steps1200_equal_time": {
+      "pairs": 2500,
+      "hands": 5000,
+      "mbb_per_hand": -8872.8,
+      "ci95": [
+        -10483.83925476781,
+        -7261.760745232188
+      ],
+      "sb_mbb_per_hand": -4125.6,
+      "bb_mbb_per_hand": -13620.0,
+      "hero_iteration": 200,
+      "sb_open_fold_rate": 0.5504,
+      "sb_open_fold_direct_contribution_mbb_per_all_hands": -137.6
+    },
+    "steps2400_same_iteration": {
+      "pairs": 2500,
+      "hands": 5000,
+      "mbb_per_hand": -8475.1,
+      "ci95": [
+        -10001.701841019536,
+        -6948.498158980465
+      ],
+      "sb_mbb_per_hand": -4270.0,
+      "bb_mbb_per_hand": -12680.199999999999,
+      "hero_iteration": 200,
+      "sb_open_fold_rate": 0.5640000000000001,
+      "sb_open_fold_direct_contribution_mbb_per_all_hands": -141.0
+    },
+    "steps2400_equal_time": {
+      "pairs": 2500,
+      "hands": 5000,
+      "mbb_per_hand": -8304.0,
+      "ci95": [
+        -9916.730410263363,
+        -6691.269589736637
+      ],
+      "sb_mbb_per_hand": -5162.999999999999,
+      "bb_mbb_per_hand": -11445.0,
+      "hero_iteration": 185,
+      "sb_open_fold_rate": 0.5532,
+      "sb_open_fold_direct_contribution_mbb_per_all_hands": -138.3
+    }
+  },
+  "latest_sigma_200": {
+    "steps1200": {
+      "summary": {
+        "pairs": 2500,
+        "hands": 5000,
+        "mbb_per_hand": -7290.7,
+        "sample_std": 38992.6934253871,
+        "ci95": [
+          -8819.213582275173,
+          -5762.186417724825
+        ],
+        "ci_unit": "mbb/hand",
+        "ci_method": "normal_1.96_sample_std_of_pair_means",
+        "sb_mbb_per_hand": -2775.7999999999997,
+        "bb_mbb_per_hand": -11805.6
+      },
+      "breakdown": {
+        "buckets": {
+          "position:sb": {
+            "hands": 2500,
+            "chips": -693950.0,
+            "gross_loss_chips": -1566650.0,
+            "gross_win_chips": 872700.0,
+            "contribution_mbb_per_all_hands": -1387.9,
+            "conditional_mbb_per_hand": -2775.8
+          },
+          "terminal_street:0": {
+            "hands": 2108,
+            "chips": -169750.0,
+            "gross_loss_chips": -456250.0,
+            "gross_win_chips": 286500.0,
+            "contribution_mbb_per_all_hands": -339.5,
+            "conditional_mbb_per_hand": -805.2656546489563
+          },
+          "position_terminal_street:sb:0": {
+            "hands": 1817,
+            "chips": -92350.0,
+            "gross_loss_chips": -172650.0,
+            "gross_win_chips": 80300.0,
+            "contribution_mbb_per_all_hands": -184.7,
+            "conditional_mbb_per_hand": -508.2553659878921
+          },
+          "category:sb_open_fold": {
+            "hands": 1781,
+            "chips": -89050.0,
+            "gross_loss_chips": -89050.0,
+            "gross_win_chips": 0.0,
+            "contribution_mbb_per_all_hands": -178.1,
+            "conditional_mbb_per_hand": -500.0
+          },
+          "position:bb": {
+            "hands": 2500,
+            "chips": -2951400.0,
+            "gross_loss_chips": -5341900.0,
+            "gross_win_chips": 2390500.0,
+            "contribution_mbb_per_all_hands": -5902.8,
+            "conditional_mbb_per_hand": -11805.6
+          },
+          "terminal_street:1": {
+            "hands": 944,
+            "chips": -1767900.0,
+            "gross_loss_chips": -2830500.0,
+            "gross_win_chips": 1062600.0,
+            "contribution_mbb_per_all_hands": -3535.8,
+            "conditional_mbb_per_hand": -18727.754237288136
+          },
+          "position_terminal_street:bb:1": {
+            "hands": 740,
+            "chips": -1686400.0,
+            "gross_loss_chips": -2478400.0,
+            "gross_win_chips": 792000.0,
+            "contribution_mbb_per_all_hands": -3372.8,
+            "conditional_mbb_per_hand": -22789.18918918919
+          },
+          "category:villain_postflop_fold": {
+            "hands": 902,
+            "chips": 274800.0,
+            "gross_loss_chips": 0.0,
+            "gross_win_chips": 274800.0,
+            "contribution_mbb_per_all_hands": 549.6,
+            "conditional_mbb_per_hand": 3046.5631929046563
+          },
+          "terminal_street:3": {
+            "hands": 1374,
+            "chips": -825700.0,
+            "gross_loss_chips": -1920600.0,
+            "gross_win_chips": 1094900.0,
+            "contribution_mbb_per_all_hands": -1651.4,
+            "conditional_mbb_per_hand": -6009.461426491994
+          },
+          "position_terminal_street:bb:3": {
+            "hands": 1044,
+            "chips": -541700.0,
+            "gross_loss_chips": -1292800.0,
+            "gross_win_chips": 751100.0,
+            "contribution_mbb_per_all_hands": -1083.4,
+            "conditional_mbb_per_hand": -5188.697318007663
+          },
+          "category:showdown_hero_last_aggressor": {
+            "hands": 1152,
+            "chips": -3124000.0,
+            "gross_loss_chips": -5774000.0,
+            "gross_win_chips": 2650000.0,
+            "contribution_mbb_per_all_hands": -6248.0,
+            "conditional_mbb_per_hand": -27118.055555555555
+          },
+          "position_terminal_street:bb:0": {
+            "hands": 291,
+            "chips": -77400.0,
+            "gross_loss_chips": -283600.0,
+            "gross_win_chips": 206200.0,
+            "contribution_mbb_per_all_hands": -154.8,
+            "conditional_mbb_per_hand": -2659.7938144329896
+          },
+          "category:other_preflop_terminal": {
+            "hands": 327,
+            "chips": -80700.0,
+            "gross_loss_chips": -367200.0,
+            "gross_win_chips": 286500.0,
+            "contribution_mbb_per_all_hands": -161.4,
+            "conditional_mbb_per_hand": -2467.8899082568805
+          },
+          "position_terminal_street:sb:3": {
+            "hands": 330,
+            "chips": -284000.0,
+            "gross_loss_chips": -627800.0,
+            "gross_win_chips": 343800.0,
+            "contribution_mbb_per_all_hands": -568.0,
+            "conditional_mbb_per_hand": -8606.060606060606
+          },
+          "terminal_street:2": {
+            "hands": 574,
+            "chips": -882000.0,
+            "gross_loss_chips": -1701200.0,
+            "gross_win_chips": 819200.0,
+            "contribution_mbb_per_all_hands": -1764.0,
+            "conditional_mbb_per_hand": -15365.853658536585
+          },
+          "position_terminal_street:sb:2": {
+            "hands": 149,
+            "chips": -236100.0,
+            "gross_loss_chips": -414100.0,
+            "gross_win_chips": 178000.0,
+            "contribution_mbb_per_all_hands": -472.2,
+            "conditional_mbb_per_hand": -15845.637583892618
+          },
+          "category:hero_postflop_fold": {
+            "hands": 638,
+            "chips": -277900.0,
+            "gross_loss_chips": -277900.0,
+            "gross_win_chips": 0.0,
+            "contribution_mbb_per_all_hands": -555.8,
+            "conditional_mbb_per_hand": -4355.7993730407525
+          },
+          "position_terminal_street:bb:2": {
+            "hands": 425,
+            "chips": -645900.0,
+            "gross_loss_chips": -1287100.0,
+            "gross_win_chips": 641200.0,
+            "contribution_mbb_per_all_hands": -1291.8,
+            "conditional_mbb_per_hand": -15197.64705882353
+          },
+          "position_terminal_street:sb:1": {
+            "hands": 204,
+            "chips": -81500.0,
+            "gross_loss_chips": -352100.0,
+            "gross_win_chips": 270600.0,
+            "contribution_mbb_per_all_hands": -163.0,
+            "conditional_mbb_per_hand": -3995.098039215686
+          },
+          "category:showdown_villain_last_aggressor_large_hero_call": {
+            "hands": 33,
+            "chips": -50400.0,
+            "gross_loss_chips": -55800.0,
+            "gross_win_chips": 5400.0,
+            "contribution_mbb_per_all_hands": -100.8,
+            "conditional_mbb_per_hand": -15272.727272727272
+          },
+          "category:other_showdown": {
+            "hands": 167,
+            "chips": -298100.0,
+            "gross_loss_chips": -344600.0,
+            "gross_win_chips": 46500.0,
+            "contribution_mbb_per_all_hands": -596.2,
+            "conditional_mbb_per_hand": -17850.299401197604
+          }
+        },
+        "overlapping_tags": {
+          "losing_showdown_hero_last_aggressor_oracle_equity_below_35pct": {
+            "hands": 471,
+            "chips": -5438200.0,
+            "contribution_mbb_per_all_hands": -10876.4
+          },
+          "showdown_hero_last_aggression_all_in": {
+            "hands": 399,
+            "chips": -3260000.0,
+            "contribution_mbb_per_all_hands": -6520.0
+          },
+          "showdown_hero_last_aggression_all_in_bb": {
+            "hands": 311,
+            "chips": -2720000.0,
+            "contribution_mbb_per_all_hands": -5440.0
+          },
+          "showdown_hero_last_aggression_all_in_sb": {
+            "hands": 88,
+            "chips": -540000.0,
+            "contribution_mbb_per_all_hands": -1080.0
+          }
+        },
+        "counts": {
+          "sb_open_folds": 1781,
+          "large_postflop_calls": 69,
+          "losing_showdown_hero_last_aggressor_oracle_equity_below_35pct": 471,
+          "losing_hands_with_last_large_call_oracle_equity_below_odds": 54
+        },
+        "sb_open_fold_rate": 0.7124,
+        "notes": [
+          "Category buckets partition all hands; terminal-street buckets are a separate partition.",
+          "Large call means a postflop check/call facing >=0.5 times the pot BEFORE calling.",
+          "Oracle equity is 128-runout equity versus the actual holding, evaluated after play; it is not range equity or proof of a mistake.",
+          "Weak-equity aggression is a descriptive bluff proxy, not an inference of intent. Overlapping audit tags must not be added as loss shares."
+        ]
+      },
+      "snapshot_sha256": {
+        "iteration_0000200.pt": "fa34d93c65e9cc6a98f647929cd999821dac6b7ae089ee708d3876950c79295f"
+      },
+      "equity_features": false,
+      "raw_hands_sha256": "04dd61eef159bf817b94b82428ce4def21bb51af2e68d0c1745f2c180cd2ca51",
+      "raw_pairs_sha256": "99068679b316b91687c8509a79a1a9acc0bc83688d2f4b7e04e5c0702b721aa0",
+      "original_trace_report_sha256": "1e5cfd42dfa7cb9a749b783024150ebf1404853e244e1c155098eb54c2e261e9"
+    },
+    "steps2400": {
+      "summary": {
+        "pairs": 2500,
+        "hands": 5000,
+        "mbb_per_hand": -8686.0,
+        "sample_std": 40581.91359071519,
+        "ci95": [
+          -10276.811012756036,
+          -7095.188987243965
+        ],
+        "ci_unit": "mbb/hand",
+        "ci_method": "normal_1.96_sample_std_of_pair_means",
+        "sb_mbb_per_hand": -4725.6,
+        "bb_mbb_per_hand": -12646.400000000001
+      },
+      "breakdown": {
+        "buckets": {
+          "position:sb": {
+            "hands": 2500,
+            "chips": -1181400.0,
+            "gross_loss_chips": -2433800.0,
+            "gross_win_chips": 1252400.0,
+            "contribution_mbb_per_all_hands": -2362.8,
+            "conditional_mbb_per_hand": -4725.6
+          },
+          "terminal_street:0": {
+            "hands": 1820,
+            "chips": -331300.0,
+            "gross_loss_chips": -805200.0,
+            "gross_win_chips": 473900.0,
+            "contribution_mbb_per_all_hands": -662.6,
+            "conditional_mbb_per_hand": -1820.3296703296703
+          },
+          "position_terminal_street:sb:0": {
+            "hands": 1493,
+            "chips": -136700.0,
+            "gross_loss_chips": -358500.0,
+            "gross_win_chips": 221800.0,
+            "contribution_mbb_per_all_hands": -273.4,
+            "conditional_mbb_per_hand": -915.6061620897522
+          },
+          "category:sb_open_fold": {
+            "hands": 1408,
+            "chips": -70400.0,
+            "gross_loss_chips": -70400.0,
+            "gross_win_chips": 0.0,
+            "contribution_mbb_per_all_hands": -140.8,
+            "conditional_mbb_per_hand": -500.0
+          },
+          "position:bb": {
+            "hands": 2500,
+            "chips": -3161600.0,
+            "gross_loss_chips": -5692500.0,
+            "gross_win_chips": 2530900.0,
+            "contribution_mbb_per_all_hands": -6323.2,
+            "conditional_mbb_per_hand": -12646.4
+          },
+          "terminal_street:1": {
+            "hands": 1062,
+            "chips": -1996600.0,
+            "gross_loss_chips": -3177000.0,
+            "gross_win_chips": 1180400.0,
+            "contribution_mbb_per_all_hands": -3993.2,
+            "conditional_mbb_per_hand": -18800.376647834273
+          },
+          "position_terminal_street:bb:1": {
+            "hands": 737,
+            "chips": -1633300.0,
+            "gross_loss_chips": -2469200.0,
+            "gross_win_chips": 835900.0,
+            "contribution_mbb_per_all_hands": -3266.6,
+            "conditional_mbb_per_hand": -22161.46540027137
+          },
+          "category:villain_postflop_fold": {
+            "hands": 1085,
+            "chips": 344700.0,
+            "gross_loss_chips": 0.0,
+            "gross_win_chips": 344700.0,
+            "contribution_mbb_per_all_hands": 689.4,
+            "conditional_mbb_per_hand": 3176.958525345622
+          },
+          "terminal_street:3": {
+            "hands": 1482,
+            "chips": -975800.0,
+            "gross_loss_chips": -2409400.0,
+            "gross_win_chips": 1433600.0,
+            "contribution_mbb_per_all_hands": -1951.6,
+            "conditional_mbb_per_hand": -6584.345479082322
+          },
+          "position_terminal_street:bb:3": {
+            "hands": 1007,
+            "chips": -758200.0,
+            "gross_loss_chips": -1698500.0,
+            "gross_win_chips": 940300.0,
+            "contribution_mbb_per_all_hands": -1516.4,
+            "conditional_mbb_per_hand": -7529.294935451837
+          },
+          "category:showdown_hero_last_aggressor": {
+            "hands": 1227,
+            "chips": -3723200.0,
+            "gross_loss_chips": -6555500.0,
+            "gross_win_chips": 2832300.0,
+            "contribution_mbb_per_all_hands": -7446.4,
+            "conditional_mbb_per_hand": -30343.9282803586
+          },
+          "category:other_preflop_terminal": {
+            "hands": 412,
+            "chips": -260900.0,
+            "gross_loss_chips": -734800.0,
+            "gross_win_chips": 473900.0,
+            "contribution_mbb_per_all_hands": -521.8,
+            "conditional_mbb_per_hand": -6332.52427184466
+          },
+          "terminal_street:2": {
+            "hands": 636,
+            "chips": -1039300.0,
+            "gross_loss_chips": -1734700.0,
+            "gross_win_chips": 695400.0,
+            "contribution_mbb_per_all_hands": -2078.6,
+            "conditional_mbb_per_hand": -16341.194968553458
+          },
+          "position_terminal_street:bb:2": {
+            "hands": 429,
+            "chips": -575500.0,
+            "gross_loss_chips": -1078100.0,
+            "gross_win_chips": 502600.0,
+            "contribution_mbb_per_all_hands": -1151.0,
+            "conditional_mbb_per_hand": -13414.918414918415
+          },
+          "position_terminal_street:sb:1": {
+            "hands": 325,
+            "chips": -363300.0,
+            "gross_loss_chips": -707800.0,
+            "gross_win_chips": 344500.0,
+            "contribution_mbb_per_all_hands": -726.6,
+            "conditional_mbb_per_hand": -11178.461538461539
+          },
+          "category:hero_postflop_fold": {
+            "hands": 645,
+            "chips": -314200.0,
+            "gross_loss_chips": -314200.0,
+            "gross_win_chips": 0.0,
+            "contribution_mbb_per_all_hands": -628.4,
+            "conditional_mbb_per_hand": -4871.3178294573645
+          },
+          "position_terminal_street:sb:3": {
+            "hands": 475,
+            "chips": -217600.0,
+            "gross_loss_chips": -710900.0,
+            "gross_win_chips": 493300.0,
+            "contribution_mbb_per_all_hands": -435.2,
+            "conditional_mbb_per_hand": -4581.0526315789475
+          },
+          "position_terminal_street:bb:0": {
+            "hands": 327,
+            "chips": -194600.0,
+            "gross_loss_chips": -446700.0,
+            "gross_win_chips": 252100.0,
+            "contribution_mbb_per_all_hands": -389.2,
+            "conditional_mbb_per_hand": -5951.070336391437
+          },
+          "position_terminal_street:sb:2": {
+            "hands": 207,
+            "chips": -463800.0,
+            "gross_loss_chips": -656600.0,
+            "gross_win_chips": 192800.0,
+            "contribution_mbb_per_all_hands": -927.6,
+            "conditional_mbb_per_hand": -22405.797101449276
+          },
+          "category:other_showdown": {
+            "hands": 183,
+            "chips": -237300.0,
+            "gross_loss_chips": -349900.0,
+            "gross_win_chips": 112600.0,
+            "contribution_mbb_per_all_hands": -474.6,
+            "conditional_mbb_per_hand": -12967.213114754099
+          },
+          "category:showdown_villain_last_aggressor_large_hero_call": {
+            "hands": 40,
+            "chips": -81700.0,
+            "gross_loss_chips": -101500.0,
+            "gross_win_chips": 19800.0,
+            "contribution_mbb_per_all_hands": -163.4,
+            "conditional_mbb_per_hand": -20425.0
+          }
+        },
+        "overlapping_tags": {
+          "losing_showdown_hero_last_aggressor_oracle_equity_below_35pct": {
+            "hands": 518,
+            "chips": -6119900.0,
+            "contribution_mbb_per_all_hands": -12239.8
+          },
+          "showdown_hero_last_aggression_all_in": {
+            "hands": 434,
+            "chips": -3960000.0,
+            "contribution_mbb_per_all_hands": -7920.0
+          },
+          "showdown_hero_last_aggression_all_in_sb": {
+            "hands": 119,
+            "chips": -1040000.0,
+            "contribution_mbb_per_all_hands": -2080.0
+          },
+          "showdown_hero_last_aggression_all_in_bb": {
+            "hands": 315,
+            "chips": -2920000.0,
+            "contribution_mbb_per_all_hands": -5840.0
+          }
+        },
+        "counts": {
+          "sb_open_folds": 1408,
+          "large_postflop_calls": 87,
+          "losing_showdown_hero_last_aggressor_oracle_equity_below_35pct": 518,
+          "losing_hands_with_last_large_call_oracle_equity_below_odds": 58
+        },
+        "sb_open_fold_rate": 0.5632,
+        "notes": [
+          "Category buckets partition all hands; terminal-street buckets are a separate partition.",
+          "Large call means a postflop check/call facing >=0.5 times the pot BEFORE calling.",
+          "Oracle equity is 128-runout equity versus the actual holding, evaluated after play; it is not range equity or proof of a mistake.",
+          "Weak-equity aggression is a descriptive bluff proxy, not an inference of intent. Overlapping audit tags must not be added as loss shares."
+        ]
+      },
+      "snapshot_sha256": {
+        "iteration_0000200.pt": "3fd2b6f009c220b46054a9ab2cbae2bba973a9ff888d120c4c0a090387143b97"
+      },
+      "equity_features": false,
+      "raw_hands_sha256": "2b3713c606da0974d17704bf8fe686397a413069a4f69eba291aff74bdfda993",
+      "raw_pairs_sha256": "55acb1890dc6a0a07e9df627411d905e090dd36653ee8dc50b5263e65f6a63a8",
+      "original_trace_report_sha256": "6eacc8d772bc7b016236b79fea1b8609015a390ead51be62631a037d13888adb"
+    }
+  },
+  "latest_sigma_2400_minus_1200": {
+    "n": 2500,
+    "mean": -1395.3,
+    "sample_std": 46983.7573241106,
+    "ci95": [
+      -3237.0632871051353,
+      446.46328710513535
+    ],
+    "unit": "mbb/hand",
+    "positive_means": "2400 improves on 1200"
+  },
+  "aggregation_source_sha256": "19c7fe50e5bb298800372b0f9b0b31f4f7508a7c655af2022920947227187adc"
+}

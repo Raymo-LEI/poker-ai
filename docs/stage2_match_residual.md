@@ -56,9 +56,9 @@ python scripts/train_stage2.py --config /absolute/stage2_config.json \
   --out-dir runs/stage2_candidate --device cuda --updates 10000
 ```
 
-默认配置只有两次 CPU 更新，必须显式选择 CUDA 和正式预算；导入模块、运行测试或打开监控均不会启动训练。50 手回报使用 gamma=lambda=1，默认优化累计净筹码；比赛胜负另行记录，不将它伪称为胜负概率优化。
+默认配置只有两次 CPU 更新（合计 40 场完整比赛），必须显式选择 CUDA 和正式预算；导入模块、运行测试或打开监控均不会启动训练。50 手回报使用 gamma=lambda=1，默认优化累计净筹码；比赛胜负另行记录，不将它伪称为胜负概率优化。
 
-初始池为 equity 35%、nit 15%、call 15%、maniac 10%、overbet 10%、历史快照 15%。历史分支整场固定一个快照，而非每手重抽不同对手。PFSP 根据完整比赛胜负（和局半分）更新 Beta 平滑胜率，`uniform_mix` 保留非零采样下限。PPO checkpoint 保存参考、残差、优化器、PFSP/RNG；只在完整比赛边界保存。续训使用新输出目录：
+对手池现已升级为固定 35% 防守配额与 65% 短板优先规则池；每次 PPO 更新收集 20 场完整比赛。四层比例、整局参数抖动、历史权重缓存、自身历史、独立评测与 -20 mbb/hand 防线的完整定义见 [MatchPool 升级说明](stage2_matchpool.md)。PPO checkpoint 保存参考、残差、优化器、PFSP/RNG；只在完整比赛边界保存。续训使用新输出目录：
 
 ```bash
 python scripts/train_stage2.py --config /absolute/stage2_config.json \
@@ -93,7 +93,7 @@ PYTHONPATH=src OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
   python scripts/smoke_stage2.py --out-dir /absolute/new_stage2_smoke
 ```
 
-该脚本仅用合成未训练 teacher，真实执行 1.49M 蒸馏（12 手训练、4 手验证、2 次更新）、两场完整 50 手 PPO 更新和单文件导出。另有单元测试在真实裁判 fixture 上执行两场 50 手部署流程，校验合法响应、筹码守恒和跨手上下文。
+该脚本仅用合成未训练 teacher，真实执行 1.49M 蒸馏（12 手训练、4 手验证、2 次更新）、两个 20 场配额批次的 PPO 更新和单文件导出。另有单元测试在真实裁判 fixture 上执行两场 50 手部署流程，校验合法响应、筹码守恒和跨手上下文。
 
 关键测试：两种 Equity 配置、双方座位、四条街的 Stage 1/Stage 2 observation bitwise equality；0.59M/1.49M 零残差等价；训练后基座逐参数不变；KL 方向、mask 梯度及系数；PPO 反传、完整比赛 reward/done；PFSP/RNG；checkpoint；32/128/192 宽度的 NumPy 观测与 logits 一致性；监控日志解析与浏览器显示。
 

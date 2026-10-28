@@ -5,8 +5,21 @@
   "reference": "runs/stage1_distillation/stage1_distilled_ref.pt",
   "strategies": "runs/stage1_final/strategies",
   "updates": 2,
+  "matches_per_update": 20,
   "learning_rate": 0.0003,
   "policy": {"alpha": 1.0, "hidden": 64, "beta_kl": 1.0, "late_beta_kl": 0.1},
   "ppo": {"epochs": 4, "minibatch_size": 256, "gamma": 1.0, "gae_lambda": 1.0},
-  "pool": {"weights": {"equity": 0.35, "nit": 0.15, "call": 0.15, "maniac": 0.10, "overbet": 0.10, "history": 0.15}, "pfsp_power": 2.0, "uniform_mix": 0.2, "equity_samples": 64}
+  "pool": {
+    "weights": {"equity": 0.35, "nit": 0.12, "call": 0.06, "maniac": 0.035, "overbet": 0.035,
+                "push_fold": 0.05, "reference": 0.10, "history": 0.15, "self": 0.10},
+    "equity_samples": 64,
+    "window_size": 100,
+    "history_cache_size": 16,
+    "history_refresh_matches": 100,
+    "history_buckets": [[140,160], [240,260], [320,350], [100,350]],
+    "self_snapshot_every": 25,
+    "self_history_size": 16
+  },
+  "evaluation": {"every_updates": 100, "match_pairs": 50, "seed": 92017,
+                 "equity_samples": 64, "stop_on_retention_failure": true}
 }

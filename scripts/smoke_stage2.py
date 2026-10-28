@@ -1,4 +1,4 @@
-"""Reproducible CPU-only full-size synthetic bridge -> 2 matches -> export smoke.
+"""Reproducible CPU-only full-size synthetic bridge -> 2 quota blocks -> export smoke.
 
 Creates untrained teachers in a new directory. Never opens a real run or GPU.
 """
@@ -41,6 +41,8 @@ def main():
         "--weight-power",2,"--train-hands",12,"--validation-hands",4,"--steps",2,"--batch-size",8,"--device","cpu")
     settings = json.loads(Path("configs/stage2/botzone_50hand.json").read_text())
     settings.update(reference=str(distill / "stage1_distilled_ref.pt"), strategies=str(archive))
+    settings["pool"]["history_buckets"] = [[100,102]]
+    settings["pool"]["self_snapshot_every"] = 1
     settings["ppo"] = {"epochs":1,"minibatch_size":64,"gamma":1.,"gae_lambda":1.}
     path = args.out_dir / "smoke_config.json"; path.write_text(json.dumps(settings))
     run("train_stage2.py", "--config",path,"--out-dir",args.out_dir/"ppo","--device","cpu","--updates",2)

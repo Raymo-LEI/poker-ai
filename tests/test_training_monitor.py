@@ -288,3 +288,21 @@ def test_stage2_metrics_panel_schema(tmp_path):
     assert data["latest"]["stage2/base_kl"] == .01
     assert data["latest"]["stage2/pfsp/equity"] == .35
     assert not data["eval_latest"]  # rollout profit is not external evaluation
+
+
+def test_stage2_independent_eval_survives_new_training_rows(tmp_path):
+    run = tmp_path / "stage2"
+    run.mkdir()
+    (run / "config.json").write_text('{"stage":"stage2"}')
+    rows = [{"update":100, "stage2":1, "stage2/eval/update":100,
+             "stage2/eval/equity/mbb_per_hand":0., "stage2/eval/equity/match_win":.6,
+             "stage2/eval/reference/mbb_per_hand":-21., "stage2/eval/retention_pass":0,
+             "stage2/eval/nit/gain_mbb_per_hand":1200.},
+            {"update":101, "stage2":1, "stage2/hero_net_bb":10000.}]
+    (run / "metrics.jsonl").write_text("\n".join(map(json.dumps, rows)) + "\n")
+    data = monitor.Store([tmp_path]).load("0/stage2")
+    assert data["latest"]["step"] == 101
+    assert data["stage2_eval_latest"]["stage2/eval/update"] == 100
+    assert data["stage2_eval_latest"]["stage2/eval/equity/mbb_per_hand"] == 0
+    assert data["stage2_eval_latest"]["stage2/eval/retention_pass"] == 0
+    assert not data["eval_latest"]

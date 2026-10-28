@@ -108,3 +108,73 @@ def load_checkpoint(path, *, device="cpu"):
     if any(not torch.isfinite(v).all() for v in model.state_dict().values()):
         raise ValueError("nonfinite Stage 2 checkpoint")
     return model.to(device).eval(), blob
+
+
+@torch.no_grad()
+def collect_matches(model, envs):
+    """Advance concurrent matches, grouping hero and snapshot opponent inference.
+
+    Each env owns its actor for all 50 hands. Rewards before/between hero
+    decisions, including passive hands, belong to that same complete match.
+    """
+    from .opponents import NeuralMatchActor, neural_actions
+    if not envs or any(not env.defer_opponents for env in envs):
+        raise ValueError("batched collection requires deferred opponent environments")
+    model.eval()
+    device = next(model.parameters()).device
+    records = []
+    for env in envs:
+        env.reset()
+        records.append({"batches": [], "actions": [], "logps": [], "values": [], "rewards": [],
+                        "initial": env.initial_reward})
+
+    def credit(index, reward):
+        row = records[index]
+        if row["rewards"]:
+            row["rewards"][-1] += reward
+        else:
+            row["initial"] += reward
+
+    while any(not env.done for env in envs):
+        pending = [i for i, env in enumerate(envs) if env.pending_opponent()]
+        neural = [i for i in pending if isinstance(envs[i].opponent, NeuralMatchActor)]
+        actions = neural_actions([(envs[i].opponent, envs[i].table.snapshot(1 - envs[i].hero)) for i in neural])
+        selected = dict(zip(neural, actions))
+        for i in pending:
+            env = envs[i]
+            action = selected[i] if i in selected else env.opponent.act(env.table.snapshot(1 - env.hero))
+            credit(i, env.opponent_step(action))
+        ready = [i for i, env in enumerate(envs) if not env.done and not env.pending_opponent()]
+        if not ready:
+            continue
+        batch = model.prepare({k: v.to(device) for k, v in cat_batches([envs[i].observe() for i in ready]).items()})
+        actions, logps, values, _ = model.act(batch)
+        for j, i in enumerate(ready):
+            row, env = records[i], envs[i]
+            row["batches"].append({k: v[j:j+1] for k, v in batch.items()})
+            row["actions"].append(actions[j:j+1])
+            row["logps"].append(logps[j:j+1])
+            row["values"].append(values[j:j+1])
+            row["rewards"].append(0.)
+            _, reward, _, _ = env.step(int(actions[j]))
+            credit(i, reward)
+    rollouts = []
+    for env, row in zip(envs, records):
+        if not row["actions"]:
+            raise RuntimeError("match has no hero decisions")
+        row["rewards"][0] += row["initial"]
+        dones = torch.zeros(len(row["actions"]), device=device)
+        dones[-1] = 1.
+        rollouts.append(MatchRollout(cat_batches(row["batches"]), torch.cat(row["actions"]), torch.cat(row["logps"]),
+            torch.cat(row["values"]), torch.tensor(row["rewards"], device=device), dones,
+            {"hands": env.hands, "hands_played": 50, "hero_net_bb": env.ctx.hero_net_bb,
+             "context": env.ctx.as_dict(), "opponent": env.opponent_name}))
+    return rollouts
+
+
+def train_matches(model, optimizer, rollouts, **kwargs):
+    """GAE resets at each match's done; one PPO batch covers the quota block."""
+    merged = MatchRollout(cat_batches([r.batch for r in rollouts]),
+        *[torch.cat([getattr(r, key) for r in rollouts])
+          for key in ("actions", "old_logp", "values", "rewards", "dones")], report={})
+    return train_match(model, optimizer, merged, **kwargs)

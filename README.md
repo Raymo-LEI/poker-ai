@@ -36,6 +36,8 @@ python scripts/train_cfr.py --config configs/cfr/hunl_200bb.json \
 
 完整训练入口为 `python scripts/train_cfr.py --config configs/cfr/hunl_200bb.json`。训练输出包括 `metrics.csv`、`performance.csv`、`strategies/`、`train.pt` 和 `checkpoint_data/`；移动或备份恢复点时，`train.pt` 与 `checkpoint_data/` 要放在一起。已有输出目录续训使用 `--resume`，不要直接重跑覆盖。
 
+训练预算的同起点对照见 [Stage 1 分阶段选拔](docs/cfr_stage1_selection.md)：默认 T=150→200 的 1200/2400 步分支、固定共同训练探针、同轮次/同算时六对手评测，以及待选的 1.49M 模型配置。完整起点缺失时先重建；不会用历史策略快照冒充可恢复样本池。
+
 RTX 4090 服务器可从 [4090 配置](configs/cfr/hunl_4090.json)开始，它显式启用 CUDA BF16、fused Adam 和 TF32；测量命令与尚待验证的性能假设见 [服务器效率与基准说明](docs/server_4090_efficiency.md)。目前没有仓库内的 4090 实测吞吐或策略质量结论。
 
 SD-CFR 可使用 `scripts/eval_cfr_readiness.py` 做配对对战、50 手比赛和自博弈健康检查。

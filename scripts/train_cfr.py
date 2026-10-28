@@ -38,9 +38,13 @@ def main() -> None:
     parser.add_argument("--inference-wait-ms", type=float)
     parser.add_argument("--train-buffer-device", choices=("cpu", "cuda"))
     parser.add_argument("--resume", type=Path, help="trusted local train.pt (includes reservoirs)")
+    parser.add_argument("--branch-train-steps", action="store_true",
+                        help="opt in to changing only train_steps on restore into a fresh output directory")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--threads", type=int, default=1)
     args = parser.parse_args()
+    if args.branch_train_steps and args.resume is None:
+        parser.error("--branch-train-steps requires --resume")
     if args.threads < 1:
         parser.error("--threads must be positive")
     torch.set_num_threads(args.threads)
@@ -95,7 +99,7 @@ def main() -> None:
             parser.error("buffer directory contains a previous run; use --resume or a new directory")
     with SDCFRTrainer(config) as trainer:
         if args.resume is not None:
-            trainer.load_checkpoint(args.resume)
+            trainer.load_checkpoint(args.resume, branch_train_steps=args.branch_train_steps)
         trainer.run()
 
 

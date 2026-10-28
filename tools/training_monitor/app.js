@@ -188,6 +188,25 @@ function evaluationView(data, requested = "latest") {
     hud: selected ? (hasHud(selected) ? selected : {}) : data.hud_latest || {}};
 }
 
+function renderStage2(data, enabled) {
+  $("stage2").classList.toggle("hidden", !enabled);
+  $("stage2-nav").classList.toggle("hidden", !enabled);
+  if (!enabled) return;
+  const latest = data.latest || {}, rows = data.rows;
+  mini("stage2-cards", [
+    ["完整比赛", fmt(latest["stage2/matches"], 0), "场", "每场固定同一对手 50 手"],
+    ["训练手数", fmt(latest["stage2/hands"], 0), "手", "不作为独立评测胜率"],
+    ["KL(final || ref)", fmt(latest["stage2/base_kl"], 6), "nats", "冻结 Stage 1 参考策略"],
+    ["KL 系数", fmt(latest["stage2/beta_kl"], 3), "", "前 10 手较强锚定"],
+  ]);
+  chart("stage2-kl-chart", rows, [{key:"stage2/base_kl", label:"KL to reference"}, {key:"stage2/kl_penalty", label:"KL penalty"}]);
+  chart("stage2-return-chart", rows, [{key:"stage2/hero_net_bb", label:"Match net BB"}], {zero:true});
+  const opponents = [["equity","Pot odds equity"],["nit","Tight passive nit"],["call","Calling station"],["maniac","Aggressive"],["overbet","Overbet"],["history","Stage 1 history"]];
+  chart("stage2-pfsp-chart", rows, opponents.map(([key,label]) => ({key:`stage2/pfsp/${key}`,label})));
+  const fields = [["vpip","VPIP"],["pfr","PFR"],["three_bet","3-Bet"],["fold_to_preflop_raise","Fold to preflop raise"], ["flop_aggression","Flop aggression"],["turn_aggression","Turn aggression"],["river_aggression","River aggression"],["fold_to_postflop_bet","Fold to postflop bet"],["all_in_frequency","All-in frequency"],["showdown_win","Showdown win"]];
+  mini("stage2-context", fields.map(([key,label]) => [label, fmt(latest[`stage2/context/${key}`] * 100, 1), "%", "本场公开行动 · Bayesian smoothing"]));
+}
+
 function render(data) {
   const view = evaluationView(data, current?.id === data.id ? $("eval-select").value : "latest");
   current = data;
@@ -197,7 +216,9 @@ function render(data) {
     const option = el("option", "", label); option.value = value; return option;
   }));
   $("eval-select").value = view.selection;
-  const isPPO = data.kind === "PPO";
+  const isStage2 = data.kind === "Stage 2 PPO";
+  const isPPO = data.kind === "PPO" || isStage2;
+  renderStage2(data, isStage2);
   const shared = data.config?.separate_player_models === false || finite(latest.shared_train_steps);
   const rows = data.rows.slice(-Number($("window").value));
   $("run-name").textContent = data.name;
@@ -442,6 +463,6 @@ const observer = new IntersectionObserver(entries => {
   const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
   if (visible) document.querySelectorAll(".nav-link").forEach(link => link.classList.toggle("active", link.hash === "#" + visible.target.id));
 }, {rootMargin: "-5% 0px -65% 0px", threshold: 0});
-["overview", "strength", "strategy", "performance", "details"].forEach(id => observer.observe($(id)));
+["overview", "strength", "strategy", "performance", "stage2", "details"].forEach(id => observer.observe($(id)));
 $("export").disabled = true;
 refresh();

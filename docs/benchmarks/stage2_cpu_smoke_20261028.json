@@ -1,0 +1,89 @@
+{
+  "format": "stage2_cpu_smoke_v1",
+  "date": "2026-10-28",
+  "scope": "synthetic_untrained_teachers_cpu_interfaces_only",
+  "real_stage1_checkpoint_used": false,
+  "gpu_training_started": false,
+  "runtime": {
+    "platform": "macOS-26.6-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.12.15",
+    "numpy": "2.5.4",
+    "torch": "2.14.1",
+    "threads": 1
+  },
+  "reference": {
+    "parameters": 1491013,
+    "model": {
+      "d_model": 192,
+      "nhead": 6,
+      "num_layers": 4,
+      "dim_feedforward": 512
+    },
+    "equity_features": true,
+    "teacher_iterations": [
+      100,
+      101,
+      102
+    ],
+    "weight_power": 2,
+    "train_hands": 12,
+    "validation_hands": 4,
+    "distill_steps": 2
+  },
+  "matches": [
+    {
+      "update": 1,
+      "hands": 50,
+      "opponent": "overbet",
+      "timesteps": 171,
+      "loss_finite": true,
+      "base_kl": 1.150282865605652e-05
+    },
+    {
+      "update": 2,
+      "hands": 50,
+      "opponent": "call",
+      "timesteps": 344,
+      "loss_finite": true,
+      "base_kl": 2.862664920461601e-05
+    }
+  ],
+  "standalone_export": {
+    "bytes": 7512323,
+    "numeric_version": "hunl_random_equity_odds_v1:c3b73b1934f031dcea360d8f08c3ea5f290293da51969094cdf8db1ee7b8b5a0",
+    "reference_width": 192,
+    "runtime": "numpy_only_embedded_weights",
+    "safety_intervention": false,
+    "acceptance": {
+      "decisions": 300,
+      "p50_ms": 1.4701249892823398,
+      "p99_ms": 2.3978749744128427,
+      "max_ms": 6.492000073194504,
+      "load_ms": 92.82704198267311,
+      "scope": "warm_process_request_projection_context_equity_tokenize_forward_sample",
+      "under_15ms": true,
+      "load_under_1s": true,
+      "torch_imported": false
+    }
+  },
+  "regressions": {
+    "python_passed": 119,
+    "python_skipped": 2,
+    "javascript_passed": 4,
+    "additional_actual_judge_fixture_matches": 2,
+    "hands_per_match": 50,
+    "observation_parity": "bitwise_equal_both_seats_all_streets_equity_on_off",
+    "numpy_parity_widths": [
+      32,
+      128,
+      192
+    ]
+  },
+  "limitations": [
+    "No final Stage 1 weights or strength claim",
+    "Latency is local, not target Botzone acceptance",
+    "Standard HUNL training rules differ from actual judge; export explicitly adapts them",
+    "Unobserved terminal opponent actions/showdowns remain censored in deployment HUD"
+  ]
+}

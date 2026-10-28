@@ -129,6 +129,7 @@ def normalize(row):
         "entropy": "train/entropy", "approx_kl": "train/approx_kl",
         "clip_fraction": "train/clip_fraction", "explained_variance": "train/explained_variance",
         "legal_entropy": "hud/rollout_legal_entropy",
+        "base_kl": "stage2/base_kl", "kl_penalty": "stage2/kl_penalty", "beta_kl": "stage2/beta_kl",
     }
     for old, new in aliases.items():
         if old in converted and new not in converted:
@@ -350,7 +351,7 @@ class Store:
             strategies = read_object(paths["strategies/index.json"], warnings)
             checkpoint = paths["train.pt"]
             data = {**info, "updated_at": max([info["updated_at"]] + [p.stat().st_mtime for p in history]),
-                    "kind": "PPO" if step_key == "update" else "SD-CFR", "source": self.source_label,
+                    "kind": "Stage 2 PPO" if config.get("stage") == "stage2" or latest.get("stage2") == 1 else "PPO" if step_key == "update" else "SD-CFR", "source": self.source_label,
                     "evaluation_only": bool(paths["report.json"] and not paths["metrics.csv"]
                                             and not paths["metrics.jsonl"] and not paths["benchmark.json"]),
                     "step_key": step_key, "rows": rows, "latest": latest,

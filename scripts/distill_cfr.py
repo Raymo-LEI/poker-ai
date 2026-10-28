@@ -13,7 +13,7 @@ from alphanl.cfr.distillation import (
 )
 
 
-def main():
+def main(argv=None, *, stage2=False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--strategies", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True, help="must be a new directory")
@@ -29,7 +29,18 @@ def main():
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--seed", type=int, default=17)
-    args = parser.parse_args()
+    parser.add_argument("--burn-in", type=int, help="inclusive first teacher iteration; 100 selects [100, end]")
+    parser.add_argument("--end-iter", type=int, help="inclusive last teacher; must exist")
+    parser.add_argument("--weight-power", type=int, choices=(1, 2), default=1)
+    args = parser.parse_args(argv)
+    if args.burn_in is not None:
+        if args.after != 0 or args.burn_in < 1:
+            parser.error("--burn-in requires positive boundary and cannot be combined with --after")
+        args.after = args.burn_in - 1
+    if args.end_iter is not None:
+        if args.through is not None:
+            parser.error("use either --end-iter or --through")
+        args.through = args.end_iter
     for name in ("train_hands", "validation_hands", "max_decisions", "steps", "batch_size"):
         if getattr(args, name) < 1:
             parser.error(f"--{name.replace('_', '-')} must be positive")
@@ -38,7 +49,7 @@ def main():
     torch.set_num_threads(1)
     torch.manual_seed(args.seed)
     config, manifest = prepare_archive(args.strategies, through=args.through,
-                                       after=args.after, stride=args.stride)
+                                       after=args.after, stride=args.stride, sampling_power=args.weight_power)
     args.out_dir.mkdir(parents=True, exist_ok=False)
     (args.out_dir / "teacher.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if args.prepare_only:
@@ -65,7 +76,7 @@ def main():
               "last_minibatch_loss": last_loss,
               "parameters": sum(p.numel() for p in model.parameters()),
               "elapsed_collect_fit_validate_s": time.perf_counter() - started}
-    path = args.out_dir / "policy.pt"
+    path = args.out_dir / ("stage1_distilled_ref.pt" if stage2 else "policy.pt")
     save_student(path, model, manifest, report)
     restored, _ = load_student(path)
     report["cpu_latency"] = cpu_latency(restored, validation)

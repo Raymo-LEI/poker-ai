@@ -274,3 +274,17 @@ def test_separate_probe_log_joins_by_iteration_and_keeps_real_zero(tmp_path):
     assert data["diagnostic_latest"]["train/probe_r2_p0"] == 0
     assert data["diagnostic_latest"]["train/probe_r2_p1"] == -.2
     assert data["latest"]["train/probe_end_zero_ratio_p0"] == .98
+
+
+def test_stage2_metrics_panel_schema(tmp_path):
+    run = tmp_path / "stage2"
+    run.mkdir()
+    (run / "config.json").write_text('{"stage":"stage2","device":"cpu"}')
+    (run / "metrics.jsonl").write_text(json.dumps({"update":1, "stage2":1, "base_kl":.01,
+        "beta_kl":1., "kl_penalty":.01, "stage2/pfsp/equity":.35,
+        "stage2/context/vpip":.45, "stage2/hero_net_bb":12.}) + "\n")
+    data = monitor.Store([tmp_path]).load("0/stage2")
+    assert data["kind"] == "Stage 2 PPO"
+    assert data["latest"]["stage2/base_kl"] == .01
+    assert data["latest"]["stage2/pfsp/equity"] == .35
+    assert not data["eval_latest"]  # rollout profit is not external evaluation

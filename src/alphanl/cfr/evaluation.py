@@ -166,6 +166,8 @@ class Audit:
                 "free_check_fold_ratio": ratio("free_check_folds", "free_check_opportunities"),
                 "sampled_snapshot_counts": dict(self.snapshot_counts),
                 "sb_vpip": ratio("sb_vpip", "sb_open_opportunities"),
+                "sb_open_fold_ratio": (1 - ratio("sb_vpip", "sb_open_opportunities"))
+                if c["sb_open_opportunities"] else None,
                 "sb_open_shove": ratio("sb_open_shoves", "sb_open_opportunities"),
                 "bb_fold_to_open_raise": ratio("bb_fold_vs_open_raise", "bb_vs_open_raise"),
                 "mean_nonforced_entropy_nats": self.entropy_sum / c["nonforced_decisions"]
@@ -194,8 +196,7 @@ class CFRActor:
         self.audit.begin_hand(seat)
         iteration = self.policy.begin_hand(seat)
         self.audit.snapshot_counts[iteration] += 1
-        self.tokenizer = HunlTokenizer(self.policy.config.model.max_seq_len,
-                                       position_conditioning=self.policy.config.position_conditioning)
+        self.tokenizer = HunlTokenizer(self.policy.config.model.max_seq_len, **self.policy.config.tokenizer_kwargs())
         from .actions import CFRActionGuard
         self.action_guard = CFRActionGuard.from_config(self.policy.config)
         from dataclasses import replace
@@ -226,22 +227,8 @@ class CFRActor:
 
 def random_equity(snapshot, rng, samples):
     """Showdown equity versus uniform unknown cards, without reading the table."""
-    from phevaluator import evaluate_cards
-    known = set(snapshot.hole_cards + snapshot.board_cards)
-    remaining = [c for c in standard_deck() if c not in known]
-    convert = lambda c: c[1] + c[0].lower()
-    hole = [convert(c) for c in snapshot.hole_cards]
-    board = [convert(c) for c in snapshot.board_cards]
-    remaining = [convert(c) for c in remaining]
-    need = 5 - len(board)
-    score = 0.
-    for _ in range(samples):
-        draw = rng.choice(len(remaining), size=need + 2, replace=False)
-        runout = board + [remaining[i] for i in draw[:need]]
-        own = evaluate_cards(*(hole + runout))
-        opp = evaluate_cards(*([remaining[i] for i in draw[need:]] + runout))
-        score += float(own < opp) + .5 * float(own == opp)
-    return score / samples
+    from alphanl.transformer.equity import sample_equity
+    return sample_equity(snapshot.hole_cards, snapshot.board_cards, rng, samples)
 
 
 class RuleActor:

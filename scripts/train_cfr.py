@@ -27,6 +27,10 @@ def main() -> None:
     parser.add_argument("--guard-max-pot-ratio", type=float)
     parser.add_argument("--target-scale", type=float)
     parser.add_argument("--loss", choices=("huber", "mse"))
+    parser.add_argument("--iteration-weight-power", type=float)
+    parser.add_argument("--scripted-opponent-prob", type=float)
+    parser.add_argument("--learning-rate-schedule", choices=("constant", "warmup_cosine"))
+    parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--out-dir")
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"))
     parser.add_argument("--amp-dtype", choices=("none", "bfloat16"))
@@ -58,7 +62,9 @@ def main() -> None:
                        ("train_buffer_device", "train_buffer_device"), ("batch_size", "minibatch_size"),
                        ("separate_player_models", "separate_player_models"), ("reinitialize", "reinitialize"),
                        ("preflop_action_guard", "preflop_action_guard"), ("spr_action_guard", "spr_action_guard"),
-                       ("guard_max_pot_ratio", "guard_max_pot_ratio"), ("target_scale", "regret_target_scale"), ("loss", "loss")):
+                       ("guard_max_pot_ratio", "guard_max_pot_ratio"), ("target_scale", "regret_target_scale"), ("loss", "loss"),
+                       ("iteration_weight_power", "iteration_weight_power"), ("scripted_opponent_prob", "scripted_opponent_prob"),
+                       ("learning_rate_schedule", "learning_rate_schedule"), ("warmup_steps", "warmup_steps")):
         value = getattr(args, arg)
         if value is not None:
             setattr(config, field, value)
@@ -85,11 +91,22 @@ def main() -> None:
                            and resolved_device.type == "cuda" and cuda_available) else "cpu",
                        "cuda_bf16_supported": bf16_supported})
         report.update({"backbone_parameters": count_parameters(PokerTransformer(**asdict(config.model))),
-                       "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
+                       "rules_version": RULES_VERSION, "numeric_version": config.numeric_version,
                        "players": 2, "small_blind": 50, "big_blind": 100, "starting_stack": 20000})
         report.update(network_count=2 if config.separate_player_models else 1,
                       effective_buffer_capacity=config.buffer_capacity * (1 if config.separate_player_models else 2),
                       seat_balanced_sampling=not config.separate_player_models)
+        from alphanl.cfr.reservoir import ReservoirBuffer, UnifiedReservoir
+        from alphanl.cfr.model import RegretNetwork
+        import math
+        capacity = report["effective_buffer_capacity"]
+        buffer = (ReservoirBuffer if config.separate_player_models else UnifiedReservoir)(capacity, config.model.max_seq_len)
+        report["host_reservoir_bytes_per_pool"] = capacity * sum(
+            dtype.itemsize * math.prod(shape) for dtype, shape in buffer._schema.values())
+        report["device_pool_bytes_upper_bound_per_pool"] = capacity * (sum(
+            (4 if key == "token_ids" else dtype.itemsize) * math.prod(shape)
+            for key, (dtype, shape) in buffer._schema.items()) + (0 if config.separate_player_models else 8))
+        report["regret_trainable_parameters"] = count_parameters(RegretNetwork(PokerTransformer(**asdict(config.model))))
         print(json.dumps(report, indent=2))
         return
     if args.resume is None:

@@ -125,7 +125,7 @@ def _cpu_worker(worker_id, name, rows, length, tree_batch, max_nodes,
                 return
             try:
                 from alphanl.transformer.hunl import HunlTable, HunlTokenizer
-                tokenizer = HunlTokenizer(length, position_conditioning=job["position_conditioning"])
+                tokenizer = HunlTokenizer(length, **job["tokenizer_kwargs"])
                 action_guard = CFRActionGuard(**job["action_guard"])
 
                 def roots():
@@ -139,7 +139,8 @@ def _cpu_worker(worker_id, name, rows, length, tree_batch, max_nodes,
 
                 channel = _Channel(worker_id, slot, requests, connection, job["version"])
                 sink = _SampleSink(channel, job["player"], sample_batch)
-                traverser = ExternalSamplingTraverser(batch_size=tree_batch, max_nodes=max_nodes)
+                traverser = ExternalSamplingTraverser(batch_size=tree_batch, max_nodes=max_nodes,
+                                                      **job["scripted_kwargs"])
                 traverser.rng.bit_generator.state = job["rng"]
                 stats = traverser.collect(roots(), traverser=job["player"], iteration=job["iteration"],
                                           policies={p: _RemotePolicy(channel, p) for p in (0, 1)}, buffer=sink)
@@ -241,7 +242,9 @@ class ParallelCollector:
             for worker, chunk in enumerate(np.array_split(seeds, workers)):
                 self.connections[worker].send({"seeds": chunk.tolist(), "player": traverser,
                                                "iteration": iteration, "version": version,
-                                               "position_conditioning": self.config.position_conditioning,
+                                               "tokenizer_kwargs": self.config.tokenizer_kwargs(),
+                                               "scripted_kwargs": {key: getattr(self.config, key) for key in (
+                                                   "scripted_opponent_prob", "scripted_opponent_pool", "scripted_opponent_equity_samples")},
                                                "action_guard": asdict(CFRActionGuard.from_config(self.config)),
                                                "rng": self.rng_states[worker]})
             last_activity = time.perf_counter()
@@ -267,7 +270,9 @@ class ParallelCollector:
                         timing["worker_root_s_sum"] += request["timing"]["root_s"]
                         timing["worker_observation_s_sum"] += request["timing"]["observation_s"]
                         timing["worker_peak_rss_bytes_sum"] += request["peak_rss_bytes"]
-                        for key in ("nodes", "terminal_nodes", "regret_samples"):
+                        for key in ("nodes", "terminal_nodes", "regret_samples", "selfplay_roots", "scripted_roots",
+                                    "scripted_equity_roots", "scripted_nit_roots", "scripted_opponent_actions",
+                                    "scripted_off_guard_actions", "scripted_regret_samples"):
                             setattr(stats, key, getattr(stats, key) + request["stats"][key])
                         if self.config.max_traversal_nodes and stats.nodes > self.config.max_traversal_nodes:
                             raise RuntimeError("traversal node budget exceeded; no truncated utility is used")

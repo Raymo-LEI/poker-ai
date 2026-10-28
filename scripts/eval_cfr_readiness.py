@@ -95,6 +95,8 @@ def run(args):
         raise ValueError("full-mixture evaluation requires every snapshot 1..T; archive has gaps")
     manifest = [{"iteration": int(i), "file": str(p.resolve()), "sha256": sha256_file(p)}
                 for i, p in zip(archive.iterations, archive.paths) if i <= target]
+    metadata = SnapshotPolicy(args.strategies, snapshot_iterations=[target])
+    metadata.begin_hand(0)
     source_paths = [Path(__file__), *sorted((ROOT / "src/alphanl").rglob("*.py"))]
     source_hashes = {str(p.relative_to(ROOT)): sha256_file(p) for p in source_paths}
     settings = {k: str(v.resolve()) if isinstance(v, Path) else v for k, v in vars(args).items()
@@ -119,7 +121,7 @@ def run(args):
                   "started_utc": datetime.now(timezone.utc).isoformat(),
                   "hero_iteration": target, "settings": settings, "snapshots": manifest,
                   "source_sha256": source_hashes,
-                  "rules_version": RULES_VERSION, "numeric_version": NUMERIC_VERSION,
+                  "rules_version": RULES_VERSION, "numeric_version": metadata.config.numeric_version,
                   "runtime": runtime,
                   "notes": ["All tiers here use standard HUNL; not the legacy Botzone simple referee.",
                             "Mixtures sample t proportional to iteration once per player per hand.",

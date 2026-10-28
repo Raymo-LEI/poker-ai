@@ -56,6 +56,15 @@ class HunlState:
     def observation(self) -> TensorBatch:
         return self.tokenizer.encode(self._snapshot())
 
+    def scripted_action(self, actor) -> int:
+        # Only the acting seat's visible HandSnapshot crosses this boundary.
+        # Match evaluation's unguarded rule bot; the learned traverser retains
+        # its configured guard. This also covers bot branches outside that guard.
+        return actor.act(self.table.snapshot(self.current_player()))
+
+    def scripted_legal_actions(self):
+        return self.table.legal_action_ids()
+
     def child(self, action: int) -> "HunlState":
         table = self.table.clone()
         table.step(action)
@@ -67,6 +76,13 @@ class HunlState:
 
 @dataclass
 class TraversalStats:
+    selfplay_roots: int = 0
+    scripted_roots: int = 0
+    scripted_equity_roots: int = 0
+    scripted_nit_roots: int = 0
+    scripted_opponent_actions: int = 0
+    scripted_off_guard_actions: int = 0
+    scripted_regret_samples: int = 0
     nodes: int = 0
     terminal_nodes: int = 0
     regret_samples: int = 0
@@ -106,16 +122,30 @@ class ExternalSamplingTraverser:
     """
 
     def __init__(self, *, seed: int = 1, batch_size: int = 32,
-                 max_nodes: int | None = None) -> None:
+                 max_nodes: int | None = None, scripted_opponent_prob: float = 0.0,
+                 scripted_opponent_pool: dict[str, float] | None = None,
+                 scripted_opponent_equity_samples: int = 64) -> None:
         if batch_size < 1 or (max_nodes is not None and max_nodes < 1):
             raise ValueError("batch_size and max_nodes must be positive")
         self.rng = np.random.default_rng(seed)
         self.batch_size = int(batch_size)
         self.max_nodes = max_nodes
+        import math
+        pool = {"equity": .75, "nit": .25} if scripted_opponent_pool is None else dict(scripted_opponent_pool)
+        if (not math.isfinite(scripted_opponent_prob) or not 0 <= scripted_opponent_prob <= 1
+                or not pool or set(pool) - {"equity", "nit"}
+                or any(not math.isfinite(w) or w <= 0 for w in pool.values())
+                or scripted_opponent_equity_samples < 1):
+            raise ValueError("invalid scripted opponent mixture")
+        self.scripted_opponent_prob = scripted_opponent_prob
+        self.scripted_names = tuple(sorted(pool))
+        self.scripted_probabilities = np.array([pool[name] for name in self.scripted_names], dtype=np.float64)
+        self.scripted_probabilities /= self.scripted_probabilities.sum()
+        self.scripted_opponent_equity_samples = scripted_opponent_equity_samples
         self.last_timing = {}
 
     def _walk(self, state: GameState, traverser: int, iteration: int,
-              buffer, stats: TraversalStats):
+              buffer, stats: TraversalStats, scripted_opponent=None):
         stats.nodes += 1
         if self.max_nodes is not None and stats.nodes > self.max_nodes:
             raise RuntimeError("traversal node budget exceeded; no truncated utility is used")
@@ -126,6 +156,16 @@ class ExternalSamplingTraverser:
         if player not in (0, 1):
             raise ValueError("external sampling requires a two-player game")
         legal = tuple(int(a) for a in state.legal_actions())
+        if player != traverser and scripted_opponent is not None:
+            if not hasattr(state, "scripted_action"):
+                raise TypeError("scripted opponents require a visible-state scripted_action adapter")
+            action = int(state.scripted_action(scripted_opponent))
+            scripted_legal = state.scripted_legal_actions() if hasattr(state, "scripted_legal_actions") else legal
+            if action not in scripted_legal:
+                raise ValueError("scripted opponent selected an illegal action")
+            stats.scripted_opponent_actions += 1
+            stats.scripted_off_guard_actions += int(action not in legal)
+            return (yield from self._walk(state.child(action), traverser, iteration, buffer, stats, scripted_opponent))
         began = time.perf_counter()
         batch = state.observation()
         self.last_timing["observation_s"] += time.perf_counter() - began
@@ -135,11 +175,11 @@ class ExternalSamplingTraverser:
         strategy = yield _Query(player, batch)
         if player != traverser:
             action = int(self.rng.choice(len(strategy), p=strategy))
-            return (yield from self._walk(state.child(action), traverser, iteration, buffer, stats))
+            return (yield from self._walk(state.child(action), traverser, iteration, buffer, stats, scripted_opponent))
         action_values = np.zeros(len(strategy), dtype=np.float64)
         for action in legal:
             action_values[action] = yield from self._walk(
-                state.child(action), traverser, iteration, buffer, stats
+                state.child(action), traverser, iteration, buffer, stats, scripted_opponent
             )
         value = float(np.dot(strategy, action_values))
         regret = np.zeros(len(strategy), dtype=np.float32)
@@ -148,6 +188,7 @@ class ExternalSamplingTraverser:
         buffer.add(batch, torch.from_numpy(regret).unsqueeze(0), iteration)
         self.last_timing["buffer_insert_s"] += time.perf_counter() - began
         stats.regret_samples += 1
+        stats.scripted_regret_samples += int(scripted_opponent is not None)
         return value
 
     @torch.no_grad()
@@ -176,7 +217,20 @@ class ExternalSamplingTraverser:
                     except StopIteration:
                         roots_exhausted = True
                         break
-                    worker = self._walk(root, traverser, iteration, buffer, stats)
+                    opponent = None
+                    # One Bernoulli/identity draw per root, never per decision.
+                    # Zero leaves the historical RNG stream exactly unchanged.
+                    if self.scripted_opponent_prob and self.rng.random() < self.scripted_opponent_prob:
+                        from .evaluation import RuleActor
+                        name = str(self.rng.choice(self.scripted_names, p=self.scripted_probabilities))
+                        opponent = RuleActor(name, seed=int(self.rng.integers(0, 2**63 - 1)),
+                                             equity_samples=self.scripted_opponent_equity_samples)
+                        opponent.begin_hand(1 - traverser)
+                        stats.scripted_roots += 1
+                        setattr(stats, f"scripted_{name}_roots", getattr(stats, f"scripted_{name}_roots") + 1)
+                    else:
+                        stats.selfplay_roots += 1
+                    worker = self._walk(root, traverser, iteration, buffer, stats, opponent)
                     try:
                         active.append((worker, next(worker)))
                     except StopIteration:

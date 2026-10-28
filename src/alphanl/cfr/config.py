@@ -26,6 +26,14 @@ class CFRConfig:
     train_steps: int = 1200
     minibatch_size: int = 1024
     learning_rate: float = 3e-4
+    learning_rate_schedule: str = "constant"
+    warmup_steps: int = 0
+    min_learning_rate_ratio: float = 0.1
+    iteration_weight_power: float = 1.0
+    normalize_iteration_weights: bool = False
+    scripted_opponent_prob: float = 0.0
+    scripted_opponent_pool: dict[str, float] = field(default_factory=lambda: {"equity": .75, "nit": .25})
+    scripted_opponent_equity_samples: int = 64
     max_grad_norm: float = 1.0
     # CUDA acceleration; CPU transparently retains FP32 and ordinary Adam.
     amp_dtype: str = "bfloat16"
@@ -37,6 +45,9 @@ class CFRConfig:
     reinitialize: bool = False
     separate_player_models: bool = False
     position_conditioning: bool = True
+    equity_features: bool = False
+    equity_samples: int = 32
+    equity_seed: int = 17
     # Targets arrive in BB, NOT chips. A 200BB outlier becomes 2.0.
     regret_target_scale: float = 100.0
     loss: str = "huber"
@@ -69,7 +80,7 @@ class CFRConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
-        for name in ("inference_batch_size", "worker_sample_batch"):
+        for name in ("inference_batch_size", "worker_sample_batch", "equity_samples", "scripted_opponent_equity_samples"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
@@ -82,11 +93,29 @@ class CFRConfig:
             raise ValueError("inference_wait_ms must be between 0 and 1000")
         if not 0 < self.worker_timeout_s < float("inf"):
             raise ValueError("worker_timeout_s must be positive and finite")
+        if isinstance(self.equity_seed, bool) or not isinstance(self.equity_seed, int) or self.equity_seed < 0:
+            raise ValueError("equity_seed must be a nonnegative integer")
         if self.learning_rate <= 0 or self.max_grad_norm <= 0:
             raise ValueError("learning rate and gradient norm must be positive")
         if self.fallback not in ("uniform", "argmax", "softmax"):
             raise ValueError("fallback must be uniform, argmax or softmax")
         import math
+        if self.learning_rate_schedule not in ("constant", "warmup_cosine"):
+            raise ValueError("learning_rate_schedule must be constant or warmup_cosine")
+        if isinstance(self.warmup_steps, bool) or not isinstance(self.warmup_steps, int) or not 0 <= self.warmup_steps < self.train_steps:
+            raise ValueError("warmup_steps must be nonnegative and smaller than train_steps")
+        if not math.isfinite(self.min_learning_rate_ratio) or not 0 < self.min_learning_rate_ratio <= 1:
+            raise ValueError("min_learning_rate_ratio must be in (0, 1]")
+        if not math.isfinite(self.iteration_weight_power) or self.iteration_weight_power <= 0:
+            raise ValueError("iteration_weight_power must be positive and finite")
+        if not isinstance(self.normalize_iteration_weights, bool):
+            raise ValueError("normalize_iteration_weights must be boolean")
+        if not math.isfinite(self.scripted_opponent_prob) or not 0 <= self.scripted_opponent_prob <= 1:
+            raise ValueError("scripted_opponent_prob must be in [0, 1]")
+        if (not isinstance(self.scripted_opponent_pool, dict) or not self.scripted_opponent_pool
+                or set(self.scripted_opponent_pool) - {"equity", "nit"}
+                or any(not math.isfinite(w) or w <= 0 for w in self.scripted_opponent_pool.values())):
+            raise ValueError("scripted_opponent_pool requires positive finite equity/nit weights")
         for name in ("regret_target_scale", "huber_beta", "guard_short_stack_bb", "guard_unlock_invested_bb", "guard_max_pot_ratio"):
             if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive and finite")
@@ -96,7 +125,7 @@ class CFRConfig:
             raise ValueError("shared training requires an even minibatch_size for exact 1:1 seat sampling")
         if not self.separate_player_models and not self.position_conditioning:
             raise ValueError("shared training requires explicit hero position conditioning")
-        for name in ("separate_player_models", "position_conditioning", "preflop_action_guard", "spr_action_guard", "reinitialize"):
+        for name in ("separate_player_models", "position_conditioning", "preflop_action_guard", "spr_action_guard", "reinitialize", "equity_features"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be boolean")
         if isinstance(self.guard_unlock_raises, bool) or not isinstance(self.guard_unlock_raises, int) or self.guard_unlock_raises < 1:
@@ -124,6 +153,16 @@ class CFRConfig:
         for name in ("checkpoint_archive_min_free_bytes", "checkpoint_archive_extra_count"):
             if isinstance(getattr(self, name), bool) or not isinstance(getattr(self, name), int) or getattr(self, name) < 0:
                 raise ValueError(f"{name} must be a nonnegative integer")
+
+    @property
+    def numeric_version(self):
+        from alphanl.transformer.hunl import NUMERIC_VERSION
+        from alphanl.transformer.equity import equity_numeric_version
+        return equity_numeric_version() if self.equity_features else NUMERIC_VERSION
+
+    def tokenizer_kwargs(self):
+        return {key: getattr(self, key) for key in
+                ("position_conditioning", "equity_features", "equity_samples", "equity_seed")}
 
     def to_dict(self) -> dict:
         return asdict(self)

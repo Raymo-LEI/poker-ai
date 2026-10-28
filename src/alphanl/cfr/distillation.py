@@ -49,13 +49,15 @@ def _positive_integer(value, name):
         raise ValueError(f"{name} must be a positive integer")
 
 
-def prepare_archive(directory, *, through=None, after=0, stride=1):
+def prepare_archive(directory, *, through=None, after=0, stride=1, sampling_power=1.0):
     """Validate and fingerprint every selected profile without touching training.
 
     Default is all indexed history. An explicit boundary must exist; missing
     future snapshots cannot silently produce a shorter teacher. Sparse and
     tail selections are deliberately labeled approximations.
     """
+    if sampling_power not in (1., 2.):
+        raise ValueError("distillation sampling_power must be 1 or 2")
     _positive_integer(stride, "stride")
     if isinstance(after, bool) or not isinstance(after, int) or after < 0:
         raise ValueError("after must be a nonnegative integer")
@@ -90,16 +92,17 @@ def prepare_archive(directory, *, through=None, after=0, stride=1):
         validator.load_state_dict(blob["models"]["shared"], strict=True)
         if not all(torch.isfinite(tensor).all() for tensor in validator.state_dict().values()):
             raise ValueError("snapshot contains nonfinite weights")
-        records.append({"iteration": t, "weight": t, "file": path.name,
+        records.append({"iteration": t, "weight": t, "sampling_weight": t ** sampling_power, "file": path.name,
                         "sha256": hashlib.sha256(data).hexdigest()})
     full_prefix = list(range(1, max(available) + 1))
     return first_config, {
         "format": "sd_cfr_distillation_manifest_v1",
         "rules_version": RULES_VERSION, "numeric_version": config.numeric_version,
         "selection": {"through": through, "after_exclusive": after, "stride": stride},
+        "sampling_power": sampling_power,
         "iterations": selected, "snapshots": records,
         "approximation": selected != full_prefix,
-        "sampling": "iteration_proportional_once_per_hand_hero_on_policy",
+        "sampling": "iteration_proportional_once_per_hand_hero_on_policy" if sampling_power == 1 else "iteration_squared_once_per_hand_hero_on_policy",
         "semantics": reference,
     }
 
@@ -176,7 +179,8 @@ def collect_trajectories(directory, config, manifest, *, hands, seed, hand_offse
     verify_archive(directory, manifest)
     policy_seed = int(np.random.SeedSequence([seed, hand_offset, 1]).generate_state(1)[0])
     policy = SnapshotPolicy(directory, seed=policy_seed, device=teacher_device,
-                            snapshot_iterations=manifest["iterations"], cache_size=8)
+                            snapshot_iterations=manifest["iterations"], cache_size=8,
+                            sampling_power=manifest.get("sampling_power", 1.))
     tokenizer = HunlTokenizer(config.model.max_seq_len, **config.tokenizer_kwargs())
     guard = CFRActionGuard.from_config(config)
     rows, counts = [], Counter()

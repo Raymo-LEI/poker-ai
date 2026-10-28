@@ -80,3 +80,7 @@ Deep-stack CFR action abstraction and evaluation: [all-street SPR guard](docs/cf
 Offline average-strategy compression is available through [SD-CFR distillation preparation](docs/cfr_distillation.md): frozen archive validation, own-reach-preserving trajectory labels, a single policy student, held-out diagnostics, and a portable checkpoint. Playing-strength and Stage 2/Botzone acceptance remain separate gates.
 
 The opt-in [Stage 1 full-capacity profile](docs/cfr_fullupgrade.md) combines equity/odds inputs, a 1.49M model, one 8M reservoir, polynomial regret regression and a 15% fixed-opponent root mixture. CPU wiring and frozen T200 loss diagnostics are available; this profile has not yet been deployed or validated on CUDA.
+
+## Stage 2：50 手跨手上下文残差 PPO
+
+共享 Stage 1 输入契约、平均策略蒸馏、冻结参考残差 PPO、PFSP、NumPy 单文件导出与 CPU smoke 已提供；不会自动启动 GPU 训练。入口、测试及真实裁判适配边界见 [Stage 2 交接文档](docs/stage2_match_residual.md)。

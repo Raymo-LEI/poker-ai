@@ -214,3 +214,23 @@ def test_cli_prepare_and_tiny_end_to_end(archive, tmp_path):
     again = subprocess.run(base + ["--out-dir", str(run), "--prepare-only"],
                            env=env, capture_output=True, text=True)
     assert again.returncode != 0  # Never overwrite an existing experiment.
+
+
+def test_quadratic_burn_in_teacher_uses_single_weighted_hand_draw(archive):
+    directory, config = archive
+    _, manifest = prepare_archive(directory, after=1, through=3, sampling_power=2.)
+    assert manifest["iterations"] == [2, 3]
+    assert manifest["sampling_power"] == 2.
+    assert [r["sampling_weight"] for r in manifest["snapshots"]] == [4.,9.]
+    from alphanl.cfr.strategy import SnapshotPolicy
+    policy = SnapshotPolicy(directory, snapshot_iterations=manifest["iterations"], sampling_power=2., cache_size=2)
+    draws = [policy.begin_hand(i % 2) for i in range(500)]
+    assert set(draws) == {2,3}
+    assert draws.count(3) / len(draws) == pytest.approx(9 / 13, abs=.06)
+    dataset, report = collect_trajectories(directory, config, manifest, hands=10, seed=91)
+    assert set(dataset["iteration"].tolist()) <= {2,3}
+    for hand in dataset["hand_id"].unique():
+        assert dataset["iteration"][dataset["hand_id"] == hand].unique().numel() == 1
+    assert sum(report["snapshot_hand_counts"].values()) == 10
+    with pytest.raises(ValueError):
+        prepare_archive(directory, sampling_power=3.)

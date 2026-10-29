@@ -50,3 +50,25 @@ def test_default_development_and_symlink_marker_are_not_formal(tmp_path):
     (real/'experiment.json').unlink()
     (real/'experiment.json').symlink_to(external/'experiment.json')
     assert not read_experiment(real)['is_formal']
+
+
+def test_cfr_cli_writes_formal_identity_into_real_csv(tmp_path):
+    import csv
+    import os
+    import subprocess
+    config=tmp_path/'tiny.json'
+    config.write_text(json.dumps({'iterations':1,'traversals_per_player':1,'train_steps':1,
+        'minibatch_size':4,'buffer_capacity':32,'device':'cpu',
+        'model':{'d_model':32,'nhead':2,'num_layers':1,'dim_feedforward':64,'max_seq_len':24,'dropout':0.}}))
+    run=tmp_path/'formal'
+    result=subprocess.run([sys.executable,str(SCRIPTS/'train_cfr.py'),'--config',str(config),
+        '--out-dir',str(run),'--experiment-kind','formal','--experiment-name','registered CPU fixture'],
+        env={**os.environ,'PYTHONPATH':str(SCRIPTS.parent/'src'),'OMP_NUM_THREADS':'1'},
+        capture_output=True,text=True,timeout=30)
+    assert result.returncode==0,result.stderr
+    identity=read_experiment(run)
+    assert identity['is_formal'] and identity['stage']=='stage1'
+    with (run/'metrics.csv').open() as handle:
+        rows=list(csv.DictReader(handle))
+    assert rows and all(row['experiment_id']==identity['experiment_id'] for row in rows)
+    assert all(row['experiment_kind']=='formal' for row in rows)

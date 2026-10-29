@@ -29,13 +29,13 @@
 
 Wiki 正文里写「每步要在 1 秒内完成」，那是基础时限；Bot 词条写明 Python 乘 6。入口单步约 0.15 秒，按 1 秒算也满足。
 
-## 必须由你在网页上确认的三件事
+## Wiki 没写、已向用户确认的平台事实
 
-Wiki 没写，入口按下面的假设实现。不对就把实际情况发回来，不要猜着改：
+2026-10-29 用户在 Botzone 网页上确认：
 
-1. **存储空间路径**：入口依次找 `data/stage2_model.npz`（相对当前目录）、zip 所在目录下的 `data/stage2_model.npz`、`/data/stage2_model.npz`。请把文件名传成 `stage2_model.npz`。
-2. **容量**：权重文件约 6MB（1,508,683 个 fp32 参数，6,055,781 字节）。Wiki 没公布配额。
-3. **NumPy 版本**：equity 特征用到 `np.random.default_rng`，需要 NumPy ≥ 1.17。Python 3.6 能装的最高版本是 1.19.x，大概率满足，但 Wiki 没写。第一局打完后看 log 里的 `debug`：正常是 `py3.6.x np1.xx.x ok stage2_model.npz …ms`；若出现 `fallback`，后面就是失败原因。
+1. **存储空间路径**：`data/stage2_model.npz`（相对当前目录）是对的。入口先找这个路径，另外两个后备路径（zip 所在目录下的 `data/`、`/data/`）一般用不到。请把文件名传成 `stage2_model.npz`。
+2. **容量**：约 6MB 的权重文件（1,508,683 个 fp32 参数，6,055,781 字节）在配额以内。
+3. **版本**：用户回复「1.8」。NumPy 1.8 不支持 Python 3.6（3.6 最早要 NumPy 1.12 左右），所以这个数字只能是 NumPy 1.18，或 Wiki 写的 PyTorch 1.8.0。入口不用 PyTorch。equity 特征要用 `np.random.default_rng`，需要 NumPy ≥ 1.17；1.18 和 1.19 都满足，两个版本都在 Python 3.6.5 上实测通过（见「验收」）。第一局打完后看 log 里的 `debug`：正常是 `py3.6.x np1.xx.x ok stage2_model.npz …ms`，里面的 `np` 就是平台真实的 NumPy 版本；若出现 `fallback`，后面跟的就是失败原因。
 
 ## 生成与上传
 
@@ -102,6 +102,9 @@ python3 tools/accept_botzone_stage2.py --weights stage2_model.npz \
 |-------------|------|----------|------|----------|----------|----------------|
 | 3.6.5 + NumPy 1.19.5，对随机合法动作 | 4 | 373 | 0 | 0.156 秒 | 0.134 秒 | 39112 KB |
 | 3.6.5 + NumPy 1.19.5，对规则机器人 | 2 | 173 | 0 | 0.358 秒 | 0.138 秒 | 39340 KB |
+| 3.6.5 + NumPy 1.18.5，对随机合法动作 | 2 | 177 | 0 | 0.143 秒 | 0.136 秒 | — |
+
+NumPy 1.18.5 那一行是在另一个 3.6.5 虚拟环境里跑的；`POKER_PY36` 指向它时，`tests/test_botzone_stage2.py` 的 9 个测试也全部通过（包括翻牌后 equity 特征与新版 NumPy 的比对）。
 
 `debug` 样例：`py3.6.5 np1.19.5 ok stage2_model.npz 103ms`；`data` 最大 2905 字节。验收父进程不导入 torch，所以子进程 RSS 就是 bot 自己的量级。
 

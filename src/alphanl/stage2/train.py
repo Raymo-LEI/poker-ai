@@ -22,6 +22,8 @@ def warm_start_policy(model, checkpoint):
         raise ValueError("warm-start poker contract differs")
     old = dict(source.settings); new = dict(model.settings)
     old.pop("context_fields", None); new.pop("context_fields", None)
+    # The all-in mask is a run flag, not a weight. The destination config wins.
+    old.pop("botzone_native_allin_mask", None); new.pop("botzone_native_allin_mask", None)
     if old != new or model.context_fields[:len(source.context_fields)] != source.context_fields:
         raise ValueError("warm-start settings/context prefix differ")
     for key,value in source.reference.state_dict().items():

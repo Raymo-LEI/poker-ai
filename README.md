@@ -108,3 +108,10 @@ The opt-in [Stage 2 v3 Pro Hunter](docs/stage2_pro_hunter.md) adds jittered
 TAG/Trapper training families, an opportunity-based trap HUD, C200 weight-only
 warm starts and residual-output blend evaluation. Its report includes the
 expanded same-deal matrix and the completed 500-hand C200 Slumbot test.
+
+The opt-in [Botzone-native Stage 2 run](docs/stage2_botzone_native.md)
+(`configs/stage2/botzone_native.json`) adds a config-gated pre-softmax
+voluntary all-in mask and three ladder-replica opponents on top of the
+existing pool. AutoDL launch, the C200 warm start, and the every-50
+checkpoint/eval commands are in that note. Pro Hunter weights and the v10
+guard are unchanged when the new flag is off.

@@ -24,7 +24,8 @@ def publish(out, report):
     temporary = out / "report.json.tmp"
     temporary.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
     temporary.replace(out / "report.json")
-    columns = list(GAUNTLET_OPPONENTS) + list(report["matrix"])
+    scripts = report.get("script_opponents", list(GAUNTLET_OPPONENTS))
+    columns = list(scripts) + list(report["matrix"])
     with (out / "matrix.csv").open("w", newline="") as stream:
         writer = csv.writer(stream, lineterminator="\n")
         writer.writerow(["candidate", "opponent", "mbb_per_hand", "ci95_low", "ci95_high", "hands", "match_pairs"])
@@ -66,6 +67,9 @@ def main(argv=None):
     p.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     p.add_argument("--equity-samples", type=int, default=64)
     p.add_argument("--teacher-cache-size", type=int, default=16)
+    p.add_argument("--extra-opponents", default="",
+                   help="Comma-separated ladder replicas scored on the same decks. "
+                        "Champion selection still uses the original gauntlet scripts.")
     p.add_argument("--eval-slumbot", action="store_true", help="After local tournament, separately evaluate all candidates online")
     p.add_argument("--slumbot-hands", type=int, default=1000)
     args = p.parse_args(argv)
@@ -73,9 +77,14 @@ def main(argv=None):
         p.error("pairs must be >=100 and divisible by 50; equity samples must be positive")
     if args.eval_slumbot and (args.slumbot_hands < 100 or args.slumbot_hands % 50):
         p.error("Slumbot hands must be >=100 and divisible by 50")
+    from alphanl.stage2.ladder_bots import LADDER_OPPONENTS
+    extra = [name for name in args.extra_opponents.split(",") if name]
+    if any(name not in LADDER_OPPONENTS for name in extra) or len(set(extra)) != len(extra):
+        p.error("extra opponents must be unique ladder replicas: " + ", ".join(LADDER_OPPONENTS))
+    script_opponents = list(GAUNTLET_OPPONENTS) + extra
     specs = json.loads(args.manifest.read_text())["candidates"]
     names = [s["name"] for s in specs]
-    if not names or len(set(names)) != len(names) or any(n in GAUNTLET_OPPONENTS for n in names):
+    if not names or len(set(names)) != len(names) or any(n in script_opponents for n in names):
         p.error("candidate names must be nonempty, unique, and distinct from bot names")
     torch.set_num_threads(1)
     torch.manual_seed(args.seed)
@@ -85,9 +94,11 @@ def main(argv=None):
         ci_unit="duplicate_50_hand_match_pair", matrix={}, candidates={}, missing=[],
         source_sha256={str(f.relative_to(ROOT)): sha256(f) for f in
                        [Path(__file__), *sorted((ROOT / "src/alphanl").rglob("*.py"))]},
+        script_opponents=script_opponents,
         notes=["Same full deck schedule across every candidate, opponent and round-robin cell.",
                "Opponent and policy RNG reset per leg; both sides receive their own public 50-hand HUD.",
-               "Six original bots use unchanged parameters and full legal actions; no training-pool changes."])
+               "Six original bots use unchanged parameters and full legal actions; no training-pool changes.",
+               "Extra ladder replicas, when requested, share that deck schedule and do not enter champion selection."])
     publish(args.out_dir, report)
     try:
         candidates = []
@@ -127,7 +138,7 @@ def main(argv=None):
             return result
         index = 0
         for a in candidates:
-            for name in GAUNTLET_OPPONENTS:
+            for name in script_opponents:
                 run(a, name, lambda seed, name=name: rule_actor(name, seed, args.equity_samples), index)
                 index += 1
         for i, a in enumerate(candidates):
@@ -139,9 +150,13 @@ def main(argv=None):
                     "raw_log_sha256": result["raw_log_sha256"], "derived_by_zero_sum": True}
                 index += 1
         report["common_deal_gains"] = {a.name: {b.name: {o: paired_candidate_gain(
-            report["matrix"][a.name][o], report["matrix"][b.name][o]) for o in GAUNTLET_OPPONENTS}
+            report["matrix"][a.name][o], report["matrix"][b.name][o]) for o in script_opponents}
             for b in candidates if a.name != b.name} for a in candidates}
-        report["selection"] = select_candidate(report["matrix"], [c.name for c in candidates],
+        # Ladder cells stay in the report. Selection keeps the original script set.
+        selection_matrix = {name: {opp: cell for opp, cell in row.items()
+                                   if opp in GAUNTLET_OPPONENTS or opp in report["matrix"]}
+                            for name, row in report["matrix"].items()}
+        report["selection"] = select_candidate(selection_matrix, [c.name for c in candidates],
             full_budget=args.pairs >= 1000, all_required_present=not any(s.get("required", True) for s in report["missing"]))
         report["complete"] = True
         publish(args.out_dir, report)

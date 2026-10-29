@@ -15,6 +15,7 @@ import torch
 
 from .model import regret_matching
 from .strategy import SnapshotPolicy
+from alphanl.transformer.actor_actions import apply_actor_decision
 from alphanl.transformer.hunl import BIG_BLIND, HunlTable, HunlTokenizer
 from alphanl.transformer.tables import standard_deck
 
@@ -234,18 +235,24 @@ def random_equity(snapshot, rng, samples):
 class RuleActor:
     def __init__(self, name, *, seed, equity_samples=64):
         from .pro_bots import PRO_OPPONENTS, ProScriptActor
-        if name not in OPPONENTS + PRO_OPPONENTS or equity_samples < 1:
+        from alphanl.stage2.ladder_bots import LADDER_OPPONENTS, LadderReplicaActor
+        if name not in OPPONENTS + PRO_OPPONENTS + LADDER_OPPONENTS or equity_samples < 1:
             raise ValueError("invalid rule opponent or equity sample count")
         self.name, self.rng, self.equity_samples = name, np.random.default_rng(seed), equity_samples
         self.pro = ProScriptActor(name, seed=seed, equity_samples=equity_samples) if name in PRO_OPPONENTS else None
+        self.ladder = LadderReplicaActor(name, seed=seed, equity_samples=equity_samples) if name in LADDER_OPPONENTS else None
 
     def begin_hand(self, seat):
         if self.pro is not None:
             self.pro.begin_hand(seat)
+        if self.ladder is not None:
+            self.ladder.begin_hand(seat)
 
     def act(self, snapshot):
         if self.pro is not None:
             return self.pro.act(snapshot)
+        if self.ladder is not None:
+            return self.ladder.act(snapshot)
         legal = snapshot.legal_action_ids
         prefer = lambda choices: next(a for a in choices if a in legal)
         if self.name == "random":
@@ -281,9 +288,7 @@ def play_hand(hero, opponent, *, deck_seed, hero_seat):
         seat = table.current_player()
         actor = hero if seat == hero_seat else opponent
         action = actor.act(table.snapshot(seat))
-        if action not in table.legal_action_ids():
-            raise ValueError(f"illegal action {action}")
-        table.step(action)
+        apply_actor_decision(table, action)
         steps += 1
         if steps > 1000:
             raise RuntimeError("hand failed to terminate")

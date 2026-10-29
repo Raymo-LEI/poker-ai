@@ -12,6 +12,7 @@ from .buckets import nearest_pot_fraction_bucket
 from .hunl import HunlTokenizer
 from .context import MatchCtx, CONTEXT_FIELDS
 from .actions import CFRActionGuard
+from .allin_mask import mask_snapshot
 from .deployment_guard import guard_config, apply_guard
 from .equity import estimated_equity
 from . import reconstruct as judge
@@ -41,7 +42,10 @@ class Agent:
         self.logits({**self.tokenizer.blank(), "match_ctx":np.zeros((1,len(self.context_fields)), dtype=np.float32)})
 
     def observation(self, snapshot, context):
-        batch = self.tokenizer.encode(self.guard.apply(snapshot))
+        # Same pre-softmax voluntary all-in mask as Stage 2 training/eval.
+        # Absent settings leave the legal mask unchanged.
+        snap = mask_snapshot(self.guard.apply(snapshot), self.settings.get("botzone_native_allin_mask"))
+        batch = self.tokenizer.encode(snap)
         batch["match_ctx"] = np.asarray([list(context.as_dict(self.context_fields).values())], dtype=np.float32)
         return batch
 

@@ -457,7 +457,7 @@ async function refresh(force = false) {
 $("refresh").addEventListener("click", () => refresh(true));
 $("run-select").addEventListener("change", () => refresh(true));
 $("run-scope").addEventListener("change", () => {
-  $("run-select").value = "";
+  $("run-select").replaceChildren(el("option", "", "读取实验中…"));
   window.OverwatchWorkbench?.scopeChanged();
   refresh(true);
 });

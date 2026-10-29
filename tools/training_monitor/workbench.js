@@ -240,7 +240,7 @@
       selected = new Set([...selected].filter(id => catalog.some(item => item.id === id)));
       if (!selected.size && current) selected.add(current.id);
       renderCatalog(); note("wb-catalog-error", "", false);
-      $("wb-catalog-note").textContent = `${catalog.length} 个实验 · 索引读取于 ${new Date(catalogAt).toLocaleTimeString("zh-CN", {hour12:false})}`;
+
     } catch (e) { note("wb-catalog-error", `${e.message}。保留已读取索引。`); }
     finally { catalogBusy = false; }
   }
@@ -248,6 +248,7 @@
   function renderCatalog() {
     const query = $("wb-search").value.trim().toLowerCase(), category = $("wb-category").value;
     const scoped = api.visibleRuns(catalog, api.getScope());
+    $("wb-catalog-note").textContent = `${api.getScope() === "formal" ? "正式实验" : "全部记录"} ${scoped.length} 项 / 全部 ${catalog.length} 项 · 索引读取于 ${catalogAt ? new Date(catalogAt).toLocaleTimeString("zh-CN", {hour12:false}) : "等待索引"}`;
     selected = new Set([...selected].filter(id => scoped.some(item => item.id === id)));
     const rows = scoped.filter(item => (category === "all" || item.category === category) && `${item.name} ${JSON.stringify(item.effective)}`.toLowerCase().includes(query));
     $("wb-catalog").replaceChildren(...rows.map(item => {

@@ -13,7 +13,7 @@ import torch
 from alphanl.stage2.env import BotzoneMatchEnv
 from alphanl.stage2.policy import ResidualExploiterPolicy
 from alphanl.stage2.pool import MatchOpponentPool
-from alphanl.stage2.train import collect_matches, train_matches, save_checkpoint, load_checkpoint
+from alphanl.stage2.train import collect_matches, train_matches, save_checkpoint, load_checkpoint, warm_start_policy
 from alphanl.stage2.evaluation import MatchEvaluator, evaluation_metrics
 from alphanl.stage2.traces import HandTraceWriter, trace_settings
 
@@ -36,9 +36,12 @@ def main():
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--updates", type=int)
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--warm-start", type=Path, help="Weights only; new optimizer, pool, RNG and update count")
     parser.add_argument("--experiment-kind", choices=KINDS, help="explicit formal/development/smoke identity; default development")
     parser.add_argument("--experiment-name", help="human-readable run label")
     args = parser.parse_args()
+    if args.resume and args.warm_start:
+        parser.error("resume and warm-start are mutually exclusive")
     settings = json.loads(args.config.read_text())
     device = args.device or settings["device"]
     updates = args.updates if args.updates is not None else settings["updates"]
@@ -55,8 +58,10 @@ def main():
     torch.manual_seed(settings["seed"])
     random.seed(settings["seed"])
     pool = MatchOpponentPool(settings["strategies"], seed=settings["seed"], **settings["pool"])
+    initialization = None
     if args.resume:
         model, blob = load_checkpoint(args.resume, device=device)
+        initialization = blob["metadata"].get("initialization")
         start = blob["update"]
         if settings["policy"] != model.settings:
             raise ValueError("resume policy settings differ from checkpoint")
@@ -68,11 +73,14 @@ def main():
             raise ValueError("retention-failed checkpoint is diagnostic only; resume a retained checkpoint")
     else:
         model = ResidualExploiterPolicy.from_reference(settings["reference"], **settings["policy"]).to(device)
+        if args.warm_start:
+            initialization = warm_start_policy(model, args.warm_start)
         start, timesteps, matches = 0, 0, 0
     pool.initialize(model)
     optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=settings["learning_rate"])
     evaluator = MatchEvaluator(model, match_pairs=evaluation.get("match_pairs", 50),
-                               seed=evaluation.get("seed", 92017), equity_samples=evaluation.get("equity_samples", 64))
+                               seed=evaluation.get("seed", 92017), equity_samples=evaluation.get("equity_samples", 64),
+                               opponents=evaluation.get("opponents"))
     if args.resume:
         optimizer.load_state_dict(blob["optimizer"])
         pool.load_state_dict(blob["pool"])
@@ -88,10 +96,15 @@ def main():
     identity = experiment_tags(experiment)
     settings["experiment"] = experiment
     (args.out_dir / "config.json").write_text(json.dumps(settings, indent=2) + "\n")
+    if initialization is not None:
+        (args.out_dir / "initialization.json").write_text(json.dumps(initialization, indent=2) + "\n")
+        save_checkpoint(args.out_dir / "initial.pt", model, optimizer=optimizer, pool=pool, update=0,
+                        metadata={**identity, "initialization": initialization, "matches": 0, "timesteps": 0})
     for update in range(start + 1, start + updates + 1):
         began = time.perf_counter()
         envs = [BotzoneMatchEnv(model.config, pool=pool, seed=settings["seed"] + matches + i,
-                               first_hero_seat=i % 2, defer_opponents=True) for i in range(count)]
+                               first_hero_seat=i % 2, defer_opponents=True,
+                               context_fields=model.context_fields) for i in range(count)]
         capture = traces['enabled'] and traces['train_matches'] > 0 and (update == start + 1 or update % traces['train_every_updates'] == 0)
         writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_train_u{update:07d}',
             update=update, scope='training', max_bytes=traces['max_bytes'], experiment=identity) if capture else None
@@ -129,7 +142,7 @@ def main():
                "stage2/defense_fraction": sum(env.opponent_name in ("reference", "history", "self") for env in envs) / count,
                "stage2/history_resident": len(pool.history_models), "stage2/history_disk_loads": pool.disk_loads,
                "stage2/self_snapshots": len(pool.self_weights),
-               **{f"stage2/context/{k}": v for k, v in envs[-1].ctx.as_dict().items()},
+               **{f"stage2/context/{k}": v for k, v in envs[-1].ctx.as_dict(model.context_fields).items()},
                **{f"stage2/pfsp/{k}": v for k, v in pool.probabilities().items()},
                **{f"stage2/window/{name}/{key}": value for name, stats in pool.rolling_metrics().items()
                   for key, value in stats.items()},
@@ -156,12 +169,16 @@ def main():
         with (args.out_dir / "metrics.jsonl").open("a") as stream:
             stream.write(json.dumps(row, allow_nan=False) + "\n")
         metadata = {**identity, "reference": settings["reference"], "stage": "stage2", "timesteps": timesteps,
+                    "initialization": initialization,
                     "matches": matches, "evaluation_settings": evaluation,
                     "evaluation_baseline": evaluator.baseline_totals, "retention_failed": failed,
                     "last_matches": [r.report for r in rollouts]}
         save_checkpoint(args.out_dir / "train.pt", model, optimizer=optimizer, pool=pool, update=update, metadata=metadata)
         if report is not None and not failed:
             save_checkpoint(args.out_dir / "retained.pt", model, optimizer=optimizer, pool=pool, update=update, metadata=metadata)
+        checkpoint_every = settings.get("checkpoint_every", 0)
+        if checkpoint_every and update % checkpoint_every == 0:
+            save_checkpoint(args.out_dir / f"update_{update:07d}.pt", model, update=update, metadata=metadata)
         print(json.dumps(row, allow_nan=False), flush=True)
         if failed and evaluation.get("stop_on_retention_failure", True):
             raise RuntimeError("GTO retention below -20 mbb/hand; diagnostic checkpoint saved, PPO stopped")

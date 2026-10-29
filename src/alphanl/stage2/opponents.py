@@ -92,7 +92,7 @@ class NeuralMatchActor:
     def encode(self, snapshot):
         batch = self.tokenizer.encode(self.guard.apply(snapshot))
         if self.kind == "residual":
-            batch["match_ctx"] = self.ctx.tensor()
+            batch["match_ctx"] = self.ctx.tensor(self.model.context_fields)
         return batch
 
     def act(self, snapshot):

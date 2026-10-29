@@ -10,7 +10,7 @@ import numpy as np
 from .schema import HandSnapshot, ActionEvent
 from .buckets import nearest_pot_fraction_bucket
 from .hunl import HunlTokenizer
-from .context import MatchCtx
+from .context import MatchCtx, CONTEXT_FIELDS
 from .actions import CFRActionGuard
 from . import reconstruct as judge
 from .forward import features_forward, _linear, _gelu
@@ -22,16 +22,17 @@ class Agent:
         archive.close()
         self.config = CONFIG
         self.settings = SETTINGS
+        self.context_fields = tuple(SETTINGS.get("context_fields", CONTEXT_FIELDS))
         self.tokenizer = HunlTokenizer(CONFIG["model"]["max_seq_len"], **{k:CONFIG[k] for k in
             ("position_conditioning", "equity_features", "equity_samples", "equity_seed")})
         self.guard = CFRActionGuard.from_config(SimpleNamespace(**CONFIG))
         self.meta = {"arch": CONFIG["model"]}
         # Charge BLAS initialization to model loading, not the first decision.
-        self.logits({**self.tokenizer.blank(), "match_ctx":np.zeros((1,12), dtype=np.float32)})
+        self.logits({**self.tokenizer.blank(), "match_ctx":np.zeros((1,len(self.context_fields)), dtype=np.float32)})
 
     def observation(self, snapshot, context):
         batch = self.tokenizer.encode(self.guard.apply(snapshot))
-        batch["match_ctx"] = np.asarray([list(context.as_dict().values())], dtype=np.float32)
+        batch["match_ctx"] = np.asarray([list(context.as_dict(self.context_fields).values())], dtype=np.float32)
         return batch
 
     def logits(self, batch):

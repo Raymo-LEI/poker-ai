@@ -6,17 +6,22 @@ from torch import nn
 from alphanl.cfr.distillation import load_student
 from alphanl.transformer.model import masked_log_probs, policy_act
 from alphanl.transformer.ppo import ppo_losses
-from .context import CONTEXT_FIELDS
+from .context import CONTEXT_FIELDS, PRO_CONTEXT_FIELDS
 
 class ResidualExploiterPolicy(nn.Module):
-    def __init__(self, reference, *, alpha=1., hidden=64, beta_kl=1., late_beta_kl=.1):
+    def __init__(self, reference, *, alpha=1., hidden=64, beta_kl=1., late_beta_kl=.1, context_fields=CONTEXT_FIELDS):
         super().__init__()
         if any(not math.isfinite(v) or v < 0 for v in (alpha, beta_kl, late_beta_kl)) or hidden < 1:
             raise ValueError("invalid residual hyperparameters")
         self.reference = copy.deepcopy(reference).requires_grad_(False).eval()
         self.config = reference.config
         self.settings = dict(alpha=alpha, hidden=hidden, beta_kl=beta_kl, late_beta_kl=late_beta_kl)
-        self.context_encoder = nn.Sequential(nn.Linear(len(CONTEXT_FIELDS), hidden), nn.GELU())
+        self.context_fields = tuple(context_fields)
+        if self.context_fields not in (CONTEXT_FIELDS, PRO_CONTEXT_FIELDS):
+            raise ValueError("unsupported policy context fields")
+        if self.context_fields != CONTEXT_FIELDS:
+            self.settings["context_fields"] = list(self.context_fields)
+        self.context_encoder = nn.Sequential(nn.Linear(len(self.context_fields), hidden), nn.GELU())
         self.fusion = nn.Sequential(nn.Linear(reference.backbone.d_model + hidden, hidden), nn.GELU())
         self.delta_head = nn.Linear(hidden, 5)
         self.value_head = nn.Linear(hidden, 1)
@@ -50,7 +55,7 @@ class ResidualExploiterPolicy(nn.Module):
         if not (batch["legal_mask"] > .5).any(-1).all():
             raise ValueError("empty legal mask")
         context = batch["match_ctx"]
-        if context.ndim != 2 or context.shape[1] != len(CONTEXT_FIELDS) or not torch.isfinite(context).all():
+        if context.ndim != 2 or context.shape[1] != len(self.context_fields) or not torch.isfinite(context).all():
             raise ValueError("invalid match_ctx")
         fused = self.fusion(torch.cat((batch["poker_features"].detach(), self.context_encoder(context)), -1))
         logits = batch["ref_logits"].detach() + self.settings["alpha"] * self.delta_head(fused).tanh()

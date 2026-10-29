@@ -8,10 +8,36 @@ from alphanl.cfr.distillation import PolicyNetwork
 from alphanl.transformer.ppo import compute_gae
 from alphanl.transformer.tokenizer import cat_batches
 from alphanl.transformer.hunl import RULES_VERSION
-from .context import CONTEXT_FIELDS
+from .context import CONTEXT_FIELDS, PRO_CONTEXT_FIELDS
 from .policy import ResidualExploiterPolicy, residual_ppo_loss
 
 FORMAT = "stage2_match_residual_v1"
+
+
+def warm_start_policy(model, checkpoint):
+    """Copy policy weights only; zero-pad new HUD inputs, never restore a run."""
+    import hashlib
+    source, blob = load_checkpoint(checkpoint)
+    if source.config.to_dict() != model.config.to_dict():
+        raise ValueError("warm-start poker contract differs")
+    old = dict(source.settings); new = dict(model.settings)
+    old.pop("context_fields", None); new.pop("context_fields", None)
+    if old != new or model.context_fields[:len(source.context_fields)] != source.context_fields:
+        raise ValueError("warm-start settings/context prefix differ")
+    for key,value in source.reference.state_dict().items():
+        if not torch.equal(value.cpu(), model.reference.state_dict()[key].cpu()):
+            raise ValueError("warm-start frozen reference differs")
+    state = source.state_dict()
+    key = "context_encoder.0.weight"
+    if state[key].shape != model.state_dict()[key].shape:
+        expanded = torch.zeros_like(model.state_dict()[key], device="cpu")
+        expanded[:, :state[key].shape[1]] = state[key].cpu()
+        state[key] = expanded
+    model.load_state_dict(state, strict=True)
+    return dict(kind="policy_weights_only", source_update=blob["update"],
+                source_sha256=hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest(),
+                old_context_fields=list(source.context_fields), new_context_fields=list(model.context_fields),
+                optimizer_restored=False, pool_restored=False, new_context_columns_zero=True)
 
 
 def match_report(env):
@@ -19,7 +45,7 @@ def match_report(env):
     if not env.done or env.ctx.hands_played != 50:
         raise ValueError("cannot report an unfinished match")
     return {"hands": env.hands, "hands_played": env.ctx.hands_played,
-            "hero_net_bb": env.ctx.hero_net_bb, "context": env.ctx.as_dict(),
+            "hero_net_bb": env.ctx.hero_net_bb, "context": env.ctx.as_dict(env.context_fields),
             "opponent": env.opponent_name,
             "opponent_snapshot": getattr(env.opponent, "snapshot_id", None),
             "opponent_variant": getattr(env.opponent, "variant", None)}
@@ -111,7 +137,7 @@ def final_policy_diagnostics(model, batch, *, minibatch_size=256):
 def save_checkpoint(path, model, *, optimizer=None, pool=None, update=0, metadata=None):
     blob = {"format": FORMAT, "config": model.config.to_dict(), "settings": model.settings,
             "rules_version": RULES_VERSION, "numeric_version": model.config.numeric_version,
-            "context_fields": list(CONTEXT_FIELDS), "model": {k: v.detach().cpu() for k, v in model.state_dict().items()},
+            "context_fields": list(model.context_fields), "model": {k: v.detach().cpu() for k, v in model.state_dict().items()},
             "update": update, "metadata": metadata or {}, "torch_rng": torch.get_rng_state(),
             "python_rng": random.getstate()}
     if next(model.parameters()).device.type == "cuda":
@@ -131,9 +157,11 @@ def load_checkpoint(path, *, device="cpu"):
     config = CFRConfig.from_checkpoint(blob["config"])
     if (blob.get("format") != FORMAT or blob.get("rules_version") != RULES_VERSION
             or blob.get("numeric_version") != config.numeric_version
-            or blob.get("context_fields") != list(CONTEXT_FIELDS)):
+            or tuple(blob.get("context_fields", ())) not in (CONTEXT_FIELDS, PRO_CONTEXT_FIELDS)):
         raise ValueError("incompatible Stage 2 checkpoint")
     model = ResidualExploiterPolicy(PolicyNetwork(config), **blob["settings"])
+    if tuple(blob["context_fields"]) != model.context_fields:
+        raise ValueError("checkpoint context metadata disagrees with policy settings")
     model.load_state_dict(blob["model"], strict=True)
     if any(not torch.isfinite(v).all() for v in model.state_dict().values()):
         raise ValueError("nonfinite Stage 2 checkpoint")

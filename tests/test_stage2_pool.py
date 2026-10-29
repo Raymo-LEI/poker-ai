@@ -229,6 +229,48 @@ def test_pfsp_feedback_changes_without_crossing_priority_threshold():
     assert pool.probabilities() == probabilities
 
 
+def test_training_cli_writes_match_ledger_and_hand_traces_together(league, tmp_path):
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    from alphanl.cfr.distillation import save_student
+    model, pool = league
+    root = Path(__file__).resolve().parents[1]
+    reference = tmp_path / 'reference.pt'
+    save_student(reference, model.reference, pool.manifest, {})
+    settings = json.loads((root / 'configs/stage2/botzone_50hand.json').read_text())
+    settings.update(reference=str(reference), strategies=str(pool.strategies),
+                    pool=pool.contract, device='cpu')
+    settings['ppo']['epochs'] = 1
+    settings['traces'].update(enabled=True, train_matches=2)
+    config_path = tmp_path / 'config.json'
+    config_path.write_text(json.dumps(settings))
+    output = tmp_path / 'run'
+    subprocess.run([sys.executable, str(root / 'scripts/train_stage2.py'), '--config', str(config_path),
+                    '--out-dir', str(output), '--updates', '1'],
+                   env={**os.environ, 'PYTHONPATH': str(root / 'src')}, capture_output=True,
+                   text=True, check=True)
+    matches = [json.loads(line) for line in (output / 'matches.jsonl').read_text().splitlines()]
+    metrics = json.loads((output / 'metrics.jsonl').read_text())
+    hands = [json.loads(line) for line in
+             (output / 'evaluations/stage2_train_u0000001/hands.jsonl').read_text().splitlines()]
+    assert len(matches) == 20 and len({row['match'] for row in matches}) == 20
+    assert len(hands) == 100
+    assert metrics['stage2/opponent'] == 'mixed'
+    assert metrics['stage2/match_wins'] == sum(row['hero_net_bb'] > 0 for row in matches)
+    for row in matches:
+        assert row['opponent'] in pool.weights and row['hands_played'] == 50
+        assert metrics['stage2/feedback/' + row['opponent']] == sum(
+            other['opponent'] == row['opponent'] for other in matches)
+    for match in (1, 2):
+        ledger = next(row for row in matches if row['match'] == match)
+        traced = [row for row in hands if row['match'] == match]
+        assert len(traced) == 50
+        assert {row['opponent'] for row in traced} == {ledger['opponent']}
+        assert sum(row['payoff_chips'] for row in traced) / 100 == ledger['hero_net_bb']
+
+
 def test_resumable_schedule_self_weights_and_rng(league, tmp_path):
     model, pool = league
     pool.sample()

@@ -21,5 +21,7 @@
     "self_history_size": 16
   },
   "evaluation": {"every_updates": 100, "match_pairs": 50, "seed": 92017,
-                 "equity_samples": 64, "stop_on_retention_failure": true}
+                 "equity_samples": 64, "stop_on_retention_failure": true},
+  "traces": {"enabled": true, "train_every_updates": 25, "train_matches": 2,
+             "eval_match_pairs_per_opponent": 1, "max_bytes": 16777216}
 }

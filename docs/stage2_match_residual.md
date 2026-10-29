@@ -100,3 +100,49 @@ PYTHONPATH=src OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 本机满配 synthetic smoke 的 300 次最终测量：中位 1.470ms、P99 2.398ms、最大 6.492ms；加载 92.83ms，未导入 Torch。之前未裁剪 padding 的 300 次测量出现 19.742ms 尖峰并正确失败；后续优化后重新通过。所有数值仅说明本机代码管线可运行，不是最终 Stage 1 棋力、蒸馏保真度、GPU 性能或线上部署结论。
 
 机器环境和可机器读取的摘要见 `docs/benchmarks/stage2_cpu_smoke_20261028.json`。
+
+## Overwatch 完整动作轨迹
+
+`train_stage2.py` 默认从第一次更新开始抽样记录，随后每 25 次更新记录前两场完整比赛；
+每次周期独立评测记录每个对手的第一对比赛（双方起始位置各 50 手，仅候选策略）。
+主线每次更新仍是 20 场比赛；这些轨迹是观察子集，不改变训练或评测预算，不按输赢挑选。
+
+产物与现有 Overwatch「对局与漏损」发现布局一致：
+
+```text
+<out-dir>/evaluations/stage2_train_u0000001/{report.json,hands.jsonl}
+<out-dir>/evaluations/stage2_eval_u0000100/{report.json,hands.jsonl}
+```
+
+每行是一手已结算的完整牌局：`hero_seat`、`hero_hole`、`payoff_chips`、互斥线路
+`category`、`terminal_betting_street`、终局公共牌 `terminal_board` 和 `events`。
+事件包含行动前可见的 `board/pot/to_call`、实际 `chips_added/stack_before`、`seat/street/action`。
+英雄底牌单独保存，不记录对手隐藏底牌，不运行 oracle equity，也不从种子重建缺失状态。
+`terminal_board` 仅为结算后的公共牌，不能替代某个行动当时的 `events[].board`。
+训练记录有 update / match / 对手身份及历史或 self snapshot ID；评测记录有 pair / first_hero_seat。
+比赛中途对手先弃牌、英雄尚无决策的被动手也会记录。
+
+可在配置中调整或关闭：
+
+```json
+"traces": {
+  "enabled": true,
+  "train_every_updates": 25,
+  "train_matches": 2,
+  "eval_match_pairs_per_opponent": 1,
+  "max_bytes": 16777216
+}
+```
+
+`enabled:false` 完全关闭；两个采样数量各自为 0 时关闭对应来源。
+每个文件最多 16 MiB，到上限后丢弃后续完整手，报告写出 `truncated/dropped_hands`。
+不同 update 使用新目录；已存在的目录会报错，避免覆盖原始证据。恢复训练沿用新输出目录约定。
+完整手逐行写入，关闭 JSONL 后才原子发布 `report.json`；中断时只发布已完成的手并标记 `status:failed`。
+文件写入失败会向上抛错，不静默丢失日志。默认采样量约每次训练采样 100 手、每次评测 600 手，
+最终大小依赖实际行动数。长期训练应按磁盘预算调整采样间隔；文件上限不是整个运行目录的总配额。
+
+该产物是轨迹索引元数据，不是 `stage2_duplicate_matches_v1` 独立评测报告。
+正式评测仍发布在 `stage2_evaluations/update_*.json`；两者不能互相替代。
+控制台可展示已记录子集的描述性盈亏分桶，不能据此推导逐动作反事实 EV 或总体策略强度。
+新增测试在真实 CPU 完整比赛中验证开关日志前后的动作、奖励和 RNG 一致，并核对双方位置、
+被动手、结算汇总、评测配对身份、文件上限和失败标记；不代表真实 GPU 性能或最终模型验收。

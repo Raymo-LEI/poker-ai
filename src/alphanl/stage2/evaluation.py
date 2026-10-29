@@ -16,8 +16,8 @@ EVAL_OPPONENTS = ("equity", "nit", "call", "maniac", "overbet", "reference")
 
 
 @torch.inference_mode()
-def play_match(model, opponent, *, decks, first_hero_seat):
-    env = BotzoneMatchEnv(model.config, opponent, decks=decks, first_hero_seat=first_hero_seat)
+def play_match(model, opponent, *, decks, first_hero_seat, hand_trace=None):
+    env = BotzoneMatchEnv(model.config, opponent, decks=decks, first_hero_seat=first_hero_seat, hand_trace=hand_trace)
     obs = env.reset()
     device = next(model.parameters()).device
     while not env.done:
@@ -54,7 +54,7 @@ class MatchEvaluator:
         self.decks = [[rng.permutation(standard_deck()).tolist() for _ in range(50)] for _ in range(match_pairs)]
         self.baseline_totals = {}
 
-    def _totals(self, model, name):
+    def _totals(self, model, name, *, trace_writer=None, trace_match_pairs=0):
         totals = []
         for pair, decks in enumerate(self.decks):
             legs = []
@@ -63,11 +63,13 @@ class MatchEvaluator:
                 torch.manual_seed(seed)
                 opponent = (NeuralMatchActor(self.baseline.reference, kind="reference", snapshot_id="reference", seed=seed)
                             if name == "reference" else RuleActor(name, seed=seed, equity_samples=self.equity_samples))
-                legs.append(play_match(model, opponent, decks=decks, first_hero_seat=first_seat))
+                sink = trace_writer.sink(opponent=name, pair=pair, first_hero_seat=first_seat,
+                    policy='candidate') if trace_writer is not None and pair < trace_match_pairs else None
+                legs.append(play_match(model, opponent, decks=decks, first_hero_seat=first_seat, hand_trace=sink))
             totals.append(legs)
         return totals
 
-    def evaluate(self, model, *, update, progress=None):
+    def evaluate(self, model, *, update, progress=None, trace_writer=None, trace_match_pairs=0):
         was_training = model.training
         devices = [next(model.parameters()).device.index or 0] if next(model.parameters()).is_cuda else []
         report = {"format": "stage2_duplicate_matches_v1", "update": update, "seed": self.seed,
@@ -83,7 +85,7 @@ class MatchEvaluator:
                         progress(name)
                     if name not in self.baseline_totals:
                         self.baseline_totals[name] = self._totals(self.baseline, name)
-                    candidate = self._totals(model, name)
+                    candidate = self._totals(model, name, trace_writer=trace_writer, trace_match_pairs=trace_match_pairs)
                     baseline = self.baseline_totals[name]
                     gain = mean_interval((np.asarray(candidate) - np.asarray(baseline)).mean(axis=1) / 50 * 1000)
                     report["opponents"][name] = {"candidate": summarize_match_pairs(candidate),

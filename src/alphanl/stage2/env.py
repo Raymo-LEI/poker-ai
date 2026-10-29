@@ -10,11 +10,12 @@ from .context import MatchCtx
 
 class BotzoneMatchEnv:
     def __init__(self, config, opponent=None, *, pool=None, seed=1, first_hero_seat=1,
-                 defer_opponents=False, decks=None):
+                 defer_opponents=False, decks=None, hand_trace=None):
         if config.separate_player_models or not config.position_conditioning:
             raise ValueError("Stage 2 requires unified position-conditioned Stage 1")
         if first_hero_seat not in (0, 1):
             raise ValueError("invalid first hero seat")
+        self.hand_trace = hand_trace
         self.config, self.opponent = config, opponent
         if (pool is None) == (opponent is None):
             raise ValueError("provide exactly one fixed opponent or MatchPool")
@@ -75,11 +76,22 @@ class BotzoneMatchEnv:
     def _deal(self):
         self.hero = self.first_hero_seat ^ (self.ctx.hands_played % 2)
         self.table.reset(None if self.decks is None else self.decks[self.ctx.hands_played])
+        if self.hand_trace is not None:
+            self._trace_events = []
+            self._trace_hole = list(self.table.hole_cards(self.hero))
         self.ctx.begin_hand()
         self.opponent.begin_hand(1 - self.hero)
 
     def _push(self, action):
+        if self.hand_trace is not None:
+            seat = self.table.current_player()
+            snapshot = self.table.snapshot(seat)
         self.table.step(action)
+        if self.hand_trace is not None:
+            event = self.table.events_for(self.hero)[-1]
+            self._trace_events.append(dict(seat=seat, street=snapshot.street, action=action,
+                board=list(snapshot.board_cards), pot=snapshot.pot, to_call=snapshot.to_call,
+                chips_added=event.chips_added, stack_before=event.stack_before))
         self.ctx.observe_action(self.table.events_for(self.hero)[-1])
         if hasattr(self.opponent, "observe_action"):
             self.opponent.observe_action(self.table.events_for(1 - self.hero)[-1])
@@ -97,6 +109,14 @@ class BotzoneMatchEnv:
                     self.opponent.finish_hand(-payoff, showdown=showdown)
                 reward += payoff / 200.
                 self.hands.append({"hand": self.ctx.hands_played, "hero_seat": self.hero, "hero_net_bb": payoff})
+                if self.hand_trace is not None:
+                    from .traces import category
+                    self.hand_trace(dict(hand=self.ctx.hands_played, hero_seat=self.hero,
+                        hero_hole=self._trace_hole, payoff_chips=payoff * 100,
+                        terminal_board=list(self.table.board_cards()),
+                        category=category(self._trace_events, self.hero),
+                        terminal_betting_street=self._trace_events[-1]['street'],
+                        events=self._trace_events))
                 if self.ctx.hands_played == 50:
                     self.done = True
                     return reward

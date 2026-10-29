@@ -24,6 +24,8 @@ def main():
     if report.get("format") != "pro_gauntlet_v1" or not report.get("complete"):
         raise ValueError("requires a complete original Pro Gauntlet report")
     report["parent_report_sha256"] = sha256(args.baseline_report)
+    report["extension_source_sha256"] = {str(path.relative_to(ROOT)): sha256(path) for path in
+        [Path(__file__), ROOT/'src/alphanl/stage2/blend.py', ROOT/'src/alphanl/cfr/gauntlet.py']}
     report["complete"] = False
     report["pending_matchups"] = []
     args.out_dir.mkdir(parents=True, exist_ok=False)

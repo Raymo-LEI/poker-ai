@@ -26,7 +26,7 @@ def publish(out, report):
     temporary.replace(out / "report.json")
     columns = list(GAUNTLET_OPPONENTS) + list(report["matrix"])
     with (out / "matrix.csv").open("w", newline="") as stream:
-        writer = csv.writer(stream)
+        writer = csv.writer(stream, lineterminator="\n")
         writer.writerow(["candidate", "opponent", "mbb_per_hand", "ci95_low", "ci95_high", "hands", "match_pairs"])
         for name, row in report["matrix"].items():
             for opponent, cell in row.items():

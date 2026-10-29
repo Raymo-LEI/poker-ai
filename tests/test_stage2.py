@@ -297,11 +297,14 @@ def test_history_pool_pins_same_snapshot_for_whole_match(config, tmp_path):
                     "config":config.to_dict(), "rules_version":RULES_VERSION, "numeric_version":config.numeric_version,
                     "models":{"shared":network.state_dict()}},directory / f"iteration_{t:07d}.pt")
     (directory / "index.json").write_text(json.dumps({"format":"sd_cfr_archive_v1","iterations":[100,101]}))
-    weights = {k:1e-9 for k in DEFAULT_WEIGHTS}; weights["history"] = 1-5e-9
-    pool = MatchOpponentPool(directory, weights=weights)
-    name, actor = pool.sample()
-    assert name == "history" and len(actor.policy.iterations) == 1
-    iteration = int(actor.policy.iterations[0])
+    model = ResidualExploiterPolicy(PolicyNetwork(config))
+    pool = MatchOpponentPool(directory, history_buckets=[[100,101]])
+    pool.initialize(model)
+    actors = [pool.sample() for _ in range(20)]
+    actor = next(actor for name, actor in actors if name == "history")
+    iteration, network = actor.snapshot_id, actor.model
     env = BotzoneMatchEnv(config, actor)
-    collect_match(ResidualExploiterPolicy(PolicyNetwork(config)),env)
-    assert actor.audit.snapshot_counts == {iteration:50}
+    collect_match(model, env)
+    assert actor.snapshot_id == iteration and actor.model is network
+    assert actor.ctx.hands_played == 50
+    assert pool.disk_loads == 2

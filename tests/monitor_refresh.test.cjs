@@ -85,3 +85,30 @@ test('evaluation history is independent of training window and snapshots do not 
   assert.equal(missingRound.selection, 'latest');
   assert.equal(missingRound.evaluation.step, 250);
 });
+
+test('Stage 2 panel uses held-out evaluation and preserves zero/failing retention', () => {
+  const cards = {}, charts = {}, nodes = new Map();
+  const context = vm.createContext({
+    $: id => {if (!nodes.has(id)) nodes.set(id,{classList:{toggle(){}}}); return nodes.get(id);},
+    mini: (id, values) => {cards[id] = values;},
+    chart: (id, rows, series) => {charts[id] = series;},
+    finite: v => typeof v === 'number' && Number.isFinite(v),
+    fmt: v => typeof v === 'number' && Number.isFinite(v) ? String(v) : '—',
+  });
+  vm.runInContext(source.slice(source.indexOf('function renderStage2'), source.indexOf('function render(')), context);
+  context.renderStage2({latest:{'stage2/hero_net_bb':9999}, rows:[], stage2_eval_latest:{
+    'stage2/eval/update':100, 'stage2/eval/equity/mbb_per_hand':0,
+    'stage2/eval/equity/match_win':.6, 'stage2/eval/reference/mbb_per_hand':-21,
+    'stage2/eval/retention_pass':0, 'stage2/eval/nit/gain_mbb_per_hand':1200,
+    'stage2/eval/equity/deck_pairs':2500, 'stage2/eval/equity/matches':100,
+  }}, true);
+  assert.equal(cards['stage2-eval-cards'][0][1], '0');
+  assert.equal(cards['stage2-eval-cards'][1][1], '60');
+  assert.equal(cards['stage2-eval-cards'][2][1], '-21');
+  assert.equal(cards['stage2-eval-cards'][3][1], 'FAIL');
+  assert.equal(cards['stage2-gain-cards'][0][1], '1200');
+  assert.equal(charts['stage2-pfsp-chart'].length, 9);
+  assert.ok(charts['stage2-equity-chart'].every(s => s.key.startsWith('stage2/eval/')));
+  context.renderStage2({latest:{'stage2/hero_net_bb':9999},rows:[]}, true);
+  assert.equal(cards['stage2-eval-cards'][0][1], '—');
+});

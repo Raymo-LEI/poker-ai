@@ -201,7 +201,21 @@ function renderStage2(data, enabled) {
   ]);
   chart("stage2-kl-chart", rows, [{key:"stage2/base_kl", label:"KL to reference"}, {key:"stage2/kl_penalty", label:"KL penalty"}]);
   chart("stage2-return-chart", rows, [{key:"stage2/hero_net_bb", label:"Match net BB"}], {zero:true});
-  const opponents = [["equity","Pot odds equity"],["nit","Tight passive nit"],["call","Calling station"],["maniac","Aggressive"],["overbet","Overbet"],["history","Stage 1 history"]];
+  const evaluation = data.stage2_eval_latest || {};
+  const metric = (name, field) => evaluation[`stage2/eval/${name}/${field}`];
+  const interval = name => `95% CI ${fmt(metric(name, "mbb_ci95_low"), 0)} … ${fmt(metric(name, "mbb_ci95_high"), 0)}`;
+  mini("stage2-eval-cards", [
+    ["Standard Pot odds equity", fmt(metric("equity", "mbb_per_hand"), 1), "mbb/hand", `Target > 0 · ${interval("equity")}`],
+    ["Equity Match Win", fmt(metric("equity", "match_win") * 100, 1), "%", "Independent complete 50-hand matches"],
+    ["GTO Retention", fmt(metric("reference", "mbb_per_hand"), 1), "mbb/hand", `Floor ≥ -20 · ${interval("reference")}`],
+    ["Retention gate", finite(evaluation["stage2/eval/retention_pass"]) ? (evaluation["stage2/eval/retention_pass"] ? "PASS" : "FAIL") : "—", "", "Measured reference mirror; KL alone is no guarantee"],
+    ["Evaluation update", fmt(evaluation["stage2/eval/update"], 0), "", `${fmt(metric("equity", "deck_pairs"), 0)} deck pairs · ${fmt(metric("equity", "matches"), 0)} matches per opponent/policy`],
+  ]);
+  mini("stage2-gain-cards", [["nit", "Nit"], ["call", "Calling station"], ["maniac", "Aggressive"], ["overbet", "Overbet"]].map(([name,label]) =>
+    [`${label} gain Δ`, fmt(metric(name,"gain_mbb_per_hand"),1), "mbb/hand", `Stage 2 − frozen Stage 1 · base ${fmt(metric(name,"base_mbb_per_hand"),1)}`]));
+  chart("stage2-equity-chart", rows, [{key:"stage2/eval/equity/mbb_per_hand",label:"Standard equity"}, {key:"stage2/eval/reference/mbb_per_hand",label:"GTO retention"}], {zero:true});
+  chart("stage2-gain-chart", rows, ["nit","call","maniac","overbet"].map(name => ({key:`stage2/eval/${name}/gain_mbb_per_hand`,label:`${name} Δ`})), {zero:true});
+  const opponents = [["equity","Pot odds equity family"],["nit","Tight passive nit"],["call","Calling station"],["maniac","Aggressive"],["overbet","Overbet"],["push_fold","Maniac push/fold"],["reference","Distilled mirror"],["history","Stage 1 history"],["self","Stage 2 history"]];
   chart("stage2-pfsp-chart", rows, opponents.map(([key,label]) => ({key:`stage2/pfsp/${key}`,label})));
   const fields = [["vpip","VPIP"],["pfr","PFR"],["three_bet","3-Bet"],["fold_to_preflop_raise","Fold to preflop raise"], ["flop_aggression","Flop aggression"],["turn_aggression","Turn aggression"],["river_aggression","River aggression"],["fold_to_postflop_bet","Fold to postflop bet"],["all_in_frequency","All-in frequency"],["showdown_win","Showdown win"]];
   mini("stage2-context", fields.map(([key,label]) => [label, fmt(latest[`stage2/context/${key}`] * 100, 1), "%", "本场公开行动 · Bayesian smoothing"]));

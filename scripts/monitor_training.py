@@ -357,6 +357,7 @@ class Store:
                     "step_key": step_key, "rows": rows, "latest": latest,
                     "eval_latest": eval_latest, "hud_latest": hud_latest,
                     "diagnostic_latest": diagnostic_rows[-1] if diagnostic_rows else {},
+                    "stage2_eval_latest": next((r for r in reversed(rows) if "stage2/eval/update" in r), {}),
                     "config": config, "environment": environment,
                     "sources": [{"name": name, "bytes": p.stat().st_size,
                                  "updated_at": p.stat().st_mtime} for name, p in paths.items() if p is not None],

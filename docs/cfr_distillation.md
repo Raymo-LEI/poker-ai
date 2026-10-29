@@ -1,5 +1,7 @@
 # SD-CFR 平均策略蒸馏准备
 
+For the exact-mixture, opponent-augmented fidelity pipeline with playing-strength selection and conditional acceptance, see [Distillation fidelity](distillation_fidelity.md). The legacy workflow below remains unchanged.
+
 本工具把已冻结的统一位置条件 SD-CFR 策略归档压缩为单个
 `PolicyNetwork`，产物是离线候选模型。它不恢复或修改 CFR 训练，不自动接入
 Stage 2，也不自动打包、上传 Botzone。长训耗时、棋力与部署延迟尚待实测。

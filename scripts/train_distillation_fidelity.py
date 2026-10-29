@@ -69,6 +69,8 @@ def main():
     p.add_argument('--batch-size',type=int,default=256)
     p.add_argument('--learning-rate',type=float,default=1e-4)
     p.add_argument('--candidates',default='warm_pruned,warm_raw')
+    p.add_argument('--skip-baseline-selection',action='store_true',
+                   help='for a follow-up fit, do not repeat or reselect the already-evaluated old student')
     p.add_argument('--dataset',type=Path)
     p.add_argument('--device',choices=('cpu','cuda'),default='cpu')
     p.add_argument('--seed',type=int,default=20261029)
@@ -134,13 +136,14 @@ def main():
                 save_student(best_path,baked,manifest,metadata)
                 report['best']=metadata
             publish()
-    consider(original,'original',0,include_cutoff=True)
+    if not a.skip_baseline_selection:
+        consider(original,'original',0,include_cutoff=True)
     for name in a.candidates.split(','):
-        if name not in ('warm_pruned','warm_raw','fresh_pruned'):raise ValueError('unknown candidate')
+        if name not in ('warm_pruned','warm_raw','fresh_pruned','fresh_raw'):raise ValueError('unknown candidate')
         torch.manual_seed(a.seed)
         model=copy.deepcopy(original) if name.startswith('warm') else PolicyNetwork(config).to(a.device)
         trainer=FidelityTrainer(model,train,learning_rate=a.learning_rate,seed=a.seed,
-                                target_prune=0. if name=='warm_raw' else .03)
+                                target_prune=0. if name.endswith('_raw') else .03)
         while trainer.steps<a.steps:
             loss=trainer.fit(min(a.check_every,a.steps-trainer.steps),batch_size=a.batch_size)
             validation_report=fidelity_report(model,validation,batch_size=a.batch_size)

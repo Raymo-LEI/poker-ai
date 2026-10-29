@@ -5,6 +5,10 @@ PFSP weights, stop conditions, checkpoints or any running experiment. The two
 new scripts are style probes, not demonstrated Botzone ladder professionals.
 A confidence interval containing zero does not prove parity or profitability.
 
+The [implementation and evaluation report](pro_gauntlet_report_20261029.md)
+includes the five-candidate 100,000-hand matrix, evidence fingerprints,
+selection outcome and proposed next experiments.
+
 ## Local tournament
 
 Copy `configs/cfr/pro_gauntlet.example.json` and point it at immutable local

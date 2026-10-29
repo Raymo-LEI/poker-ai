@@ -30,8 +30,9 @@ def sha256(path):
 
 class ModelActor:
     """Actor-local RNG and HUD; the frozen module can be shared across tasks."""
-    def __init__(self, model, *, seed, residual=False):
+    def __init__(self, model, *, seed, residual=False, probability_filter=None):
         self.model, self.residual = model, residual
+        self.probability_filter = probability_filter
         self.rng, self.audit = np.random.default_rng(seed), Audit()
         self.guard = CFRActionGuard.from_config(model.config)
         self.tokenizer = HunlTokenizer(model.config.model.max_seq_len, **model.config.tokenizer_kwargs())
@@ -61,6 +62,8 @@ class ModelActor:
         probs = (self.model(batch)[0].softmax(-1) if self.residual else self.model.strategy(batch))[0].cpu().double().numpy()
         if not np.isfinite(probs).all() or probs.sum() <= 0:
             raise FloatingPointError("nonfinite/empty policy distribution")
+        if self.probability_filter is not None:
+            probs = self.probability_filter(original, probs)
         action = int(self.rng.choice(5, p=probs / probs.sum()))
         self.audit.observe(snapshot, probs, action, (time.perf_counter() - began) * 1000)
         self.audit.observe_guard(original, self.guard, action)

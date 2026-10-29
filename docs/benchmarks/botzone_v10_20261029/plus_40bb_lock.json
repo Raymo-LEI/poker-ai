@@ -1,0 +1,1111 @@
+{
+  "format": "v10_guard_ablation_v1",
+  "complete": true,
+  "seed": 20261030,
+  "pairs": 1000,
+  "rules_version": "standard_hunl_200bb_v1",
+  "engine": "standard_hunl_not_botzone_judge",
+  "guard": {
+    "enabled": true,
+    "prune_below": 0.1,
+    "active_shove_min_bb": 30.0,
+    "active_shove_pot_ratio": 2.0,
+    "overbet_call_min_bb": 50.0,
+    "overbet_call_pot_ratio": 1.2,
+    "overbet_min_equity": 0.82,
+    "require_made_hand": true,
+    "big_call_enabled": true,
+    "big_call_min_bb": 40.0,
+    "big_call_min_probability": 0.35,
+    "big_call_equity_margin": 0.05,
+    "equity_samples": 128,
+    "equity_seed": 17
+  },
+  "deck_schedule_sha256": "a4df048577af18fa29641c5da730087f9ea79a0f14394b0a1bde9cc6477950de",
+  "checkpoint": {
+    "name": "C200",
+    "kind": "stage2",
+    "path": "/Users/runyuanlei/Documents/ChatGPT/Poker/pro_gauntlet_artifacts/recovered/update_0000200.pt",
+    "sha256": "c89f9f3016cb15742d093bd2f18a6e5a3d394f80f084d0498104dc428a6703aa",
+    "update": 200,
+    "numeric_version": "hunl_random_equity_odds_v1:c3b73b1934f031dcea360d8f08c3ea5f290293da51969094cdf8db1ee7b8b5a0",
+    "guards": {
+      "preflop_action_guard": true,
+      "spr_action_guard": true,
+      "guard_max_pot_ratio": 3.0,
+      "guard_short_stack_bb": 20.0,
+      "guard_unlock_invested_bb": 15.0,
+      "guard_unlock_raises": 2
+    }
+  },
+  "matrix": {
+    "baseline": {
+      "equity": {
+        "mbb_per_hand": -304.0,
+        "mbb_ci95": [
+          -1760.9279248581856,
+          1152.9279248581856
+        ],
+        "match_win": 0.5,
+        "match_win_ci95": [
+          0.3768569509622416,
+          0.6231430490377584
+        ],
+        "ties": 0,
+        "matches": 40,
+        "match_pairs": 20,
+        "deck_pairs": 1000,
+        "hands": 2000,
+        "net_bb_pairs": [
+          [
+            -440.0,
+            484.5
+          ],
+          [
+            -334.0,
+            492.0
+          ],
+          [
+            1.5,
+            -386.0
+          ],
+          [
+            234.0,
+            -238.0
+          ],
+          [
+            -376.0,
+            -210.5
+          ],
+          [
+            191.0,
+            95.5
+          ],
+          [
+            378.0,
+            -20.0
+          ],
+          [
+            607.5,
+            150.5
+          ],
+          [
+            191.0,
+            -269.0
+          ],
+          [
+            167.0,
+            -379.5
+          ],
+          [
+            358.5,
+            1.5
+          ],
+          [
+            333.5,
+            -245.5
+          ],
+          [
+            -413.0,
+            8.5
+          ],
+          [
+            204.0,
+            -66.5
+          ],
+          [
+            187.5,
+            -409.0
+          ],
+          [
+            3.0,
+            -284.0
+          ],
+          [
+            411.0,
+            -255.0
+          ],
+          [
+            78.5,
+            -100.0
+          ],
+          [
+            -237.5,
+            -169.5
+          ],
+          [
+            -296.0,
+            -57.5
+          ]
+        ],
+        "wall_seconds": 8.813731625094078,
+        "raw_log": "baseline_equity.jsonl",
+        "raw_log_sha256": "2fe4d5db60189fe4680888e7a3b3e04749e3938c03dad57c632f97299cb8ed33",
+        "audit_counts": {
+          "illegal_selections": 0,
+          "mask_leaks": 0,
+          "nonfinite_regrets": 0,
+          "hands_sb": 1000,
+          "decisions": 5516,
+          "nonforced_decisions": 5516,
+          "near_deterministic": 0,
+          "sb_open_opportunities": 1000,
+          "sb_vpip": 463,
+          "sb_open_shoves": 0,
+          "spr_1_0_decisions": 1040,
+          "spr_1_0_blocked": 1028,
+          "spr_1_0_high_spr_shoves": 6,
+          "spr_1_0_early_high_spr_shoves": 0,
+          "hands_bb": 1000,
+          "spr_0_0_decisions": 1011,
+          "spr_0_0_blocked": 989,
+          "spr_0_0_high_spr_shoves": 4,
+          "spr_0_0_early_high_spr_shoves": 0,
+          "spr_0_1_decisions": 1101,
+          "spr_0_1_blocked": 1001,
+          "spr_0_1_high_spr_shoves": 25,
+          "spr_0_1_early_high_spr_shoves": 0,
+          "spr_0_2_decisions": 747,
+          "spr_0_2_blocked": 688,
+          "spr_0_2_high_spr_shoves": 26,
+          "spr_0_2_early_high_spr_shoves": 0,
+          "spr_0_3_decisions": 548,
+          "spr_0_3_blocked": 506,
+          "spr_0_3_high_spr_shoves": 13,
+          "spr_0_3_early_high_spr_shoves": 0,
+          "vpip_hands_sb": 463,
+          "spr_1_1_decisions": 464,
+          "spr_1_1_blocked": 436,
+          "spr_1_1_high_spr_shoves": 9,
+          "spr_1_1_early_high_spr_shoves": 0,
+          "spr_1_2_decisions": 345,
+          "spr_1_2_blocked": 325,
+          "spr_1_2_high_spr_shoves": 6,
+          "spr_1_2_early_high_spr_shoves": 0,
+          "spr_1_3_decisions": 260,
+          "spr_1_3_blocked": 240,
+          "spr_1_3_high_spr_shoves": 3,
+          "spr_1_3_early_high_spr_shoves": 0,
+          "bb_3bet_opportunities": 111,
+          "bb_3bets": 12,
+          "bb_vs_open_raise": 111,
+          "bb_fold_vs_open_raise": 77,
+          "pfr_hands_sb": 131,
+          "vpip_hands_bb": 319,
+          "pfr_hands_bb": 297
+        },
+        "loss_100bb_hands": 59,
+        "loss_190bb_hands": 59,
+        "match_wins": 20
+      },
+      "TAG_Pro": {
+        "mbb_per_hand": -562.75,
+        "mbb_ci95": [
+          -1615.492350692754,
+          489.9923506927539
+        ],
+        "match_win": 0.425,
+        "match_win_ci95": [
+          0.278,
+          0.572
+        ],
+        "ties": 0,
+        "matches": 40,
+        "match_pairs": 20,
+        "deck_pairs": 1000,
+        "hands": 2000,
+        "net_bb_pairs": [
+          [
+            -111.0,
+            160.5
+          ],
+          [
+            -178.0,
+            193.5
+          ],
+          [
+            -186.0,
+            -393.5
+          ],
+          [
+            404.5,
+            -212.5
+          ],
+          [
+            -271.5,
+            -87.0
+          ],
+          [
+            447.5,
+            -8.0
+          ],
+          [
+            28.5,
+            95.0
+          ],
+          [
+            3.0,
+            -44.0
+          ],
+          [
+            34.5,
+            -108.5
+          ],
+          [
+            104.5,
+            8.5
+          ],
+          [
+            11.5,
+            -10.0
+          ],
+          [
+            -205.5,
+            -210.0
+          ],
+          [
+            -27.5,
+            29.5
+          ],
+          [
+            -194.0,
+            16.0
+          ],
+          [
+            10.0,
+            -207.5
+          ],
+          [
+            148.0,
+            66.0
+          ],
+          [
+            212.5,
+            -64.5
+          ],
+          [
+            -202.0,
+            -15.5
+          ],
+          [
+            -84.0,
+            -56.5
+          ],
+          [
+            -15.5,
+            -206.5
+          ]
+        ],
+        "wall_seconds": 5.026839790982194,
+        "raw_log": "baseline_TAG_Pro.jsonl",
+        "raw_log_sha256": "2701a91579cda5221991c1d6fd1e942ee5198809b608d19b456e287b5cff3351",
+        "audit_counts": {
+          "illegal_selections": 0,
+          "mask_leaks": 0,
+          "nonfinite_regrets": 0,
+          "hands_sb": 1000,
+          "decisions": 3631,
+          "nonforced_decisions": 3631,
+          "near_deterministic": 0,
+          "sb_open_opportunities": 1000,
+          "sb_vpip": 474,
+          "sb_open_shoves": 0,
+          "spr_1_0_decisions": 1076,
+          "spr_1_0_blocked": 1060,
+          "spr_1_0_high_spr_shoves": 8,
+          "spr_1_0_early_high_spr_shoves": 0,
+          "hands_bb": 1000,
+          "bb_3bet_opportunities": 358,
+          "bb_3bets": 36,
+          "bb_vs_open_raise": 358,
+          "bb_fold_vs_open_raise": 254,
+          "spr_0_0_decisions": 657,
+          "spr_0_0_blocked": 655,
+          "spr_0_0_high_spr_shoves": 2,
+          "spr_0_0_early_high_spr_shoves": 0,
+          "vpip_hands_sb": 474,
+          "spr_1_1_decisions": 380,
+          "spr_1_1_blocked": 379,
+          "spr_1_1_high_spr_shoves": 0,
+          "spr_1_1_early_high_spr_shoves": 0,
+          "spr_1_2_decisions": 279,
+          "spr_1_2_blocked": 277,
+          "spr_1_2_high_spr_shoves": 0,
+          "spr_1_2_early_high_spr_shoves": 0,
+          "spr_1_3_decisions": 219,
+          "spr_1_3_blocked": 209,
+          "spr_1_3_high_spr_shoves": 2,
+          "spr_1_3_early_high_spr_shoves": 0,
+          "vpip_hands_bb": 210,
+          "pfr_hands_bb": 142,
+          "spr_0_1_decisions": 451,
+          "spr_0_1_blocked": 442,
+          "spr_0_1_high_spr_shoves": 5,
+          "spr_0_1_early_high_spr_shoves": 0,
+          "spr_0_2_decisions": 327,
+          "spr_0_2_blocked": 319,
+          "spr_0_2_high_spr_shoves": 1,
+          "spr_0_2_early_high_spr_shoves": 0,
+          "spr_0_3_decisions": 242,
+          "spr_0_3_blocked": 224,
+          "spr_0_3_high_spr_shoves": 0,
+          "spr_0_3_early_high_spr_shoves": 0,
+          "pfr_hands_sb": 137
+        },
+        "loss_100bb_hands": 21,
+        "loss_190bb_hands": 18,
+        "match_wins": 17
+      },
+      "Trapper_CR": {
+        "mbb_per_hand": -1297.5,
+        "mbb_ci95": [
+          -2212.2662423868333,
+          -382.73375761316686
+        ],
+        "match_win": 0.375,
+        "match_win_ci95": [
+          0.2180227974982891,
+          0.5319772025017109
+        ],
+        "ties": 0,
+        "matches": 40,
+        "match_pairs": 20,
+        "deck_pairs": 1000,
+        "hands": 2000,
+        "net_bb_pairs": [
+          [
+            -110.0,
+            -41.0
+          ],
+          [
+            -188.0,
+            202.0
+          ],
+          [
+            -177.0,
+            -417.5
+          ],
+          [
+            404.5,
+            -211.5
+          ],
+          [
+            -427.0,
+            12.0
+          ],
+          [
+            -12.5,
+            -158.5
+          ],
+          [
+            28.5,
+            77.0
+          ],
+          [
+            99.5,
+            -77.0
+          ],
+          [
+            40.0,
+            -116.5
+          ],
+          [
+            73.0,
+            8.5
+          ],
+          [
+            -57.0,
+            -36.0
+          ],
+          [
+            -182.0,
+            -210.0
+          ],
+          [
+            -28.5,
+            29.5
+          ],
+          [
+            -194.0,
+            16.0
+          ],
+          [
+            55.0,
+            -194.5
+          ],
+          [
+            58.0,
+            37.0
+          ],
+          [
+            212.5,
+            -209.0
+          ],
+          [
+            -198.5,
+            -24.5
+          ],
+          [
+            -251.0,
+            -196.0
+          ],
+          [
+            -15.5,
+            -215.0
+          ]
+        ],
+        "wall_seconds": 4.412753999931738,
+        "raw_log": "baseline_Trapper_CR.jsonl",
+        "raw_log_sha256": "7c25d291d3ef001cae93c0e38a8dee8ad9d51a871288e4f8e595f95c469a96d5",
+        "audit_counts": {
+          "illegal_selections": 0,
+          "mask_leaks": 0,
+          "nonfinite_regrets": 0,
+          "hands_sb": 1000,
+          "decisions": 3671,
+          "nonforced_decisions": 3671,
+          "near_deterministic": 0,
+          "sb_open_opportunities": 1000,
+          "sb_vpip": 481,
+          "sb_open_shoves": 0,
+          "spr_1_0_decisions": 1082,
+          "spr_1_0_blocked": 1066,
+          "spr_1_0_high_spr_shoves": 9,
+          "spr_1_0_early_high_spr_shoves": 0,
+          "hands_bb": 1000,
+          "bb_3bet_opportunities": 358,
+          "bb_3bets": 36,
+          "bb_vs_open_raise": 358,
+          "bb_fold_vs_open_raise": 258,
+          "spr_0_0_decisions": 658,
+          "spr_0_0_blocked": 655,
+          "spr_0_0_high_spr_shoves": 2,
+          "spr_0_0_early_high_spr_shoves": 0,
+          "vpip_hands_sb": 481,
+          "spr_1_1_decisions": 382,
+          "spr_1_1_blocked": 378,
+          "spr_1_1_high_spr_shoves": 0,
+          "spr_1_1_early_high_spr_shoves": 0,
+          "spr_1_2_decisions": 289,
+          "spr_1_2_blocked": 278,
+          "spr_1_2_high_spr_shoves": 3,
+          "spr_1_2_early_high_spr_shoves": 0,
+          "spr_1_3_decisions": 217,
+          "spr_1_3_blocked": 207,
+          "spr_1_3_high_spr_shoves": 3,
+          "spr_1_3_early_high_spr_shoves": 0,
+          "vpip_hands_bb": 197,
+          "pfr_hands_bb": 133,
+          "spr_0_1_decisions": 449,
+          "spr_0_1_blocked": 438,
+          "spr_0_1_high_spr_shoves": 7,
+          "spr_0_1_early_high_spr_shoves": 0,
+          "spr_0_2_decisions": 345,
+          "spr_0_2_blocked": 335,
+          "spr_0_2_high_spr_shoves": 4,
+          "spr_0_2_early_high_spr_shoves": 0,
+          "spr_0_3_decisions": 249,
+          "spr_0_3_blocked": 227,
+          "spr_0_3_high_spr_shoves": 0,
+          "spr_0_3_early_high_spr_shoves": 0,
+          "pfr_hands_sb": 143
+        },
+        "loss_100bb_hands": 27,
+        "loss_190bb_hands": 25,
+        "match_wins": 15
+      }
+    },
+    "v10": {
+      "equity": {
+        "mbb_per_hand": -1260.5,
+        "mbb_ci95": [
+          -2293.8504281449577,
+          -227.14957185504204
+        ],
+        "match_win": 0.35,
+        "match_win_ci95": [
+          0.20604021029248623,
+          0.49395978970751375
+        ],
+        "ties": 0,
+        "matches": 40,
+        "match_pairs": 20,
+        "deck_pairs": 1000,
+        "hands": 2000,
+        "net_bb_pairs": [
+          [
+            -346.0,
+            188.5
+          ],
+          [
+            -84.0,
+            113.0
+          ],
+          [
+            311.5,
+            15.0
+          ],
+          [
+            24.5,
+            -147.0
+          ],
+          [
+            78.5,
+            -29.5
+          ],
+          [
+            -302.5,
+            -20.5
+          ],
+          [
+            -170.0,
+            195.5
+          ],
+          [
+            90.0,
+            13.5
+          ],
+          [
+            5.0,
+            -116.5
+          ],
+          [
+            -55.5,
+            -277.5
+          ],
+          [
+            -201.0,
+            -478.0
+          ],
+          [
+            -55.5,
+            -225.0
+          ],
+          [
+            -158.5,
+            -160.0
+          ],
+          [
+            125.5,
+            -198.0
+          ],
+          [
+            -191.0,
+            -178.0
+          ],
+          [
+            72.0,
+            -174.5
+          ],
+          [
+            164.0,
+            -39.0
+          ],
+          [
+            222.0,
+            -79.5
+          ],
+          [
+            -153.5,
+            -237.0
+          ],
+          [
+            -33.5,
+            -28.5
+          ]
+        ],
+        "wall_seconds": 8.471661041956395,
+        "raw_log": "v10_equity.jsonl",
+        "raw_log_sha256": "1c41c254b493be4be29a05f7c364cf87add9bc7321d907f2fe723396034574d7",
+        "audit_counts": {
+          "illegal_selections": 0,
+          "mask_leaks": 0,
+          "nonfinite_regrets": 0,
+          "hands_sb": 1000,
+          "v10_decisions": 5688,
+          "v10_pruned_decisions": 3209,
+          "v10_active_cap": 249,
+          "decisions": 5688,
+          "nonforced_decisions": 5688,
+          "near_deterministic": 872,
+          "sb_open_opportunities": 1000,
+          "sb_vpip": 452,
+          "sb_open_shoves": 0,
+          "spr_1_0_decisions": 1048,
+          "spr_1_0_blocked": 1024,
+          "spr_1_0_high_spr_shoves": 0,
+          "spr_1_0_early_high_spr_shoves": 0,
+          "hands_bb": 1000,
+          "spr_0_0_decisions": 1009,
+          "spr_0_0_blocked": 988,
+          "spr_0_0_high_spr_shoves": 0,
+          "spr_0_0_early_high_spr_shoves": 0,
+          "spr_0_1_decisions": 1136,
+          "spr_0_1_blocked": 1009,
+          "spr_0_1_high_spr_shoves": 0,
+          "spr_0_1_early_high_spr_shoves": 0,
+          "spr_0_2_decisions": 801,
+          "spr_0_2_blocked": 727,
+          "spr_0_2_high_spr_shoves": 0,
+          "spr_0_2_early_high_spr_shoves": 0,
+          "spr_0_3_decisions": 621,
+          "spr_0_3_blocked": 554,
+          "spr_0_3_high_spr_shoves": 0,
+          "spr_0_3_early_high_spr_shoves": 0,
+          "vpip_hands_sb": 452,
+          "spr_1_1_decisions": 460,
+          "spr_1_1_blocked": 425,
+          "spr_1_1_high_spr_shoves": 0,
+          "spr_1_1_early_high_spr_shoves": 0,
+          "spr_1_2_decisions": 353,
+          "spr_1_2_blocked": 318,
+          "spr_1_2_high_spr_shoves": 0,
+          "spr_1_2_early_high_spr_shoves": 0,
+          "spr_1_3_decisions": 260,
+          "spr_1_3_blocked": 226,
+          "spr_1_3_high_spr_shoves": 0,
+          "spr_1_3_early_high_spr_shoves": 0,
+          "bb_3bet_opportunities": 98,
+          "bb_3bets": 12,
+          "bb_vs_open_raise": 98,
+          "bb_fold_vs_open_raise": 71,
+          "v10_big_call": 70,
+          "vpip_hands_bb": 246,
+          "pfr_hands_bb": 231,
+          "pfr_hands_sb": 95
+        },
+        "loss_100bb_hands": 14,
+        "loss_190bb_hands": 13,
+        "match_wins": 14
+      },
+      "TAG_Pro": {
+        "mbb_per_hand": -709.75,
+        "mbb_ci95": [
+          -1367.5058426354362,
+          -51.994157364563875
+        ],
+        "match_win": 0.325,
+        "match_win_ci95": [
+          0.16170965477988217,
+          0.4882903452201178
+        ],
+        "ties": 0,
+        "matches": 40,
+        "match_pairs": 20,
+        "deck_pairs": 1000,
+        "hands": 2000,
+        "net_bb_pairs": [
+          [
+            -74.0,
+            -12.0
+          ],
+          [
+            -194.5,
+            -11.5
+          ],
+          [
+            209.5,
+            -306.5
+          ],
+          [
+            199.0,
+            -131.0
+          ],
+          [
+            -224.0,
+            -23.5
+          ],
+          [
+            178.0,
+            -196.0
+          ],
+          [
+            22.0,
+            27.0
+          ],
+          [
+            -258.5,
+            -56.0
+          ],
+          [
+            7.5,
+            -42.5
+          ],
+          [
+            24.0,
+            -170.5
+          ],
+          [
+            108.5,
+            62.5
+          ],
+          [
+            -59.5,
+            -85.5
+          ],
+          [
+            -25.5,
+            -32.5
+          ],
+          [
+            -203.0,
+            -29.0
+          ],
+          [
+            9.5,
+            -5.0
+          ],
+          [
+            191.0,
+            119.5
+          ],
+          [
+            -101.5,
+            -36.0
+          ],
+          [
+            -81.0,
+            -38.5
+          ],
+          [
+            152.5,
+            -128.5
+          ],
+          [
+            -12.5,
+            -191.5
+          ]
+        ],
+        "wall_seconds": 4.446004958008416,
+        "raw_log": "v10_TAG_Pro.jsonl",
+        "raw_log_sha256": "3effdcdfcc9958990bf383f5b256b80645a58c562a37428807a849abad11ec27",
+        "audit_counts": {
+          "illegal_selections": 0,
+          "mask_leaks": 0,
+          "nonfinite_regrets": 0,
+          "hands_sb": 1000,
+          "v10_decisions": 3628,
+          "v10_pruned_decisions": 2239,
+          "v10_active_cap": 50,
+          "decisions": 3628,
+          "nonforced_decisions": 3628,
+          "near_deterministic": 506,
+          "sb_open_opportunities": 1000,
+          "sb_vpip": 434,
+          "sb_open_shoves": 0,
+          "spr_1_0_decisions": 1072,
+          "spr_1_0_blocked": 1056,
+          "spr_1_0_high_spr_shoves": 0,
+          "spr_1_0_early_high_spr_shoves": 0,
+          "hands_bb": 1000,
+          "bb_3bet_opportunities": 358,
+          "bb_3bets": 22,
+          "bb_vs_open_raise": 358,
+          "bb_fold_vs_open_raise": 280,
+          "spr_0_0_decisions": 660,
+          "spr_0_0_blocked": 655,
+          "spr_0_0_high_spr_shoves": 0,
+          "spr_0_0_early_high_spr_shoves": 0,
+          "vpip_hands_sb": 434,
+          "spr_1_1_decisions": 366,
+          "spr_1_1_blocked": 364,
+          "spr_1_1_high_spr_shoves": 0,
+          "spr_1_1_early_high_spr_shoves": 0,
+          "spr_1_2_decisions": 282,
+          "spr_1_2_blocked": 276,
+          "spr_1_2_high_spr_shoves": 0,
+          "spr_1_2_early_high_spr_shoves": 0,
+          "spr_1_3_decisions": 227,
+          "spr_1_3_blocked": 215,
+          "spr_1_3_high_spr_shoves": 0,
+          "spr_1_3_early_high_spr_shoves": 0,
+          "vpip_hands_bb": 164,
+          "pfr_hands_bb": 108,
+          "spr_0_1_decisions": 420,
+          "spr_0_1_blocked": 409,
+          "spr_0_1_high_spr_shoves": 0,
+          "spr_0_1_early_high_spr_shoves": 0,
+          "spr_0_2_decisions": 333,
+          "spr_0_2_blocked": 324,
+          "spr_0_2_high_spr_shoves": 0,
+          "spr_0_2_early_high_spr_shoves": 0,
+          "spr_0_3_decisions": 268,
+          "spr_0_3_blocked": 248,
+          "spr_0_3_high_spr_shoves": 0,
+          "spr_0_3_early_high_spr_shoves": 0,
+          "v10_big_call": 14,
+          "pfr_hands_sb": 87
+        },
+        "loss_100bb_hands": 10,
+        "loss_190bb_hands": 7,
+        "match_wins": 13
+      },
+      "Trapper_CR": {
+        "mbb_per_hand": -873.5,
+        "mbb_ci95": [
+          -1449.3339358749736,
+          -297.6660641250264
+        ],
+        "match_win": 0.325,
+        "match_win_ci95": [
+          0.16170965477988217,
+          0.4882903452201178
+        ],
+        "ties": 0,
+        "matches": 40,
+        "match_pairs": 20,
+        "deck_pairs": 1000,
+        "hands": 2000,
+        "net_bb_pairs": [
+          [
+            -32.0,
+            -194.0
+          ],
+          [
+            -195.0,
+            -63.0
+          ],
+          [
+            220.5,
+            -234.0
+          ],
+          [
+            199.0,
+            -131.0
+          ],
+          [
+            -76.5,
+            -23.5
+          ],
+          [
+            161.0,
+            31.5
+          ],
+          [
+            25.0,
+            27.0
+          ],
+          [
+            -258.5,
+            -50.0
+          ],
+          [
+            13.0,
+            -8.5
+          ],
+          [
+            82.0,
+            -179.0
+          ],
+          [
+            36.0,
+            59.5
+          ],
+          [
+            -59.5,
+            -86.5
+          ],
+          [
+            6.5,
+            -32.0
+          ],
+          [
+            -202.5,
+            -29.0
+          ],
+          [
+            -88.0,
+            -15.0
+          ],
+          [
+            47.0,
+            -72.0
+          ],
+          [
+            -101.5,
+            -26.0
+          ],
+          [
+            -77.5,
+            -35.0
+          ],
+          [
+            26.5,
+            -171.0
+          ],
+          [
+            -12.5,
+            -228.5
+          ]
+        ],
+        "wall_seconds": 4.372013707994483,
+        "raw_log": "v10_Trapper_CR.jsonl",
+        "raw_log_sha256": "09dee180a9daf2fb347a2a9356e242d3fe84bc98493113e661d48bf07840a510",
+        "audit_counts": {
+          "illegal_selections": 0,
+          "mask_leaks": 0,
+          "nonfinite_regrets": 0,
+          "hands_sb": 1000,
+          "v10_decisions": 3672,
+          "v10_pruned_decisions": 2241,
+          "v10_active_cap": 61,
+          "decisions": 3672,
+          "nonforced_decisions": 3672,
+          "near_deterministic": 511,
+          "sb_open_opportunities": 1000,
+          "sb_vpip": 443,
+          "sb_open_shoves": 0,
+          "spr_1_0_decisions": 1073,
+          "spr_1_0_blocked": 1060,
+          "spr_1_0_high_spr_shoves": 0,
+          "spr_1_0_early_high_spr_shoves": 0,
+          "hands_bb": 1000,
+          "bb_3bet_opportunities": 358,
+          "bb_3bets": 19,
+          "bb_vs_open_raise": 358,
+          "bb_fold_vs_open_raise": 274,
+          "spr_0_0_decisions": 660,
+          "spr_0_0_blocked": 655,
+          "spr_0_0_high_spr_shoves": 0,
+          "spr_0_0_early_high_spr_shoves": 0,
+          "vpip_hands_sb": 443,
+          "spr_1_1_decisions": 370,
+          "spr_1_1_blocked": 367,
+          "spr_1_1_high_spr_shoves": 0,
+          "spr_1_1_early_high_spr_shoves": 0,
+          "spr_1_2_decisions": 293,
+          "spr_1_2_blocked": 278,
+          "spr_1_2_high_spr_shoves": 0,
+          "spr_1_2_early_high_spr_shoves": 0,
+          "spr_1_3_decisions": 229,
+          "spr_1_3_blocked": 215,
+          "spr_1_3_high_spr_shoves": 0,
+          "spr_1_3_early_high_spr_shoves": 0,
+          "vpip_hands_bb": 170,
+          "pfr_hands_bb": 105,
+          "spr_0_1_decisions": 442,
+          "spr_0_1_blocked": 431,
+          "spr_0_1_high_spr_shoves": 0,
+          "spr_0_1_early_high_spr_shoves": 0,
+          "spr_0_2_decisions": 338,
+          "spr_0_2_blocked": 331,
+          "spr_0_2_high_spr_shoves": 0,
+          "spr_0_2_early_high_spr_shoves": 0,
+          "spr_0_3_decisions": 267,
+          "spr_0_3_blocked": 246,
+          "spr_0_3_high_spr_shoves": 0,
+          "spr_0_3_early_high_spr_shoves": 0,
+          "pfr_hands_sb": 88,
+          "v10_big_call": 12
+        },
+        "loss_100bb_hands": 10,
+        "loss_190bb_hands": 8,
+        "match_wins": 13
+      }
+    }
+  },
+  "paired_gain": {
+    "equity": {
+      "mbb_per_hand": -956.5,
+      "ci95": [
+        -2743.129405044152,
+        830.1294050441518
+      ],
+      "match_pairs": 20
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": -147.0,
+      "ci95": [
+        -1131.710833365495,
+        837.7108333654952
+      ],
+      "match_pairs": 20
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": 424.0,
+      "ci95": [
+        -589.1594141309182,
+        1437.1594141309183
+      ],
+      "match_pairs": 20
+    }
+  },
+  "full_report_sha256": "98ceb005299ba6712d31a7c4ea712743ad7b6850d78a9e22fa921646b5839470",
+  "source_sha256_manifest": {
+    "scripts/eval_botzone_guard.py": "581bedb86f41834bfe7d94b22c980d5195a1e6044637011807e408e833223fae",
+    "src/alphanl/__init__.py": "7aedafb1f8efda63d36bd5e06ad8d463a69dd161ea5d20626eee83386154a6a7",
+    "src/alphanl/bots.py": "1eea42872628485a4e03ef6fa7c50d30b82fb232b01d8e1ce27830b362820dc0",
+    "src/alphanl/botzone/__init__.py": "6043d23278aebe2efc5d5160cef9bf50043634cdc5c08bf069c8310f564b4bc4",
+    "src/alphanl/botzone/actions.py": "913635973f73e3f273d2eb03118b2447adc590e5f4160e5bcf7896b1c62e6100",
+    "src/alphanl/botzone/legal.py": "df77491a9f472c10cb2902e4b0e1e51275d21bcaa56d98f3bb7b013881188b6d",
+    "src/alphanl/botzone/rule_bot.py": "f389a0ea75ab164f230bcbf47656e0c81d53cde48ffcd503c9bf763a9d89f2a1",
+    "src/alphanl/botzone/rule_eval.py": "b3124e616670c4b31633c10736761869397de1403d659a7d69b75596c516d6c9",
+    "src/alphanl/botzone/table.py": "b3f56127eedccb8ae57dfef3ce8e9ddecffa17a9943b6f1d2bd940a53033f165",
+    "src/alphanl/cfr/__init__.py": "7f6adf49fdd45502ddf3c254b41d6757e45256955cb5af0300a151ba1ba02786",
+    "src/alphanl/cfr/actions.py": "0fdeb3e34b7ef7109be6b7992e5857e45e6c0d5a301c1aab6c3d8c695b880010",
+    "src/alphanl/cfr/checkpoint.py": "1157061f24c58fd10502e61348d65ed881de7f0210500bbb3f82bdd46807eab7",
+    "src/alphanl/cfr/config.py": "1a6d4aecbf3cac395a61ec354903204d6f33b5e1f87a51ff585005bd7aa3f93f",
+    "src/alphanl/cfr/device_pool.py": "d82d710be2fce1eeae6203b0b5cec1e7704ba542ffaaa4e51539719f037682fe",
+    "src/alphanl/cfr/diagnostics.py": "575e584b569f851f25cf9e9626c873193e67e049dd765a05dcbfa87d7ecc2b21",
+    "src/alphanl/cfr/distillation.py": "7d15ec9b18159e5f7cd10c06e3b374cae21d2f49b49daa942c32a6f39efe8b5c",
+    "src/alphanl/cfr/evaluation.py": "e1bd657dfb44012b3a44b9ce19203192b439f4d15688564922e5a0a7e36c22bf",
+    "src/alphanl/cfr/evaluation_io.py": "0afc6c6877e0001ceeb7d63908d35a9c3ff34ccf0be0f39162b75bc18618889c",
+    "src/alphanl/cfr/evaluation_schedule.py": "582a0342c89963953aff963731dd65982c8438cc5f15a58954eaf783acb91d86",
+    "src/alphanl/cfr/fidelity.py": "32ece11df0105ae0df70ed182300b5e6ef014f394d111410afc65bc9e8b28e19",
+    "src/alphanl/cfr/gauntlet.py": "f8c514f507538f5c6da8695416423a2ffc07851707e8b955745b6cc1fb693ba3",
+    "src/alphanl/cfr/kuhn.py": "34c69f78965e5406dcf2c09a7b279ef562fe90bd379e10e60b31402ea422953c",
+    "src/alphanl/cfr/model.py": "a6e65c4c54393d642964ffa54c1b820d534f45b8dd89e66104c8529558347367",
+    "src/alphanl/cfr/parallel.py": "697d623e83f0f85672048649caf5f01d42eb2a4db837c4979e28ecc53a780c28",
+    "src/alphanl/cfr/pro_bots.py": "59d600034ece650930bfb217404fe43dd18893307b9bb616a6bd50fb9a8b0cdb",
+    "src/alphanl/cfr/reservoir.py": "9ded9ad8b22368a176b56657e100ecf0c18be65369d5eecbec69e427d39f8623",
+    "src/alphanl/cfr/retention.py": "715c4c5e4ec210c1138b6e4f4a6a9ae980214f2e6a4d42d8a4330b22922aa782",
+    "src/alphanl/cfr/strategy.py": "4fc60bbc36103fafe48e61a0ac66463a5a11e1aa87771e23582e1c8d52201f51",
+    "src/alphanl/cfr/study.py": "215f44ab4bf4b4ce757e4618d75d184f14acafe654ca2296c6188cc4ebde5c26",
+    "src/alphanl/cfr/trainer.py": "07f8837625b1c5d28e63797bdd834b77c616433bc057353daeaf7c1beb3736b4",
+    "src/alphanl/cfr/traversal.py": "6183e9336d69bcc888ca5006b892f166bd3b3823f11333c57b5d136bc203f469",
+    "src/alphanl/cfr/weighting.py": "5f1a33991d441f99e6e3ecb7e5956a3cc8635eaa65b615c560f7eab6fb6f918d",
+    "src/alphanl/exploiter/__init__.py": "59d0768993b303075f83cbedbd265fe419e2b1ea96e42ec0294313eabdafaff1",
+    "src/alphanl/exploiter/context.py": "565af62bec89c2fba56561aa8326f817e8fde68adaa3ca234b9a8c25fd34856f",
+    "src/alphanl/exploiter/policy.py": "63e3a850bcc5f001d40403a5dfaef9757c38511b78b0b928bda72183f72d472c",
+    "src/alphanl/exploiter/train.py": "18f76d37328caaa213c3522e497e35e5248ea550dd4fb2a86206c8c85160ec20",
+    "src/alphanl/inference.py": "735f787b460a0c3e9bde09798f7b1aa091646a3ff9329625719fa4fa123063f0",
+    "src/alphanl/matchup.py": "7a4cfba667098b7c6e4906c81bc66ea22c87dcd628a85948240bc903fec04183",
+    "src/alphanl/nl_obs.py": "098b0e3da42b08bb32187803b26a190354d7db0fce348feb9abb7ac36934f213",
+    "src/alphanl/paths.py": "b2e9d386278506ad34cb1831e24ed5b2451acce92dafcb594bb8301c26ca8382",
+    "src/alphanl/stage2/__init__.py": "efb97be8f6cac83ac2d8e365927332e936c5922f0fbd94c92ce97446f5692053",
+    "src/alphanl/stage2/blend.py": "cbf26c962433c421b31c862f7a37c55d7b3f2ab530a74f1d4c386006238817a8",
+    "src/alphanl/stage2/context.py": "33c350155772f54254d164eef62ce0a21b84a90bda907c95e45411ddf42505ed",
+    "src/alphanl/stage2/deployment_guard.py": "41455428ba09470af0a539ab9ff430921b634805e68b3c3be2e1ff3f19820b1a",
+    "src/alphanl/stage2/env.py": "56a8949b4568d210165c26c4efd8cde6c48fd49aa59a2992014af1d9bf1867af",
+    "src/alphanl/stage2/evaluation.py": "2cdea1783cdead8b62aedc2d2bbdd0b23a4cb60a6ae9f0a29c0a5177858b0d4a",
+    "src/alphanl/stage2/export.py": "25d464d8e2cc7d9d559d321e6206a9e0d66d4883b40cb4424291c1d9f367d745",
+    "src/alphanl/stage2/opponents.py": "42ca85a8745551b6ffdf384cdea871b340fa047a99d19ca0d961fc941d4636b9",
+    "src/alphanl/stage2/policy.py": "347a64e1b8eff7606deb35009e79757cfd6bf38a77c34f086fce82d9aae14b46",
+    "src/alphanl/stage2/pool.py": "2ff86af80deb549584e9e1450c223dfca54778e1f6941ee49478c63b638b9c10",
+    "src/alphanl/stage2/portable_evaluator.py": "6d9c6e89406b70544d54fefc5a5bcece2d99ce5a3425af2aec315f188822fffa",
+    "src/alphanl/stage2/portable_runtime.py": "f7c6b36f5571429728e02458885b9a354767c38a8dd1f70f6a617b61f4a4b346",
+    "src/alphanl/stage2/traces.py": "29771d5e6249904d0fec6ca97f5900f6e4e1a766aae6adda382ec2b25901537b",
+    "src/alphanl/stage2/train.py": "446d91aca97b55b1fb25674916318b3a932eb1eda5b344d3bbe0951c95eb48d9",
+    "src/alphanl/tf_teacher.py": "c2ef7646a7af8fececa4ddc0fd9bfc4c87e94b05afe4125d1bf8f81c5419f033",
+    "src/alphanl/transformer/__init__.py": "988063f7d341baace1389fcfac4ba4faa0c73da181a02e9988354c31d95032d7",
+    "src/alphanl/transformer/bc.py": "4179ea79802a965debbb4e74dc8b6c0e610f25119ec2df72e3cd4b27c178049d",
+    "src/alphanl/transformer/botzone_table.py": "bf4829e82fa0acc360991be175077418d5e05b12c79c2eaf73c184ecb66d021b",
+    "src/alphanl/transformer/buckets.py": "17272a9a70106bd5d6ce9bc8df636e3ccd6ebb5147f827d151fef2702f75f240",
+    "src/alphanl/transformer/checkpoint.py": "0b837a6a896e3dd0f589f73cf55f169077a00c62ac8a693948353fe85e77a088",
+    "src/alphanl/transformer/config.py": "a613591117199ed6cc4b6ec976fc968b815ca5b800654294de0069df60b5562b",
+    "src/alphanl/transformer/conv_net.py": "e085d4ab12dbe4a57111642a37d4018c17298512818d7a8e880647b955617bdc",
+    "src/alphanl/transformer/conv_obs.py": "c1dd5a3c6190ba29e47fb8ff6956e868babbdd4f1acd7744cfa8a79048a95be2",
+    "src/alphanl/transformer/decision_stats.py": "75f9110d4c39551469ffa15868a29e3fc3626b9fce93edffecb56100f75bdf90",
+    "src/alphanl/transformer/env.py": "d28071246cf09031b421871250507290a8132d095f677867eababc1e2a190f47",
+    "src/alphanl/transformer/equity.py": "1c5cbd5b7fa30f1538e6ef5fe8116e27bb89bd7b494c84cbf46d85900a8f08a5",
+    "src/alphanl/transformer/history.py": "3be2ee9842e491bfae18241ac524b6ce4c03cefb6dcaf75ca27954a447348d85",
+    "src/alphanl/transformer/hunl.py": "e5902b01d66628fa968d60c294c3474d7ea901e191fe45fe8542b4650f83d28e",
+    "src/alphanl/transformer/model.py": "d99ba828892914d8dd64eebce769915130b93b94f17d3bee3c8f95dea89a0467",
+    "src/alphanl/transformer/pool.py": "934dad84c29b198c0c4896b64a2b1bc95950eec12af10d792338ee40deb5f30b",
+    "src/alphanl/transformer/ppo.py": "71e3e1fe9b8cbdc4616f7e109a20faa0978a36b07ac5a88fed383a6dfbef5813",
+    "src/alphanl/transformer/schema.py": "99c1530e23f3894b894a8aa35608264cbe22d51281734be69c648da5ce5d8933",
+    "src/alphanl/transformer/tables.py": "114daf8da533792f04e93dad3ca59b763e065098582247fa8d11b923a63a1e13",
+    "src/alphanl/transformer/tokenizer.py": "10e484c89abc7c6abcd1e359a2beaca7b2141f50b0c28da823aec8ed2c30c2e9",
+    "src/alphanl/transformer/train.py": "9f4f4f463d0e23fff4e7b27b48d652bfe49bbf9e097279ff312988bb4a3561a2"
+  }
+}

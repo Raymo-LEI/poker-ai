@@ -1,0 +1,16 @@
+{
+  "full_suite": {
+    "passed": 579,
+    "skipped": 8,
+    "failures": 0,
+    "errors": 0
+  },
+  "configuration_roundtrip_separate_test": {
+    "passed": 1,
+    "already_in_full_suite": false
+  },
+  "notes": [
+    "Initial restricted run:569 pass,10 permission failures,8 skip. Successful full suite rerun on same local host with shared-memory/localhost permissions.",
+    "Linux resource acceptance and actual Python3.6 execution not rerun."
+  ]
+}

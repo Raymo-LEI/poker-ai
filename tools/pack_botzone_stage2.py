@@ -27,11 +27,15 @@ def main():
     parser.add_argument("--weights-out", type=Path, default=Path("stage2_model.npz"))
     parser.add_argument("--safety", action="store_true",
                         help="move small high-SPR all-in mass to call (deployment intervention)")
+    parser.add_argument("--v10-guard", action="store_true", help="embed conservative v10 guard defaults in weights")
+    parser.add_argument("--guard-config", type=Path, help="JSON guard settings (overrides --v10-guard defaults)")
     args = parser.parse_args()
     report = {"zip": pack(args.zip)}
     if args.checkpoint is not None:
         from alphanl.stage2.export import export_botzone_weights
-        report["weights"] = export_botzone_weights(args.checkpoint, args.weights_out, safety=args.safety)
+        from alphanl.stage2.deployment_guard import V10_GUARD
+        config = json.loads(args.guard_config.read_text()) if args.guard_config else V10_GUARD if args.v10_guard else None
+        report["weights"] = export_botzone_weights(args.checkpoint, args.weights_out, safety=args.safety, deployment_guard=config)
     print(json.dumps(report, indent=2))
 
 

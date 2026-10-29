@@ -58,6 +58,7 @@ def cat(values, dim=0):
     sources["tokenizer"] = (transformer / "tokenizer.py").read_text().replace("import torch", "from . import arraytorch as torch")
     sources["tables"] = 'from .schema import SUITS, RANKS\ndef standard_deck():\n    return tuple(s+r for s in SUITS for r in RANKS)\n'
     sources["portable_evaluator"] = (base / "stage2/portable_evaluator.py").read_text()
+    sources["deployment_guard"] = (base / "stage2/deployment_guard.py").read_text()
     equity = (transformer / "equity.py").read_text()
     equity = equity.replace('from phevaluator import evaluate_cards', 'from .portable_evaluator import evaluate_cards')
     table = (transformer / "data/preflop_equity_v1.json").read_bytes()
@@ -151,12 +152,14 @@ def pack_botzone_zip(destination):
     return {"path": str(destination), "bytes": destination.stat().st_size, "files": [n for n, _ in entries]}
 
 
-def export_botzone_weights(checkpoint, destination, *, safety=False):
+def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_guard=None):
     """Weights plus config for ``data/stage2_model.npz`` in Botzone user storage."""
     model, blob = load_checkpoint(checkpoint)
+    from .deployment_guard import guard_config
+    deployment_guard = guard_config(deployment_guard)
     config = model.config
     meta = {"format": BOTZONE_FORMAT, "config": config.to_dict(), "settings": model.settings,
-            "numeric_version": config.numeric_version, "safety": bool(safety),
+            "numeric_version": config.numeric_version, "safety": bool(safety), "deployment_guard": deployment_guard,
             "source": {"checkpoint": str(checkpoint), "update": blob.get("update")}}
     weights = _weights(model)
     if "meta_json" in weights:

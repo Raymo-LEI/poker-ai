@@ -1,0 +1,25 @@
+{
+  "checkpoint_sha256": "c89f9f3016cb15742d093bd2f18a6e5a3d394f80f084d0498104dc428a6703aa",
+  "checkpoint_update": 200,
+  "all_parameter_arrays_bit_identical": true,
+  "parameter_arrays": 65,
+  "parameters": 1508683,
+  "guard": {
+    "enabled": true,
+    "prune_below": 0.1,
+    "active_shove_min_bb": 30.0,
+    "active_shove_pot_ratio": 2.0,
+    "overbet_call_min_bb": 50.0,
+    "overbet_call_pot_ratio": 1.2,
+    "overbet_min_equity": 0.82,
+    "require_made_hand": true,
+    "big_call_enabled": false,
+    "big_call_min_bb": 40.0,
+    "big_call_min_probability": 0.35,
+    "big_call_equity_margin": 0.05,
+    "equity_samples": 128,
+    "equity_seed": 17
+  },
+  "python36_syntax_parse": true,
+  "python36_execution_tested": false
+}

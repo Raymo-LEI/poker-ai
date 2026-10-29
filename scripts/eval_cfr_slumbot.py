@@ -26,7 +26,7 @@ from alphanl.transformer.tables import aligned_decks, standard_deck
 from slumbot_client import State, post
 
 
-def decision_table(response):
+def decision_table(response, *, bet_telemetry=None):
     seat = response["client_pos"]
     parsed = State(response["action"])
     if parsed.pos != seat or parsed.over:
@@ -46,13 +46,18 @@ def decision_table(response):
     table = HunlTable(seed=0)
     table.reset(deck)
     street_start, last_street = [0, 0], 0
-    for street, player, kind, before, after in parsed.events:
+    for event_index, (street, player, kind, before, after) in enumerate(parsed.events):
         if street != last_street:
             street_start, last_street = before, street
         if table.street != street or table.current_player() != player:
             raise ValueError("Slumbot action order disagrees with standard HUNL")
         if kind == "b":
-            table.step_raise_to(after[player] - street_start[player])
+            target = after[player] - street_start[player]
+            if bet_telemetry is not None:
+                abstract_targets = {int(table.state.bets[player]) + table.action_chips(a)
+                    for a in table.legal_action_ids() if a in (2, 3, 4)}
+                bet_telemetry[event_index] = dict(player=player, off_tree=target not in abstract_targets)
+            table.step_raise_to(target)
         else:
             table.step(0 if kind == "f" else 1)
     snapshot = table.snapshot(seat)

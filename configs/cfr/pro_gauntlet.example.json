@@ -1,0 +1,10 @@
+{
+  "candidates": [
+    {"name": "A_w150_350", "kind": "teacher", "path": "../../runs/frozen_teacher/strategies", "start": 150, "end": 350},
+    {"name": "B_fidelity_student", "kind": "student", "path": "../../runs/frozen_student/policy.pt"},
+    {"name": "C_update_100", "kind": "stage2", "path": "../../runs/frozen_stage2/update_0000100.pt", "update": 100},
+    {"name": "C_update_200", "kind": "stage2", "path": "../../runs/frozen_stage2/update_0000200.pt", "update": 200},
+    {"name": "C_update_300", "kind": "stage2", "path": "../../runs/frozen_stage2/update_0000300.pt", "update": 300},
+    {"name": "D_legacy_059m", "kind": "student", "path": "../../runs/optional_verified_legacy/policy.pt", "required": false}
+  ]
+}

@@ -96,3 +96,10 @@ The opt-in [Stage 1 full-capacity profile](docs/cfr_fullupgrade.md) combines equ
 ## Stage 2：50 手跨手上下文残差 PPO
 
 共享 Stage 1 输入契约、平均策略蒸馏、冻结参考残差 PPO、PFSP、NumPy 单文件导出与 CPU smoke 已提供；不会自动启动 GPU 训练。入口、测试及真实裁判适配边界见 [Stage 2 交接文档](docs/stage2_match_residual.md)。四层 MatchPool、整局风格抖动、固定 35% 防守配额和独立评测见 [MatchPool 升级说明](docs/stage2_matchpool.md)。
+
+Independent [Pro Gauntlet evaluation](docs/pro_gauntlet.md) adds TAG/check-raise
+style probes, frozen-policy Slumbot evaluation and cross-generation duplicate
+tournaments. See the [implementation and 100,000-hand report](docs/pro_gauntlet_report_20261029.md)
+for the published matrix, uncertainty and provisional selection, and the
+[external-opponent assessment](docs/open_source_stage2_opponents.md) for future
+training-pool candidates. No training pool or deployment is changed automatically.

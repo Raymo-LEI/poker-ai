@@ -6,14 +6,19 @@ import argparse
 from collections import OrderedDict
 import gzip
 import json
+from pathlib import Path
 import signal
 import subprocess
+import sys
 import threading
 import time
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import ProxyHandler, Request, build_opener
 
+SCRIPTS = str(Path(__file__).resolve().parent)
+if SCRIPTS not in sys.path:
+    sys.path.insert(0, SCRIPTS)
 from monitor_training import ThreadingHTTPServer, make_handler
 
 
@@ -149,6 +154,7 @@ def main():
     parser.add_argument("--tunnel-port", type=int, default=6012)
     parser.add_argument("--remote-port", type=int, default=6008)
     parser.add_argument("--ssh-host", default="seetacloud-poker")
+    parser.add_argument("--open-browser", action="store_true", help="open the local dashboard after binding")
     args = parser.parse_args()
     # Bind the stable page before connecting SSH. Never take another listener's port.
     store = RemoteStore(args.tunnel_port)
@@ -161,6 +167,9 @@ def main():
     signal.signal(signal.SIGTERM, terminate)
     tunnel.thread.start()
     print(f"Overwatch local gateway: http://127.0.0.1:{args.port}", flush=True)
+    if args.open_browser:
+        import webbrowser
+        webbrowser.open(f"http://127.0.0.1:{server.server_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

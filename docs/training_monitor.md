@@ -1,5 +1,7 @@
 # Overwatch 训练监控台
 
+整套源码与双击启动入口均已纳入仓库；通用部署及独立 ZIP 打包步骤见 [monitor/README.md](../monitor/README.md)。下文含历史本机安装记录，实际部署以通用入口为准。
+
 ## Overwatch 2.0 工作台
 
 现已在原有 A～E 训练面板上加入分页面的运行总览、实验库与对比、评测变体、对局与漏损、模型与归档、运行与证据时间线。正式入口仍是 <http://127.0.0.1:6009/#overview>。
@@ -58,7 +60,7 @@ ssh -N -L 6008:127.0.0.1:6008 用户名@服务器地址
 
 已安装副本位于 `~/Library/Application Support/Overwatch/`，包含三份监控 Python 源码与五个前端文件，避免依赖项目目录一直可用。修改仓库监控代码后需要同步此副本；启动项配置和日志位于 `~/Library/LaunchAgents/com.runyuanlei.overwatch-tunnel.plist` 与 `~/Library/Logs/overwatch-tunnel.launchd.*.log`。原配置备份在 `~/Library/Logs/overwatch-gateway-before-*.plist`，2.0 代码备份在各监控安装目录的 `v2_*before_*`。本机网关访问回环端口时明确绕过系统代理。
 
-双击 `连接服务器监控.command` 会复用本机页面服务，必要时启动现有 LaunchAgent；不会再为 6009 创建竞争的 SSH 监听。未安装启动项时可手动运行 `python3 scripts/monitor_remote.py`。服务器重启后需先重新启动远端日志服务：
+仓库中的 `连接服务器监控.command` 直接运行当前 checkout 的网关；默认使用已有 SSH 别名 `seetacloud-poker`，不依赖个人 LaunchAgent。已有网关占用端口时会报错，需先退出旧监控或另选端口。服务器重启后需先重新启动远端日志服务：
 
 ```bash
 ssh seetacloud-poker

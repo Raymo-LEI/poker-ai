@@ -13,6 +13,18 @@
 
 标准 HUNL、旧 `rlcard` 环境和 Botzone simple 裁判并非同一套规则；不同深度或后端的对战指标也不能直接横比。
 
+## Overwatch 训练控制台
+
+完整 monitor（前端、只读日志后端、SSH 重连网关和启动脚本）随本仓库维护，
+沿用神经／纸本主题。仅需 Python 3.10+，无需安装训练依赖或 npm：
+
+```bash
+python3 scripts/monitor_training.py --runs-dir /absolute/path/to/runs --open-browser
+```
+
+本地页面默认 `http://127.0.0.1:6008`。远程查看和独立 ZIP 打包见
+[monitor 入口](monitor/README.md)，日志与 Stage 2 接口见 [控制台文档](docs/training_monitor.md)。
+
 ## 快速开始：SD-CFR
 
 以下命令在仓库根目录运行，需要 Python 3.10+。PyTorch 的 CPU 或 CUDA 版本请按本机环境安装；`requirements-cfr.txt` 包含当前 CFR 路径依赖。

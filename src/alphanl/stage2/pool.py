@@ -7,10 +7,13 @@ import torch
 from alphanl.cfr.strategy import SnapshotPolicy
 from alphanl.cfr.distillation import prepare_archive, SEMANTIC_FIELDS
 from .opponents import JitteredRuleActor, NeuralMatchActor
+from alphanl.cfr.pro_bots import PRO_OPPONENTS, JitteredProScriptActor
 
 DEFAULT_WEIGHTS = {"equity": .35, "nit": .12, "call": .06, "maniac": .035,
                    "overbet": .035, "push_fold": .05, "reference": .10, "history": .15, "self": .10}
 DEFENSE = {"reference": .10, "history": .15, "self": .10}
+PRO_WEIGHTS = {**{k: v if k in DEFENSE else v * (.35/.65) for k,v in DEFAULT_WEIGHTS.items()},
+               "TAG_Pro": .15, "Trapper_CR": .15}
 DEFAULT_BUCKETS = ((140, 160), (240, 260), (320, 350), (100, 350))
 FORMAT = "stage2_matchpool_v2"
 
@@ -20,7 +23,7 @@ class MatchOpponentPool:
                  window_size=100, history_cache_size=16, history_refresh_matches=100,
                  history_buckets=None, self_snapshot_every=25, self_history_size=16):
         self.weights = dict(DEFAULT_WEIGHTS if weights is None else weights)
-        if (set(self.weights) != set(DEFAULT_WEIGHTS)
+        if (set(self.weights) not in (set(DEFAULT_WEIGHTS), set(PRO_WEIGHTS))
                 or any(not math.isfinite(w) or w <= 0 for w in self.weights.values())
                 or not math.isclose(sum(self.weights.values()), 1.)
                 or any(not math.isclose(self.weights[k], v) for k, v in DEFENSE.items())):
@@ -69,7 +72,7 @@ class MatchOpponentPool:
         self.reference = learner.reference
         self.device = next(learner.parameters()).device
         if not self.self_weights:
-            self.add_self_snapshot(learner, update=0)  # Explicit frozen zero-residual bootstrap.
+            self.add_self_snapshot(learner, update=0)  # Frozen initial policy, including an explicit warm start.
         if self.resident_ids:
             self._load_residents()
         else:
@@ -163,7 +166,7 @@ class MatchOpponentPool:
             update = int(self.rng.choice(list(self.self_weights)))
             actor = NeuralMatchActor(self._self_model(update), kind="residual", snapshot_id=update, seed=seed)
         else:
-            actor = JitteredRuleActor(name, seed=seed, equity_samples=self.equity_samples)
+            actor = (JitteredProScriptActor if name in PRO_OPPONENTS else JitteredRuleActor)(name, seed=seed, equity_samples=self.equity_samples)
         return name, actor
 
     def record(self, name, hero_net_bb):

@@ -174,6 +174,7 @@ def test_committed_zip_is_current(tmp_path):
             assert new.read(name) == old.read(name), "%s changed; run tools/pack_botzone_stage2.py" % name
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="platform acceptance requires Linux taskset and RLIMIT_AS")
 def test_full_judge_match_under_platform_limits(bundle):
     result = subprocess.run([sys.executable, str(ROOT / "tools" / "accept_botzone_stage2.py"),
                              "--zip", str(bundle["zip"]), "--weights", str(bundle["weights"]),

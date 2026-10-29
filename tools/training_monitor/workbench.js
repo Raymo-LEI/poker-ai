@@ -130,13 +130,13 @@
     chart("s2-kl", rows, [{key:"stage2/base_kl",label:"KL · epoch mean"},{key:"stage2/final_base_kl",label:"KL · after update"}], {zero:true});
     chart("s2-return", rows, [{key:"stage2/hero_net_bb",label:"50 手净 BB"}], {zero:true});
     chart("s2-beta", rows, [{key:"stage2/beta_kl",label:"平均 beta"},{key:"stage2/kl_penalty",label:"KL penalty"}], {zero:true});
-    const names = ["equity","nit","call","maniac","overbet","push_fold","reference","history","self"];
+    const names = ["equity","nit","call","maniac","overbet","push_fold","reference","history","self","TAG_Pro","Trapper_CR"];
     chart("s2-pfsp", rows, names.map(name => ({key:`stage2/pfsp/${name}`,label:name})), {zero:true});
     $("s2-opponents").replaceChildren(s2.block_updates ? table(["对手","本次实际采样","滚动窗口场数","窗口 mbb/hand","窗口比赛胜率"], (s2.opponents || []).map(o => [o.name,fmt(o.sampled,0),fmt(o.matches,0),fmt(o.mbb_per_hand,1),pct(o.match_win)+"%"])) : table(["对手","记录场数","平均净 BB / 场","胜 / 和 / 负"], enabled ? (s2.opponents || []).map(o => [o.name,fmt(o.matches,0),fmt(o.mean_net_bb,2),`${o.wins} / ${o.draws} / ${o.matches-o.wins-o.draws}`]) : []));
     mini("s2-eval-cards", enabled ? stage2EvaluationCards(data,fmt) : []);
     const evalRows = data.rows.filter(row => isNumber(row["stage2/eval/update"]));
     chart("s2-evaluation", enabled ? evalRows : [], ["equity","reference"].map(name => ({key:`stage2/eval/${name}/mbb_per_hand`,label:name+" · 独立评测 mbb/hand"})), {zero:true});
-    const hud = [["vpip","VPIP"],["pfr","PFR"],["three_bet","3-bet"],["fold_to_preflop_raise","面对翻前加注 Fold"],["flop_aggression","Flop aggression"],["turn_aggression","Turn aggression"],["river_aggression","River aggression"],["fold_to_postflop_bet","面对翻后下注 Fold"],["all_in_frequency","All-in"],["showdown_win","摊牌胜率"]];
+    const hud = [["vpip","VPIP"],["pfr","PFR"],["three_bet","3-bet"],["fold_to_preflop_raise","面对翻前加注 Fold"],["flop_aggression","Flop aggression"],["turn_aggression","Turn aggression"],["river_aggression","River aggression"],["fold_to_postflop_bet","面对翻后下注 Fold"],["all_in_frequency","All-in"],["showdown_win","摊牌胜率"],["check_raise_freq","Check-raise / opportunity"],["cbet_freq","Flop C-bet / opportunity"]];
     mini("s2-context", enabled ? hud.map(([key,label]) => [label,pct(r[`stage2/context/${key}`]),"%","最后一场对手 · 含先验"]) : []);
   }
 

@@ -56,7 +56,7 @@ class ModelActor:
         snapshot = self.guard.apply(snapshot)
         batch = self.tokenizer.encode(snapshot)
         if self.residual:
-            batch["match_ctx"] = self.ctx.tensor()
+            batch["match_ctx"] = self.ctx.tensor(self.model.context_fields)
         batch = {k: v.to(next(self.model.parameters()).device) for k, v in batch.items()}
         probs = (self.model(batch)[0].softmax(-1) if self.residual else self.model.strategy(batch))[0].cpu().double().numpy()
         if not np.isfinite(probs).all() or probs.sum() <= 0:
@@ -84,6 +84,27 @@ class Candidate:
             self.metadata["snapshot_sha256"] = {p.name: sha256(p) for p in actor.policy.paths}
             self.config = actor.policy.config
             self.cache_size = cache_size
+        elif self.kind == "blend":
+            import json
+            from alphanl.stage2.blend import ResidualOutputBlend
+            descriptor = json.loads(self.path.read_text())
+            if descriptor.get("format") != "stage2_residual_output_blend_v1":
+                raise ValueError("invalid blend descriptor")
+            members, identities = [], []
+            for item in descriptor["members"]:
+                path = Path(item["path"])
+                if not path.is_absolute():
+                    path = self.path.parent / path
+                model, blob = load_checkpoint(path, device=device)
+                digest = sha256(path)
+                if item.get("sha256", digest) != digest or item.get("update", blob["update"]) != blob["update"]:
+                    raise ValueError("blend member fingerprint/update mismatch")
+                members.append(model)
+                identities.append(dict(update=blob["update"], sha256=digest))
+            self.model = ResidualOutputBlend(members, descriptor["weights"])
+            self.config = self.model.config
+            self.metadata.update(sha256=sha256(self.path), members=identities,
+                                 weights=descriptor["weights"], blend="bounded_residual_outputs_before_softmax")
         elif self.kind in ("student", "stage2"):
             self.metadata["sha256"] = sha256(self.path)
             self.model, blob = (load_student(self.path, device=device) if self.kind == "student"
@@ -102,7 +123,7 @@ class Candidate:
     def actor(self, seed):
         if self.kind == "teacher":
             return CFRActor(self.path, seed=seed, iterations=self.iterations, cache_size=self.cache_size)
-        return ModelActor(self.model, seed=seed, residual=self.kind == "stage2")
+        return ModelActor(self.model, seed=seed, residual=self.kind in ("stage2", "blend"))
 
 
 def rule_actor(name, seed, equity_samples):

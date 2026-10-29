@@ -17,7 +17,8 @@ EVAL_OPPONENTS = ("equity", "nit", "call", "maniac", "overbet", "reference")
 
 @torch.inference_mode()
 def play_match(model, opponent, *, decks, first_hero_seat, hand_trace=None):
-    env = BotzoneMatchEnv(model.config, opponent, decks=decks, first_hero_seat=first_hero_seat, hand_trace=hand_trace)
+    env = BotzoneMatchEnv(model.config, opponent, decks=decks, first_hero_seat=first_hero_seat,
+                         hand_trace=hand_trace, context_fields=model.context_fields)
     obs = env.reset()
     device = next(model.parameters()).device
     while not env.done:
@@ -40,12 +41,18 @@ def summarize_match_pairs(totals):
 
 
 class MatchEvaluator:
-    def __init__(self, model, *, match_pairs=50, seed=92017, equity_samples=64):
+    def __init__(self, model, *, match_pairs=50, seed=92017, equity_samples=64, opponents=None):
         if isinstance(match_pairs, bool) or not isinstance(match_pairs, int) or match_pairs < 2:
             raise ValueError("evaluation needs at least two match pairs")
         if equity_samples < 1:
             raise ValueError("invalid evaluation equity sample count")
         self.match_pairs, self.seed, self.equity_samples = match_pairs, seed, equity_samples
+        self.opponents = tuple(EVAL_OPPONENTS if opponents is None else opponents)
+        from alphanl.cfr.evaluation import OPPONENTS
+        from alphanl.cfr.pro_bots import PRO_OPPONENTS
+        if (len(set(self.opponents)) != len(self.opponents) or not {"equity","reference"} <= set(self.opponents)
+                or any(n not in OPPONENTS + PRO_OPPONENTS + ("reference",) for n in self.opponents)):
+            raise ValueError("invalid held-out evaluation opponents")
         with torch.random.fork_rng(devices=[]):
             self.baseline = ResidualExploiterPolicy(model.reference, **model.settings).to(next(model.parameters()).device).eval()
         self.baseline.requires_grad_(False)
@@ -80,7 +87,7 @@ class MatchEvaluator:
             model.eval()
             # Evaluation must not consume the training action RNG stream.
             with torch.random.fork_rng(devices=devices):
-                for name in EVAL_OPPONENTS:
+                for name in self.opponents:
                     if progress:
                         progress(name)
                     if name not in self.baseline_totals:

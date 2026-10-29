@@ -39,7 +39,26 @@ def public_event(row, seat):
 
 
 def safe_post(session, path, data):
-    response = session.post(f"{HOST}/api/{path}", json=data, timeout=(10, 30))
+    from urllib3.exceptions import NameResolutionError
+    # DNS and connect timeouts occur before HTTP bytes are sent. Read timeouts
+    # and generic connection failures remain ambiguous and must never retry.
+    for attempt in range(5):
+        try:
+            response = session.post(f"{HOST}/api/{path}", json=data, timeout=(10, 30))
+            break
+        except (requests.ConnectionError, requests.ConnectTimeout) as exc:
+            pending, seen, dns = [exc], set(), False
+            while pending:
+                error = pending.pop()
+                if id(error) in seen:
+                    continue
+                seen.add(id(error))
+                dns |= isinstance(error, NameResolutionError)
+                pending.extend(x for x in (getattr(error,"reason",None),getattr(error,"__cause__",None),
+                    getattr(error,"__context__",None),*getattr(error,"args",())) if isinstance(x,BaseException))
+            if attempt == 4 or not (dns or isinstance(exc, requests.ConnectTimeout)):
+                raise
+            time.sleep(2 ** attempt)
     response.raise_for_status()
     result = response.json()
     if not isinstance(result, dict) or "error_msg" in result:

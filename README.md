@@ -103,3 +103,8 @@ tournaments. See the [implementation and 100,000-hand report](docs/pro_gauntlet_
 for the published matrix, uncertainty and provisional selection, and the
 [external-opponent assessment](docs/open_source_stage2_opponents.md) for future
 training-pool candidates. No training pool or deployment is changed automatically.
+
+The opt-in [Stage 2 v3 Pro Hunter](docs/stage2_pro_hunter.md) adds jittered
+TAG/Trapper training families, an opportunity-based trap HUD, C200 weight-only
+warm starts and residual-output blend evaluation. Its report includes the
+expanded same-deal matrix and the completed 500-hand C200 Slumbot test.

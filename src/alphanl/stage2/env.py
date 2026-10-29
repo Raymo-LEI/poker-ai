@@ -6,16 +6,17 @@ have different action order/min-raises; deployment uses an explicit adapter.
 from alphanl.cfr.actions import CFRActionGuard
 from alphanl.cfr.traversal import HunlState
 from alphanl.transformer.hunl import HunlTable, HunlTokenizer
-from .context import MatchCtx
+from .context import MatchCtx, CONTEXT_FIELDS
 
 class BotzoneMatchEnv:
     def __init__(self, config, opponent=None, *, pool=None, seed=1, first_hero_seat=1,
-                 defer_opponents=False, decks=None, hand_trace=None):
+                 defer_opponents=False, decks=None, hand_trace=None, context_fields=CONTEXT_FIELDS):
         if config.separate_player_models or not config.position_conditioning:
             raise ValueError("Stage 2 requires unified position-conditioned Stage 1")
         if first_hero_seat not in (0, 1):
             raise ValueError("invalid first hero seat")
         self.hand_trace = hand_trace
+        self.context_fields = tuple(context_fields)
         self.config, self.opponent = config, opponent
         if (pool is None) == (opponent is None):
             raise ValueError("provide exactly one fixed opponent or MatchPool")
@@ -41,7 +42,7 @@ class BotzoneMatchEnv:
         return HunlState(self.table, self.tokenizer, self.guard).observation()
 
     def observe(self):
-        return {**self.observe_poker(), "match_ctx": self.ctx.tensor()}
+        return {**self.observe_poker(), "match_ctx": self.ctx.tensor(self.context_fields)}
 
     def reset(self):
         if not self.done:
@@ -145,4 +146,4 @@ class BotzoneMatchEnv:
                 {"hands_played": self.ctx.hands_played, "hero_net_bb": self.ctx.hero_net_bb})
 
     def _blank(self):
-        return {**self.tokenizer.blank(), "match_ctx": self.ctx.tensor()}
+        return {**self.tokenizer.blank(), "match_ctx": self.ctx.tensor(self.context_fields)}

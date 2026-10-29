@@ -14,6 +14,9 @@ from alphanl.transformer.schema import RANKS
 
 PRO_OPPONENTS = ("TAG_Pro", "Trapper_CR")
 PRO_VERSION = "pro_scripts_v1"
+PRO_DEFAULTS = dict(open_raise=.65, open_continue=.35, defend_base=.30, defend_size=.055,
+                    reraise=.88, cbet_dry=.75, cbet_wet=.40, trap_strong=.50, trap_draw=.25,
+                    semi_raise=.25, semi_bet=.45, river_fold=.65, river_bluff=.08, equity_margin=.10)
 
 
 @lru_cache(maxsize=1)
@@ -73,6 +76,7 @@ class ProScriptActor:
             raise ValueError("invalid pro script or equity sample count")
         self.name, self.rng = name, np.random.default_rng(seed)
         self.equity_samples = equity_samples
+        self.params = dict(PRO_DEFAULTS)
         self.counts = Counter()
         self.begin_hand(0)
 
@@ -88,17 +92,17 @@ class ProScriptActor:
             strength = preflop_percentiles()[preflop_key(s.hole_cards)]
             history = raises(s.events)
             if not history and s.me_seat == s.sb_seat:
-                if strength >= .65:
+                if strength >= self.params["open_raise"]:
                     self.counts["sb_open_raise"] += 1
                     return prefer(3, 2, 1, 0, 4)
-                return prefer(1, 0, 2, 3, 4) if strength >= .35 else prefer(0, 1, 2, 3, 4)
+                return prefer(1, 0, 2, 3, 4) if strength >= self.params["open_continue"] else prefer(0, 1, 2, 3, 4)
             size_bb = s.to_call / s.big_blind
             if not history:
                 return prefer(3, 2, 1, 0, 4) if strength >= .8 else prefer(1, 0, 2, 3, 4)
             # Defend wider against a small open, tighter against large/multiple raises.
-            threshold = min(.93, .30 + .055 * size_bb + .10 * max(0, len(history) - 1))
+            threshold = min(.93, self.params["defend_base"] + self.params["defend_size"] * size_bb + .10 * max(0, len(history) - 1))
             suited_ace = s.hole_cards[0][0] == s.hole_cards[1][0] and any(c[1] == "A" for c in s.hole_cards)
-            if strength >= (.88 if len(history) == 1 else .97) or (suited_ace and size_bb < 5 and self.rng.random() < .08):
+            if strength >= (self.params["reraise"] if len(history) == 1 else .97) or (suited_ace and size_bb < 5 and self.rng.random() < .08):
                 self.counts["preflop_reraise"] += 1
                 return prefer(3, 2, 1, 0, 4)
             return prefer(1, 0, 2, 3, 4) if strength >= threshold or not s.to_call else prefer(0, 1, 2, 3, 4)
@@ -112,11 +116,11 @@ class ProScriptActor:
         if self.name == "Trapper_CR":
             if not s.to_call and not street and s.street not in self.trap_decided:
                 self.trap_decided.add(s.street)
-                if features["strong"] and self.rng.random() < .5:
+                if features["strong"] and self.rng.random() < self.params["trap_strong"]:
                     self.trap_streets.add(s.street)
                     self.counts["trap_checks"] += 1
                     return prefer(1, 0, 2, 3, 4)
-                if features["strong_draw"] and self.rng.random() < .25:
+                if features["strong_draw"] and self.rng.random() < self.params["trap_draw"]:
                     self.trap_streets.add(s.street)
                     self.counts["draw_trap_checks"] += 1
                     return prefer(1, 0, 2, 3, 4)
@@ -129,28 +133,40 @@ class ProScriptActor:
         if s.to_call:
             if features["strong"] and can_raise and len(aggression) < 3:
                 return prefer(3, 2, 1, 0, 4)
-            if features["strong_draw"] and can_raise and len(aggression) < 2 and self.rng.random() < .25:
+            if features["strong_draw"] and can_raise and len(aggression) < 2 and self.rng.random() < self.params["semi_raise"]:
                 self.counts["semi_bluff_raises"] += 1
                 return prefer(2, 3, 1, 0, 4)
             # Uniform-card equity overvalues bluff catchers versus a strong river range.
             bet_ratio = s.to_call / max(1., s.pot - s.to_call)
             if s.street == 3 and bet_ratio >= .75 and .40 <= equity < .75 and not features["strong"]:
                 self.counts["river_bluffcatch_opportunities"] += 1
-                if self.rng.random() < .65:
+                if self.rng.random() < self.params["river_fold"]:
                     self.counts["river_bluffcatch_folds"] += 1
                     return prefer(0, 1, 2, 3, 4)
-            return prefer(1, 0, 2, 3, 4) if equity >= odds + .10 else prefer(0, 1, 2, 3, 4)
+            return prefer(1, 0, 2, 3, 4) if equity >= odds + self.params["equity_margin"] else prefer(0, 1, 2, 3, 4)
         if features["strong"] or equity > .76:
             return prefer(3, 2, 1, 0, 4)
         preflop = raises([e for e in s.events if e.street == 0])
         if s.street == 1 and not aggression and preflop and preflop[-1].actor_seat == s.me_seat:
-            if self.rng.random() < (.75 if features["dry"] else .40):
+            if self.rng.random() < (self.params["cbet_dry"] if features["dry"] else self.params["cbet_wet"]):
                 self.counts["cbets"] += 1
                 return prefer(2, 3, 1, 0, 4)
-        if features["strong_draw"] and self.rng.random() < .45:
+        if features["strong_draw"] and self.rng.random() < self.params["semi_bet"]:
             self.counts["semi_bluff_bets"] += 1
             return prefer(2, 3, 1, 0, 4)
-        if s.street == 3 and equity < .40 and self.rng.random() < .08:
+        if s.street == 3 and equity < .40 and self.rng.random() < self.params["river_bluff"]:
             self.counts["river_bluffs"] += 1
             return prefer(2, 3, 1, 0, 4)
         return prefer(1, 0, 2, 3, 4)
+
+
+class JitteredProScriptActor(ProScriptActor):
+    """Training-only parameters drawn once and held fixed for a full match."""
+    def __init__(self, name, *, seed, equity_samples=64):
+        super().__init__(name, seed=seed, equity_samples=equity_samples)
+        self.variant = "jittered_pro_v1"
+        bounds = dict(open_raise=(.60,.70), open_continue=(.30,.40), defend_base=(.26,.34),
+            defend_size=(.045,.065), reraise=(.84,.92), cbet_dry=(.65,.85), cbet_wet=(.30,.50),
+            trap_strong=(.40,.60), trap_draw=(.18,.32), semi_raise=(.20,.30), semi_bet=(.35,.55),
+            river_fold=(.55,.75), river_bluff=(.05,.11), equity_margin=(.075,.125))
+        self.params = {k: float(self.rng.uniform(*v)) for k,v in bounds.items()}

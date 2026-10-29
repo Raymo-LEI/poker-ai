@@ -1,0 +1,108 @@
+{
+  "stage": "stage2",
+  "device": "cuda",
+  "seed": 31,
+  "reference": "runs/frozen_reference/policy.pt",
+  "strategies": "runs/frozen_teacher/strategies",
+  "updates": 300,
+  "matches_per_update": 20,
+  "learning_rate": 0.0003,
+  "policy": {
+    "alpha": 1.0,
+    "hidden": 64,
+    "beta_kl": 0.05,
+    "late_beta_kl": 0.03,
+    "context_fields": [
+      "hand_progress",
+      "bankroll_diff",
+      "vpip",
+      "pfr",
+      "three_bet",
+      "fold_to_preflop_raise",
+      "flop_aggression",
+      "turn_aggression",
+      "river_aggression",
+      "fold_to_postflop_bet",
+      "all_in_frequency",
+      "showdown_win",
+      "check_raise_freq",
+      "cbet_freq"
+    ]
+  },
+  "ppo": {
+    "epochs": 4,
+    "minibatch_size": 256,
+    "gamma": 1.0,
+    "gae_lambda": 1.0
+  },
+  "pool": {
+    "weights": {
+      "equity": 0.18846153846153843,
+      "nit": 0.06461538461538462,
+      "call": 0.03230769230769231,
+      "maniac": 0.018846153846153846,
+      "overbet": 0.018846153846153846,
+      "push_fold": 0.026923076923076925,
+      "reference": 0.1,
+      "history": 0.15,
+      "self": 0.1,
+      "TAG_Pro": 0.15,
+      "Trapper_CR": 0.15
+    },
+    "equity_samples": 64,
+    "window_size": 100,
+    "history_cache_size": 16,
+    "history_refresh_matches": 100,
+    "history_buckets": [
+      [
+        140,
+        160
+      ],
+      [
+        240,
+        260
+      ],
+      [
+        320,
+        350
+      ],
+      [
+        100,
+        350
+      ]
+    ],
+    "self_snapshot_every": 25,
+    "self_history_size": 16
+  },
+  "evaluation": {
+    "every_updates": 100,
+    "match_pairs": 50,
+    "seed": 192031,
+    "equity_samples": 64,
+    "stop_on_retention_failure": true,
+    "opponents": [
+      "random",
+      "call",
+      "maniac",
+      "overbet",
+      "nit",
+      "equity",
+      "TAG_Pro",
+      "Trapper_CR",
+      "reference"
+    ]
+  },
+  "traces": {
+    "enabled": true,
+    "train_every_updates": 25,
+    "train_matches": 2,
+    "eval_match_pairs_per_opponent": 1,
+    "max_bytes": 16777216
+  },
+  "checkpoint_every": 100,
+  "notes": {
+    "training_opponents": "11 families; pro parameters are sampled once per match",
+    "holdout": "Fixed pro parameters; evaluation seed distinct from the reused soup selection seed.",
+    "warm_start": "Pass --warm-start explicitly; optimizer/PFSP/counters reset; no implicit resume."
+  }
+}

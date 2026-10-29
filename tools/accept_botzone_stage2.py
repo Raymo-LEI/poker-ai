@@ -37,14 +37,14 @@ def _load(name, path):
     return module
 
 
-def _spawn(cmd, payload, memory_mb, timeout, env):
+def _spawn(cmd, payload, memory_mb, timeout, env, *, pin_cpu=True):
     def _limit():
         cap = memory_mb * 1024 * 1024
         resource.setrlimit(resource.RLIMIT_AS, (cap, cap))
 
     started = time.perf_counter()
     try:
-        proc = subprocess.run(["taskset", "-c", "0"] + cmd, input=json.dumps(payload) + "\n",
+        proc = subprocess.run((["taskset", "-c", "0"] if pin_cpu else []) + cmd, input=json.dumps(payload) + "\n",
                               capture_output=True, text=True, timeout=timeout, env=env,
                               preexec_fn=_limit if memory_mb else None)
     except subprocess.TimeoutExpired:
@@ -95,7 +95,7 @@ def play_match(args, judge, reconstruct, hero_seat, rng, env):
             first = not responses[seat]
             limit = TURN_LIMIT_S * (2 if first else 1)
             verdict, body, elapsed, stderr = _spawn([args.python, str(args.zip)], payload,
-                                                    args.memory_mb, limit + 1, env)
+                                                    args.memory_mb, limit + 1, env, pin_cpu=not args.portable)
             report["hero_decisions"] += 1
             report["turn_s"].append(elapsed)
             if elapsed > limit:
@@ -122,7 +122,7 @@ def play_match(args, judge, reconstruct, hero_seat, rng, env):
                         report["errors"].append("context hand %r != %r" % (context.get("hands_played"), request["hand"]))
                 data[seat] = saved
         elif args.opponent == "rule":
-            verdict, body, _, stderr = _spawn([sys.executable, str(RULE_MAIN)], payload, 0, TURN_LIMIT_S, env)
+            verdict, body, _, stderr = _spawn([sys.executable, str(RULE_MAIN)], payload, 0, TURN_LIMIT_S, env, pin_cpu=not args.portable)
             response = body["response"] if verdict == "OK" else None
         else:
             verdict, response = "OK", _random_action(reconstruct, request, rng)
@@ -141,7 +141,10 @@ def main():
     parser.add_argument("--opponent", choices=("random", "rule"), default="random")
     parser.add_argument("--memory-mb", type=int, default=256)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--portable", action="store_true", help="local protocol check without Linux CPU/address-space limits")
     args = parser.parse_args()
+    if args.portable:
+        args.memory_mb = 0
     args.zip = args.zip.resolve()
     judge = _load("botzone_judge_fixture", ROOT / "tests" / "fixtures" / "botzone_judge.py")
     judge.random = random.Random(args.seed)
@@ -165,9 +168,10 @@ def main():
         "python": subprocess.run([args.python, "-c", "import sys,numpy;print(sys.version.split()[0], numpy.__version__)"],
                                  capture_output=True, text=True).stdout.strip(),
         "opponent": args.opponent, "matches": reports, "memory_cap_mb": args.memory_mb,
+        "platform_limits_enforced": not args.portable, "host_platform": sys.platform,
         "hero_decisions": len(turns), "max_turn_s": max(turns) if turns else None,
         "mean_turn_s": sum(turns) / len(turns) if turns else None,
-        "children_max_rss_kb": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
+        "children_max_rss_kb": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / (1024 if sys.platform == "darwin" else 1),
         "errors": sum(len(r["errors"]) for r in reports),
     }
     print(json.dumps(summary, indent=2))

@@ -1,0 +1,38 @@
+{
+  "python": "3.11.17 2.4.6",
+  "opponent": "random",
+  "matches": [
+    {
+      "hero_seat": 0,
+      "hero_decisions": 72,
+      "errors": [],
+      "max_data_bytes": 2590,
+      "max_debug_bytes": 235,
+      "debug_samples": [
+        "py3.11.17 np2.4.6 ok stage2_model.npz guard=v10 {\"pruned\":[2],\"active_cap\":false,\"call_fuse\":null} 50ms",
+        "py3.11.17 np2.4.6 ok stage2_model.npz guard=v10 {\"pruned\":[],\"active_cap\":false,\"call_fuse\":null} 46ms"
+      ],
+      "hero_score_bb": 346.5
+    },
+    {
+      "hero_seat": 1,
+      "hero_decisions": 69,
+      "errors": [],
+      "max_data_bytes": 2426,
+      "max_debug_bytes": 235,
+      "debug_samples": [
+        "py3.11.17 np2.4.6 ok stage2_model.npz guard=v10 {\"pruned\":[2,3],\"active_cap\":false,\"call_fuse\":null} 40ms",
+        "py3.11.17 np2.4.6 ok stage2_model.npz guard=v10 {\"pruned\":[1],\"active_cap\":false,\"call_fuse\":\"overbet_shove\",\"equity\":0.42437744140625,\"pot_odds\":0.4975,\"strong_made_hand\":true,\"pot_before_bet\":150.0,\"pot_before_source\":\"history\"} 41ms"
+      ],
+      "hero_score_bb": -106.5
+    }
+  ],
+  "memory_cap_mb": 0,
+  "platform_limits_enforced": false,
+  "host_platform": "darwin",
+  "hero_decisions": 141,
+  "max_turn_s": 0.07996179105248302,
+  "mean_turn_s": 0.06356227308336698,
+  "children_max_rss_kb": 43008.0,
+  "errors": 0
+}

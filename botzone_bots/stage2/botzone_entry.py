@@ -47,17 +47,25 @@ def load_agent(runtime):
         weights = {key: archive[key] for key in archive.files if key != "meta_json"}
     if meta.get("format") != WEIGHTS_FORMAT:
         raise ValueError("unsupported weights format %r" % meta.get("format"))
-    agent = runtime.Agent(weights, meta["config"], meta["settings"], meta["numeric_version"])
+    config = meta.get("deployment_guard")
+    override = os.environ.get("POKER_STAGE2_GUARD_CONFIG")
+    if override:
+        with open(override) as handle:
+            config = json.load(handle)
+    agent = runtime.Agent(weights, meta["config"], meta["settings"], meta["numeric_version"], config)
     return agent, bool(meta.get("safety", False)), path
 
 
 def fallback_response(reconstruct, payload):
-    """Judge-legal action when the model cannot run: check/call if accepted, else fold."""
+    """Never call a >35BB bet when inference/config/weights fail."""
     try:
         request = payload["requests"][-1]
         if isinstance(request, str):
             request = json.loads(request)
         view = reconstruct.reconstruct(request)
+        owed = max(view.street_put) - view.street_put[view.my_id]
+        if owed > 3500:
+            return -1
         if view is not None and view.chips[view.my_id] == request["my_chips"] and reconstruct.judge_accepts(view, 0):
             return 0
     except Exception:
@@ -86,6 +94,8 @@ def main():
         agent, safety, path = load_agent(runtime)
         result = runtime.respond(agent, payload, safety)
         note = "ok " + os.path.basename(path)
+        if agent.deployment_guard["enabled"]:
+            note += " guard=v10 " + json.dumps(agent.last_guard, separators=(",", ":"))
     except Exception as exc:
         note = "fallback %s: %s" % (type(exc).__name__, exc)
         print(note, file=sys.stderr)

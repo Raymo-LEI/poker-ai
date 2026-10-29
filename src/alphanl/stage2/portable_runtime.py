@@ -12,11 +12,13 @@ from .buckets import nearest_pot_fraction_bucket
 from .hunl import HunlTokenizer
 from .context import MatchCtx, CONTEXT_FIELDS
 from .actions import CFRActionGuard
+from .deployment_guard import guard_config, apply_guard
+from .equity import estimated_equity
 from . import reconstruct as judge
 from .forward import features_forward, _linear, _gelu
 
 class Agent:
-    def __init__(self, weights=None, config=None, settings=None, numeric_version=None):
+    def __init__(self, weights=None, config=None, settings=None, numeric_version=None, deployment_guard=None):
         if weights is None:
             archive = np.load(io.BytesIO(base64.b64decode(WEIGHT_DATA)), allow_pickle=False)
             weights = {k: archive[k] for k in archive.files}
@@ -32,6 +34,8 @@ class Agent:
             raise ValueError("bundled tokenizer %s does not match weights %s"
                              % (self.tokenizer.numeric_version, numeric_version))
         self.guard = CFRActionGuard.from_config(SimpleNamespace(**config))
+        self.deployment_guard = guard_config(deployment_guard)
+        self.last_guard = {}
         self.meta = {"arch": config["model"]}
         # Charge BLAS initialization to model loading, not the first decision.
         self.logits({**self.tokenizer.blank(), "match_ctx":np.zeros((1,len(self.context_fields)), dtype=np.float32)})
@@ -50,12 +54,13 @@ class Agent:
         logits = ref + self.settings["alpha"] * np.tanh(delta)
         return np.where(batch["legal_mask"] > .5, logits, np.float32(-1e9))
 
-    def act(self, snapshot, context, *, safety=False, rng=None):
+    def act(self, snapshot, context, *, safety=False, rng=None, amounts=None):
         row = self.logits(self.observation(snapshot, context))[0].astype(np.float64)
         probs = np.exp(row - row.max()); probs /= probs.sum()
-        if (safety and CFRActionGuard.all_in_pot_ratio(snapshot) > 3. and 1 in snapshot.legal_action_ids
+        if (safety and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot) > 3. and 1 in snapshot.legal_action_ids
                 and 0 < probs[4] < .05):
             probs[1] += probs[4]; probs[4] = 0.
+        probs, self.last_guard = apply_guard(snapshot, probs, self.deployment_guard, estimated_equity, amounts)
         rng = random if rng is None else rng
         draw, cumulative = rng.random(), 0.
         for index, prob in enumerate(probs):
@@ -173,7 +178,9 @@ def respond(agent, payload, safety=None):
         return {"response":saved["response"], "data":saved}
     snap, responses = request_snapshot(request)
     context, data = context_from_payload(payload)
-    action = agent.act(snap, context, safety=safety)
+    amounts = {a: snap.me_stack if r == -2 else min(snap.to_call, snap.me_stack) if a == 1 else max(r, 0)
+               for a, r in responses.items()}
+    action = agent.act(snap, context, safety=safety, amounts=amounts)
     response = responses[action]
     if not judge.judge_accepts(judge.reconstruct(request), response):
         raise ValueError("export selected judge-illegal response")

@@ -1,5 +1,7 @@
 # Botzone Stage 2 前向入口上传说明
 
+v10 C200 的可配置深筹码护栏、打包方式和配对评测见 [v10 说明](botzone_v10_guard.md)。新护栏默认只由权重元数据显式开启；旧权重保持原部署策略。异常回退现禁止跟注超过 35BB 的下注。下文历史平台实测不代表本次 v10 已重新完成 Linux/Python 3.6 验收。
+
 把 Stage 2（50 手上下文残差 PPO，内含 Stage 1 蒸馏参考）的 NumPy 前向打成 Botzone **TexasHoldem2p** 可以直接运行的包。源码 zip 与 checkpoint 无关，已提交为 `botzone_bots/stage2.zip`；权重由 checkpoint 导出成 `stage2_model.npz`，上传到 Botzone 用户存储空间。用户自己上传；本文不注册 Botzone，也不提交排名。
 
 仓库里**没有**真实训练出的 Stage 2 checkpoint。下面的实测用的是正式 1.49M 结构（`configs/cfr/stage1_149m_8m_equity_league_2400.json`，192/6/4/512，开启 equity 特征）的随机初值，残差头另外加了随机扰动，保证残差路径真的参与计算。比分没有意义，只能说明协议、合法性、时间和内存满足要求。
@@ -83,7 +85,7 @@ cd /tmp/bz && echo '{"requests":[{"num_players":2,"dealer_id":0,"my_id":1,"my_ch
 - 半池/满池换算成额外筹码，不足裁判最小加注时抬到最小值；结果再用裁判规则核对一遍。免费过牌时不开放弃牌。
 - `data` 保存比赛上下文；同一请求重放时直接返回上次的动作（幂等）。Botzone 把 `data` 原样或作为字符串还回来都能读。跨手比分读 `total_win_chips`。
 
-回退：读不懂 stdin 时送 `-1`；权重缺失、格式不符、版本不配套或任何异常时，局面能自洽重建且裁判接受 `0` 就送 `0`（过牌或跟注），否则送 `-1`。原因写进 `debug` 和 stderr，进程不抛栈。
+回退：读不懂 stdin 时送 `-1`；权重缺失、格式不符、版本不配套或任何异常时，待跟超过 35BB 直接送 `-1`；其余情况只有局面能自洽重建且裁判接受 `0` 才送 `0`（过牌或跟注），否则送 `-1`。原因写进 `debug` 和 stderr，进程不抛栈。
 
 ## 验收
 

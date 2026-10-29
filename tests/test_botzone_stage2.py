@@ -174,6 +174,53 @@ def test_committed_zip_is_current(tmp_path):
             assert new.read(name) == old.read(name), "%s changed; run tools/pack_botzone_stage2.py" % name
 
 
+def test_v10_export_and_actual_judge_response_block_reported_river_disaster(bundle, tmp_path):
+    from alphanl.stage2.deployment_guard import V10_GUARD
+    guarded = dict(bundle, weights=tmp_path / "guarded.npz")
+    export_botzone_weights(bundle["zip"].parent / "stage2.pt", guarded["weights"], deployment_guard=V10_GUARD)
+    request = dict(REQUEST, my_id=0, my_chips=19700, my_cards=[33,8], public_cards=[41,4,2,32,17],
+                   hand=10, history=[
+                       {"round":0,"player_id":1,"action":0}, {"round":0,"player_id":0,"action":0},
+                       {"round":1,"player_id":1,"action":200}, {"round":1,"player_id":0,"action":0},
+                       {"round":2,"player_id":1,"action":0}, {"round":2,"player_id":0,"action":0},
+                       {"round":3,"player_id":1,"action":624}])
+    script = """
+import numpy as np
+agent, safety, path = entry.load_agent(runtime)
+assert agent.deployment_guard['enabled'] and agent.deployment_guard['prune_below'] == .1
+agent.logits = lambda batch: np.array([[-100.,-100.,-100.,-100.,100.]])
+payload = {'requests':[%s]}
+first = runtime.respond(agent, payload, safety)
+assert first['response'] == 1248  # exact judge minimum, not 19,700 all-in
+request = payload['requests'][0]
+request['history'][-1]['action'] = -2
+agent.logits = lambda batch: np.array([[-100.,100.,-100.,-100.,-100.]])
+second = runtime.respond(agent, payload, safety)
+assert second['response'] == -1
+assert agent.last_guard['call_fuse'] == 'overbet_shove'
+assert entry.fallback_response(runtime.judge, payload) == -1
+print(json.dumps({'shove_cap_response':first['response'],'facing_shove':second['response']}))
+""" % repr(request)
+    assert _probe(guarded, script) == {'shove_cap_response':1248, 'facing_shove':-1}
+
+
+def test_guard_reconfiguration_keeps_every_network_parameter_identical(bundle, tmp_path):
+    from alphanl.stage2.deployment_guard import V10_GUARD
+    config = tmp_path / "guard.json"
+    config.write_text(json.dumps(V10_GUARD))
+    output = tmp_path / "configured.npz"
+    subprocess.run([sys.executable, str(ROOT / "tools/configure_botzone_guard.py"),
+                    "--zip", str(bundle["zip"]), "--weights", str(bundle["weights"]),
+                    "--config", str(config), "--out", str(output)], check=True, capture_output=True, text=True)
+    with np.load(bundle["weights"], allow_pickle=False) as original, np.load(output, allow_pickle=False) as changed:
+        assert set(original.files) == set(changed.files)
+        for key in original.files:
+            if key != "meta_json":
+                np.testing.assert_array_equal(original[key], changed[key])
+        meta = json.loads(changed["meta_json"].tobytes())
+        assert meta["deployment_guard"] == V10_GUARD
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="platform acceptance requires Linux taskset and RLIMIT_AS")
 def test_full_judge_match_under_platform_limits(bundle):
     result = subprocess.run([sys.executable, str(ROOT / "tools" / "accept_botzone_stage2.py"),

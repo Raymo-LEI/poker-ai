@@ -30,7 +30,7 @@ class HandTraceWriter:
     hands and count them; never write partial JSONL rows. Sampling is positional,
     independent of result, so this file is not a representative league estimate.
     """
-    def __init__(self, directory, *, update, scope, max_bytes=16 * 1024 * 1024):
+    def __init__(self, directory, *, update, scope, max_bytes=16 * 1024 * 1024, experiment=None):
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1024:
             raise ValueError('trace max_bytes must be an integer >= 1024')
         if scope not in ('training', 'evaluation'):
@@ -38,7 +38,8 @@ class HandTraceWriter:
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=False)
         self.stream = (self.directory / 'hands.jsonl').open('x', encoding='utf-8')
-        self.metadata = dict(format='stage2_hand_trace_v1', update=update, scope=scope,
+        self.experiment = {k:v for k,v in (experiment or {}).items() if k in ("experiment_id", "experiment_kind")}
+        self.metadata = dict(**self.experiment, format='stage2_hand_trace_v1', update=update, scope=scope,
                              big_blind_chips=100, rules_version='standard_hunl_200bb_v1',
                              sampling='first configured complete matches / paired matches; independent of outcomes',
                              notes=['Recorded subset only; bucket means are descriptive, not counterfactual action EV.'])
@@ -46,7 +47,7 @@ class HandTraceWriter:
 
     def sink(self, **identity):
         def record(hand):
-            row = {**hand, **identity, 'update': self.metadata['update'], 'scope': self.metadata['scope']}
+            row = {**hand, **identity, **self.experiment, 'update': self.metadata['update'], 'scope': self.metadata['scope']}
             body = json.dumps(row, ensure_ascii=False, allow_nan=False, separators=(',', ':')) + '\n'
             size = len(body.encode('utf-8'))
             if self.dropped or self.bytes + size > self.max_bytes:

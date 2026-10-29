@@ -14,12 +14,13 @@ from itertools import islice
 from pathlib import Path
 import re
 import threading
+from experiment_metadata import read_experiment
 
 MAX_JSON = 8 * 1024 * 1024
 MAX_TRACE_BYTES = 64 * 1024 * 1024
 MAX_TRACE_ROWS = 25000
 MAX_LINE = 1024 * 1024
-SIDECARS = ("launch_manifest.json", "status.json", "study_status.json", "manifest.json",
+SIDECARS = ("experiment.json", "launch_manifest.json", "status.json", "study_status.json", "manifest.json",
             "evaluation_report.json", "arm1200.json", "arm2400.json", "ops/branch.json",
             "config.json", "ops/run_config.json", "ops/environment.json", "train.pt.refs.json",
             "evaluations/paired_delta.json", "resources.jsonl")

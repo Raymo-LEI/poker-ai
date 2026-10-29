@@ -318,3 +318,7 @@ details.panel summary { cursor: pointer; font-size: 12px; font-weight: 600; colo
 @keyframes ow-flow { from { background-position: 0 0, 0 0; } to { background-position: 17px 0, 0 0; } }
 @keyframes ow-breathe { 0%, 100% { opacity: .16; } 50% { opacity: .28; } }
 @media (max-width: 800px) { :root[data-theme="neural"] body::before { width: 340px; height: 240px; top: 120px; } }
+
+/* Keep the additional experiment scope control usable in the existing sidebar. */
+.sidebar{overflow-y:auto}
+.sidebar>#run-scope{width:100%;font-size:11px;margin-bottom:12px}

@@ -14,6 +14,8 @@
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="Overwatch 首页"><span class="brand-mark">♠</span><span>OVERWATCH<small>POKER RESEARCH LAB</small></span></a>
     <div class="workspace-label">WORKSPACE <span>LOCAL</span></div>
+    <label class="field-label" for="run-scope">实验范围</label>
+    <select id="run-scope" aria-label="实验范围"><option value="formal">仅正式实验</option><option value="all">全部记录（含测试）</option></select>
     <label class="field-label" for="run-select">训练实验</label>
     <select id="run-select"><option>读取实验中…</option></select>
     <nav aria-label="监控面板">
@@ -34,7 +36,7 @@
       <section id="overview" class="page-heading"><div><div class="eyebrow">TRAINING OBSERVATORY <span> / </span> <span id="run-kind">SD-CFR</span></div><h1>每个实验，都有据可查<span class="green-dot">.</span></h1><p>训练、对照、评测与复盘，放在同一个工作台。</p></div><div class="connection"><span class="status-badge" id="connection">连接中</span><div id="refreshed">等待日志</div></div></section>
       <div id="error" class="notice error hidden" role="alert"></div>
       <div id="notices" aria-live="polite"></div>
-      <div class="run-strip"><div><span class="run-icon">⌁</span><strong id="run-name">正在读取实验</strong><span id="run-device" class="tag">—</span></div><div id="run-age">—</div></div>
+      <div class="run-strip"><div><span class="run-icon">⌁</span><strong id="run-name">正在读取实验</strong><span id="run-experiment-kind" class="tag">未标记</span><span id="run-device" class="tag">—</span></div><div id="run-age">—</div></div>
       <div class="metric-grid" id="summary"></div>
       <section id="workbench-home" class="wb-section" aria-label="运行概况">
         <div class="section-title"><h2>运行概况</h2><span class="section-note" id="wb-health">正在检查连接</span></div>

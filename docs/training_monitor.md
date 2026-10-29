@@ -201,3 +201,40 @@ Stage 2 训练器本身已持久化 `metrics.jsonl` 与 `config.json`，控制�
 前端、后端 helper 与网关须作为一套安装：`scripts/monitor_training.py`、
 `monitor_workbench.py`、`monitor_remote.py` 和 `tools/training_monitor/` 全目录。
 没有增加 Python 三方依赖，也没有将控制台接入训练的 import 路径。
+
+
+## 正式实验标识与默认筛选
+
+控制台和实验库默认选择“仅正式实验”。只有 run 根目录存在有效的 `experiment.json`，且
+`format=overwatch_experiment_v1`、有效 UUID `experiment_id`、`kind=formal` 时才列入。
+不按目录名、CUDA 设备、预算或是否已有 checkpoint 推断正式身份。
+“全部记录（含测试）”可查看开发、smoke、benchmark、独立评测及未登记的历史记录；切换范围会清理范围外的对比选择。
+
+新训练显式声明：
+
+```bash
+PYTHONPATH=src python scripts/train_stage2.py --config /absolute/stage2_config.json \
+  --out-dir /absolute/new_run --device cuda --updates 10000 \
+  --experiment-kind formal --experiment-name 'Stage 2 正式实验'
+PYTHONPATH=src python scripts/train_cfr.py --config /absolute/cfr.json \
+  --out-dir /absolute/new_stage1 --experiment-kind formal --experiment-name 'Stage 1 正式实验'
+```
+
+不传该参数默认为 `development`。Stage 2 也可在配置中使用
+`"experiment": {"kind":"formal", "name":"Stage 2 正式实验"}`；CLI 优先。
+标识与日志位于同一 run 目录，包含实验 UUID、名称、stage、登记及标记时间（不是训练开始时间）。
+Stage 2 新写的 metrics、checkpoint 元数据、评测报告、轨迹行及轨迹报告均记录
+`experiment_id` / `experiment_kind`；CFR 标准入口的新 metrics.csv 行也记录这两个字段。
+同目录续训复用已登记的身份；Stage 2 续训到新目录生成新的 run UUID。
+改变已有 kind 要显式使用登记工具，不会在 resume 时静默改写。
+
+为已经运行或历史正式 run 补标记：
+
+```bash
+python3 scripts/label_experiment.py /absolute/existing_run \
+  --kind formal --stage stage2 --name 'Stage 2 正式实验'
+```
+
+此工具只写 `experiment.json`，保留历史 CSV/JSONL、权重及训练进程；已有 UUID 保持稳定。
+正在运行的旧训练进程不会凭此改变逐行输出格式，历史日志也不会补造标识。
+其他自定义启动器可调用同一 `scripts/experiment_metadata.py` 或使用登记工具；监控读取始终不写文件。

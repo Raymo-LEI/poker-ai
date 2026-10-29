@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from experiment_metadata import KINDS, write_experiment, experiment_tags
 
 import torch
 
@@ -46,6 +49,8 @@ def main() -> None:
                         help="opt in to changing only train_steps on restore into a fresh output directory")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument("--experiment-kind", choices=KINDS, help="explicit formal/development/smoke identity; default development")
+    parser.add_argument("--experiment-name", help="human-readable run label")
     args = parser.parse_args()
     if args.branch_train_steps and args.resume is None:
         parser.error("--branch-train-steps requires --resume")
@@ -117,6 +122,8 @@ def main() -> None:
     with SDCFRTrainer(config) as trainer:
         if args.resume is not None:
             trainer.load_checkpoint(args.resume, branch_train_steps=args.branch_train_steps)
+        experiment = write_experiment(config.out_dir, kind=args.experiment_kind, name=args.experiment_name, stage="stage1")
+        trainer.experiment = experiment_tags(experiment)
         trainer.run()
 
 

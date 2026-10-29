@@ -233,14 +233,19 @@ def random_equity(snapshot, rng, samples):
 
 class RuleActor:
     def __init__(self, name, *, seed, equity_samples=64):
-        if name not in OPPONENTS or equity_samples < 1:
+        from .pro_bots import PRO_OPPONENTS, ProScriptActor
+        if name not in OPPONENTS + PRO_OPPONENTS or equity_samples < 1:
             raise ValueError("invalid rule opponent or equity sample count")
         self.name, self.rng, self.equity_samples = name, np.random.default_rng(seed), equity_samples
+        self.pro = ProScriptActor(name, seed=seed, equity_samples=equity_samples) if name in PRO_OPPONENTS else None
 
     def begin_hand(self, seat):
-        pass
+        if self.pro is not None:
+            self.pro.begin_hand(seat)
 
     def act(self, snapshot):
+        if self.pro is not None:
+            return self.pro.act(snapshot)
         legal = snapshot.legal_action_ids
         prefer = lambda choices: next(a for a in choices if a in legal)
         if self.name == "random":

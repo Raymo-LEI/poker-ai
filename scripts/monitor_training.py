@@ -170,6 +170,20 @@ def normalize(row):
 
 def readiness_rows(report):
     """Adapt recorded evaluation reports without loading a model."""
+    if report.get("format") == "pro_slumbot_200bb_v1":
+        candidate = report.get("candidate", {})
+        value = report.get("all_completed_hand_mean_mbb")
+        if number(value) is None:
+            return []
+        # Standalone evaluation directory; never attach a different policy's result
+        # to a live training run or pretend online hands are duplicate pairs.
+        row = {"update": candidate.get("update", candidate.get("end", 0)),
+               "eval/winrate_vs_slumbot_mbb": value,
+               "eval/slumbot_completed_hands": report.get("completed_hands")}
+        ci = report.get("performance", {}).get("ci95") if report.get("completed_hands", 0) % 50 == 0 else None
+        if isinstance(ci, list) and len(ci) == 2:
+            row["eval/winrate_vs_slumbot_mbb_ci_low"], row["eval/winrate_vs_slumbot_mbb_ci_high"] = ci
+        return [row]
     if report.get("format") == "stage2_duplicate_matches_v1":
         row = stage2_report_row(report)
         return [row] if row else []

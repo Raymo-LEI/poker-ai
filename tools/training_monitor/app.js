@@ -21,6 +21,7 @@ const OPPONENTS = [
   ["Aggressive", "aggressive"], ["Slumbot", "slumbot"],
   ["首轮策略", "iter_1"], ["上一检查点", "prev_checkpoint"],
   ["Overbet", "overbet"], ["Tight passive nit", "nit"], ["Pot odds equity", "equity"], ["冻结学生参考", "reference"],
+  ["TAG Pro", "TAG_Pro"], ["Trapper CR", "Trapper_CR"],
 ];
 const ACTIONS = ["fold", "call", "half_pot", "pot", "all_in"];
 const ACTION_LABELS = ["Fold", "Check / Call", "½ Pot", "Pot", "All-in"];

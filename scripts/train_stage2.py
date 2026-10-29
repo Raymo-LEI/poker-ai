@@ -1,4 +1,5 @@
 """Explicit opt-in Stage 2 PPO; a 20-match quota block per update."""
+from contextlib import nullcontext
 import argparse
 import json
 import math
@@ -11,6 +12,7 @@ from alphanl.stage2.policy import ResidualExploiterPolicy
 from alphanl.stage2.pool import MatchOpponentPool
 from alphanl.stage2.train import collect_matches, train_matches, save_checkpoint, load_checkpoint
 from alphanl.stage2.evaluation import MatchEvaluator, evaluation_metrics
+from alphanl.stage2.traces import HandTraceWriter, trace_settings
 
 
 def sanitize_metrics(value):
@@ -36,6 +38,8 @@ def main():
     device = args.device or settings["device"]
     updates = args.updates if args.updates is not None else settings["updates"]
     count = settings.get("matches_per_update", 20)
+    traces = trace_settings(settings)
+    settings["traces"] = traces
     evaluation = settings.get("evaluation", {})
     every = evaluation.get("every_updates", 100)
     if (isinstance(count, bool) or not isinstance(count, int) or count < 20 or count % 20
@@ -78,7 +82,17 @@ def main():
         began = time.perf_counter()
         envs = [BotzoneMatchEnv(model.config, pool=pool, seed=settings["seed"] + matches + i,
                                first_hero_seat=i % 2, defer_opponents=True) for i in range(count)]
-        rollouts = collect_matches(model, envs)
+        capture = traces['enabled'] and traces['train_matches'] > 0 and (update == start + 1 or update % traces['train_every_updates'] == 0)
+        writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_train_u{update:07d}',
+            update=update, scope='training', max_bytes=traces['max_bytes']) if capture else None
+        with writer if writer is not None else nullcontext():
+            for index, env in enumerate(envs[:traces['train_matches']] if capture else []):
+                # Opponent is sampled at env.reset(), so read its identity when the hand finishes.
+                def sink(hand, env=env, index=index):
+                    writer.sink(match=matches + index + 1, opponent=env.opponent_name,
+                        opponent_snapshot=getattr(env.opponent, 'snapshot_id', None))(hand)
+                env.hand_trace = sink
+            rollouts = collect_matches(model, envs)
         metrics = train_matches(model, optimizer, rollouts, **settings["ppo"])
         for env in envs:
             pool.record(env.opponent_name, env.ctx.hero_net_bb)
@@ -100,8 +114,13 @@ def main():
                **{f"stage2/sampled/{name}": sum(env.opponent_name == name for env in envs) for name in pool.weights}}
         report = None
         if update % every == 0:
-            report = evaluator.evaluate(model, update=update,
-                progress=lambda name: print(f"Stage 2 update {update}: evaluating {name}", flush=True))
+            capture_eval = traces['enabled'] and traces['eval_match_pairs_per_opponent'] > 0
+            writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_eval_u{update:07d}',
+                update=update, scope='evaluation', max_bytes=traces['max_bytes']) if capture_eval else None
+            with writer if writer is not None else nullcontext():
+                report = evaluator.evaluate(model, update=update, trace_writer=writer,
+                    trace_match_pairs=traces['eval_match_pairs_per_opponent'],
+                    progress=lambda name: print(f"Stage 2 update {update}: evaluating {name}", flush=True))
             report_dir = args.out_dir / "stage2_evaluations"
             report_dir.mkdir(exist_ok=True)
             (report_dir / f"update_{update:07d}.json").write_text(

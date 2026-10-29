@@ -58,10 +58,15 @@ def compute_gae(
 
 
 def explained_variance(values: torch.Tensor, returns: torch.Tensor) -> float:
-    var_ret = torch.var(returns)
-    if float(var_ret) < 1e-8:
+    """Return 0.0 when sample variance or the resulting diagnostic is undefined."""
+    # A singleton tail minibatch has no sample variance (correction=1).
+    if returns.numel() < 2:
         return 0.0
-    return float(1.0 - torch.var(returns - values) / var_ret)
+    var_ret = torch.var(returns)
+    if not math.isfinite(float(var_ret)) or float(var_ret) < 1e-8:
+        return 0.0
+    result = float(1.0 - torch.var(returns - values) / var_ret)
+    return result if math.isfinite(result) else 0.0
 
 
 def ppo_losses(

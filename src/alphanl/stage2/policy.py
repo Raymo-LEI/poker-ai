@@ -6,10 +6,12 @@ from torch import nn
 from alphanl.cfr.distillation import load_student
 from alphanl.transformer.model import masked_log_probs, policy_act
 from alphanl.transformer.ppo import ppo_losses
+from .allin_mask import SETTINGS_KEY, mask_config
 from .context import CONTEXT_FIELDS, PRO_CONTEXT_FIELDS
 
 class ResidualExploiterPolicy(nn.Module):
-    def __init__(self, reference, *, alpha=1., hidden=64, beta_kl=1., late_beta_kl=.1, context_fields=CONTEXT_FIELDS):
+    def __init__(self, reference, *, alpha=1., hidden=64, beta_kl=1., late_beta_kl=.1,
+                 context_fields=CONTEXT_FIELDS, botzone_native_allin_mask=None):
         super().__init__()
         if any(not math.isfinite(v) or v < 0 for v in (alpha, beta_kl, late_beta_kl)) or hidden < 1:
             raise ValueError("invalid residual hyperparameters")
@@ -21,6 +23,10 @@ class ResidualExploiterPolicy(nn.Module):
             raise ValueError("unsupported policy context fields")
         if self.context_fields != CONTEXT_FIELDS:
             self.settings["context_fields"] = list(self.context_fields)
+        # Additive and absent on old checkpoints. The observation path turns it
+        # into a legal-mask bit; forward still masks that bit before softmax.
+        if botzone_native_allin_mask is not None:
+            self.settings[SETTINGS_KEY] = mask_config(botzone_native_allin_mask)
         self.context_encoder = nn.Sequential(nn.Linear(len(self.context_fields), hidden), nn.GELU())
         self.fusion = nn.Sequential(nn.Linear(reference.backbone.d_model + hidden, hidden), nn.GELU())
         self.delta_head = nn.Linear(hidden, 5)
@@ -60,6 +66,8 @@ class ResidualExploiterPolicy(nn.Module):
         fused = self.fusion(torch.cat((batch["poker_features"].detach(), self.context_encoder(context)), -1))
         logits = batch["ref_logits"].detach() + self.settings["alpha"] * self.delta_head(fused).tanh()
         if mask_illegal:
+            # legal_mask already includes the optional native all-in mask.
+            # Illegal logits become ILLEGAL_LOGIT (-1e9) before this softmax.
             logits = masked_log_probs(logits, batch["legal_mask"])[0]
         return logits, self.value_head(fused).squeeze(-1)
 

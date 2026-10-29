@@ -12,7 +12,9 @@ from .actions import CFRActionGuard
 from .distillation import load_student
 from .evaluation import Audit, CFRActor, OPPONENTS, RuleActor, mean_interval
 from .pro_bots import PRO_OPPONENTS, ProScriptActor
+from alphanl.stage2.allin_mask import mask_snapshot
 from alphanl.stage2.context import MatchCtx
+from alphanl.transformer.actor_actions import PotFractionBet, apply_actor_decision
 from alphanl.stage2.evaluation import summarize_match_pairs
 from alphanl.stage2.train import load_checkpoint
 from alphanl.transformer.hunl import BIG_BLIND, HunlTable, HunlTokenizer
@@ -55,6 +57,11 @@ class ModelActor:
     def act(self, snapshot):
         began, original = time.perf_counter(), snapshot
         snapshot = self.guard.apply(snapshot)
+        if self.residual:
+            settings = getattr(self.model, "settings", None)
+            if settings is None and hasattr(self.model, "members"):
+                settings = self.model.members[0].settings
+            snapshot = mask_snapshot(snapshot, None if settings is None else settings.get("botzone_native_allin_mask"))
         batch = self.tokenizer.encode(snapshot)
         if self.residual:
             batch["match_ctx"] = self.ctx.tensor(self.model.context_fields)
@@ -152,9 +159,12 @@ def play_block(left, right, deck_seeds, first_left_seat):
         while not table.is_over():
             player = table.current_player()
             action = actors[player].act(table.snapshot(player))
-            if action not in table.legal_action_ids():
-                raise ValueError("illegal tournament action")
-            table.step(action)
+            if isinstance(action, PotFractionBet):
+                apply_actor_decision(table, action)
+            else:
+                if action not in table.legal_action_ids():
+                    raise ValueError("illegal tournament action")
+                table.step(int(action))
             for p, actor in actors.items():
                 if hasattr(actor, "observe_action"):
                     actor.observe_action(table.events_for(p)[-1])

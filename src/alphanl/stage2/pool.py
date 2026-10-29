@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from alphanl.cfr.strategy import SnapshotPolicy
 from alphanl.cfr.distillation import prepare_archive, SEMANTIC_FIELDS
+from .ladder_bots import LADDER_OPPONENTS, JitteredLadderReplicaActor
 from .opponents import JitteredRuleActor, NeuralMatchActor
 from alphanl.cfr.pro_bots import PRO_OPPONENTS, JitteredProScriptActor
 
@@ -14,8 +15,17 @@ DEFAULT_WEIGHTS = {"equity": .35, "nit": .12, "call": .06, "maniac": .035,
 DEFENSE = {"reference": .10, "history": .15, "self": .10}
 PRO_WEIGHTS = {**{k: v if k in DEFENSE else v * (.35/.65) for k,v in DEFAULT_WEIGHTS.items()},
                "TAG_Pro": .15, "Trapper_CR": .15}
+# Initial ladder probability is 20%. Previous exploit families keep the other
+# 45%, scaled from the pro-hunter mix. PFSP may reweight that 65%. Defense
+# quotas stay the fixed 10/15/10 block.
+_LADDER_SHARE = {"OffTree_Aggro_Boss": .08, "Check_Shove_Trapper": .06, "Flop_Raise_War_Bot": .06}
+_NATIVE_SCALE = (sum(v for k, v in PRO_WEIGHTS.items() if k not in DEFENSE) - sum(_LADDER_SHARE.values())) / sum(
+    v for k, v in PRO_WEIGHTS.items() if k not in DEFENSE)
+NATIVE_WEIGHTS = {k: (v if k in DEFENSE else v * _NATIVE_SCALE) for k, v in PRO_WEIGHTS.items()}
+NATIVE_WEIGHTS.update(_LADDER_SHARE)
 DEFAULT_BUCKETS = ((140, 160), (240, 260), (320, 350), (100, 350))
 FORMAT = "stage2_matchpool_v2"
+_ALLOWED_POOLS = (frozenset(DEFAULT_WEIGHTS), frozenset(PRO_WEIGHTS), frozenset(NATIVE_WEIGHTS))
 
 
 class MatchOpponentPool:
@@ -23,7 +33,7 @@ class MatchOpponentPool:
                  window_size=100, history_cache_size=16, history_refresh_matches=100,
                  history_buckets=None, self_snapshot_every=25, self_history_size=16):
         self.weights = dict(DEFAULT_WEIGHTS if weights is None else weights)
-        if (set(self.weights) not in (set(DEFAULT_WEIGHTS), set(PRO_WEIGHTS))
+        if (frozenset(self.weights) not in _ALLOWED_POOLS
                 or any(not math.isfinite(w) or w <= 0 for w in self.weights.values())
                 or not math.isclose(sum(self.weights.values()), 1.)
                 or any(not math.isclose(self.weights[k], v) for k, v in DEFENSE.items())):
@@ -166,7 +176,12 @@ class MatchOpponentPool:
             update = int(self.rng.choice(list(self.self_weights)))
             actor = NeuralMatchActor(self._self_model(update), kind="residual", snapshot_id=update, seed=seed)
         else:
-            actor = (JitteredProScriptActor if name in PRO_OPPONENTS else JitteredRuleActor)(name, seed=seed, equity_samples=self.equity_samples)
+            if name in LADDER_OPPONENTS:
+                actor = JitteredLadderReplicaActor(name, seed=seed, equity_samples=self.equity_samples)
+            elif name in PRO_OPPONENTS:
+                actor = JitteredProScriptActor(name, seed=seed, equity_samples=self.equity_samples)
+            else:
+                actor = JitteredRuleActor(name, seed=seed, equity_samples=self.equity_samples)
         return name, actor
 
     def record(self, name, hero_net_bb):

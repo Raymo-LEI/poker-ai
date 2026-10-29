@@ -1,0 +1,114 @@
+{
+  "stage": "stage2",
+  "device": "cuda",
+  "seed": 41,
+  "reference": "runs/frozen_reference/policy.pt",
+  "strategies": "runs/frozen_teacher/strategies",
+  "updates": 250,
+  "matches_per_update": 20,
+  "learning_rate": 0.0003,
+  "botzone_native_allin_mask": {
+    "enabled": true,
+    "spr_above": 2.5,
+    "preflop_equity": 0.72,
+    "postflop_equity": 0.8,
+    "equity_samples": 64,
+    "equity_seed": 17
+  },
+  "policy": {
+    "alpha": 1.0,
+    "hidden": 64,
+    "beta_kl": 0.05,
+    "late_beta_kl": 0.03,
+    "context_fields": [
+      "hand_progress",
+      "bankroll_diff",
+      "vpip",
+      "pfr",
+      "three_bet",
+      "fold_to_preflop_raise",
+      "flop_aggression",
+      "turn_aggression",
+      "river_aggression",
+      "fold_to_postflop_bet",
+      "all_in_frequency",
+      "showdown_win",
+      "check_raise_freq",
+      "cbet_freq"
+    ],
+    "botzone_native_allin_mask": {
+      "enabled": true,
+      "spr_above": 2.5,
+      "preflop_equity": 0.72,
+      "postflop_equity": 0.8,
+      "equity_samples": 64,
+      "equity_seed": 17
+    }
+  },
+  "ppo": {
+    "epochs": 4,
+    "minibatch_size": 256,
+    "gamma": 1.0,
+    "gae_lambda": 1.0
+  },
+  "pool": {
+    "weights": {
+      "equity": 0.13047337278106505,
+      "nit": 0.04473372781065089,
+      "call": 0.022366863905325444,
+      "maniac": 0.01304733727810651,
+      "overbet": 0.01304733727810651,
+      "push_fold": 0.01863905325443787,
+      "reference": 0.1,
+      "history": 0.15,
+      "self": 0.1,
+      "TAG_Pro": 0.10384615384615384,
+      "Trapper_CR": 0.10384615384615384,
+      "OffTree_Aggro_Boss": 0.08,
+      "Check_Shove_Trapper": 0.06,
+      "Flop_Raise_War_Bot": 0.06
+    },
+    "equity_samples": 64,
+    "window_size": 100,
+    "history_cache_size": 16,
+    "history_refresh_matches": 100,
+    "history_buckets": [[140, 160], [240, 260], [320, 350], [100, 350]],
+    "self_snapshot_every": 50,
+    "self_history_size": 16
+  },
+  "evaluation": {
+    "every_updates": 50,
+    "match_pairs": 50,
+    "seed": 20261031,
+    "equity_samples": 64,
+    "stop_on_retention_failure": true,
+    "opponents": [
+      "random",
+      "call",
+      "maniac",
+      "overbet",
+      "nit",
+      "equity",
+      "TAG_Pro",
+      "Trapper_CR",
+      "OffTree_Aggro_Boss",
+      "Check_Shove_Trapper",
+      "Flop_Raise_War_Bot",
+      "reference"
+    ]
+  },
+  "traces": {
+    "enabled": true,
+    "train_every_updates": 25,
+    "train_matches": 2,
+    "eval_match_pairs_per_opponent": 1,
+    "max_bytes": 16777216
+  },
+  "checkpoint_every": 50,
+  "notes": {
+    "init": "Frozen reference is the fidelity student policy.pt. Launch with --warm-start on the C200 residual checkpoint (runs/frozen_stage2/update_0000200.pt), matching the Pro Hunter pattern. Optimizer, PFSP, RNG and the update counter start at zero. KL anchor stays beta_kl 0.05 annealing to late_beta_kl 0.03.",
+    "allin_mask": "policy.botzone_native_allin_mask.enabled removes voluntary all-in before softmax when SPR > 2.5 and the hand is not premium. Forced call-all-ins stay legal. The same flag is read by the NumPy export.",
+    "pool": "Keeps the six scripted baselines, TAG_Pro, Trapper_CR and the 10/15/10 defense quotas, and adds OffTree_Aggro_Boss, Check_Shove_Trapper and Flop_Raise_War_Bot.",
+    "checkpoints": "update_XXXXXXX.pt every 50 updates is the champion-select set. In-training eval uses the same duplicate-deck MatchEvaluator and includes the ladder replicas."
+  }
+}

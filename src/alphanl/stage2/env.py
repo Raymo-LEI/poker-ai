@@ -5,12 +5,15 @@ have different action order/min-raises; deployment uses an explicit adapter.
 """
 from alphanl.cfr.actions import CFRActionGuard
 from alphanl.cfr.traversal import HunlState
+from alphanl.transformer.actor_actions import PotFractionBet, apply_actor_decision
 from alphanl.transformer.hunl import HunlTable, HunlTokenizer
+from .allin_mask import mask_snapshot
 from .context import MatchCtx, CONTEXT_FIELDS
 
 class BotzoneMatchEnv:
     def __init__(self, config, opponent=None, *, pool=None, seed=1, first_hero_seat=1,
-                 defer_opponents=False, decks=None, hand_trace=None, context_fields=CONTEXT_FIELDS):
+                 defer_opponents=False, decks=None, hand_trace=None, context_fields=CONTEXT_FIELDS,
+                 allin_mask=None):
         if config.separate_player_models or not config.position_conditioning:
             raise ValueError("Stage 2 requires unified position-conditioned Stage 1")
         if first_hero_seat not in (0, 1):
@@ -31,15 +34,34 @@ class BotzoneMatchEnv:
         self.table = HunlTable(seed=seed)
         self.tokenizer = HunlTokenizer(config.model.max_seq_len, **config.tokenizer_kwargs())
         self.guard = CFRActionGuard.from_config(config)
+        from .allin_mask import mask_config
+        self.allin_mask = None if allin_mask is None else mask_config(allin_mask)
+        self._hero_snap_key = None
         self.ctx = MatchCtx()
         self.done = True
         self.hands = []
 
+    def _mask_active(self):
+        return self.allin_mask is not None and self.allin_mask["enabled"]
+
+    def _hero_decision_snapshot(self):
+        """Stage 1 guard, then the optional native all-in mask. Cached per decision."""
+        key = (self.ctx.hands_played, len(self.table.events_for(self.hero)), self.hero)
+        if self._hero_snap_key == key:
+            return self._hero_snap
+        snap = self.guard.apply(self.table.snapshot(self.hero))
+        if self.allin_mask is not None:
+            snap = mask_snapshot(snap, self.allin_mask)
+        self._hero_snap_key, self._hero_snap = key, snap
+        return snap
+
     def observe_poker(self):
         if self.table.is_over() or self.table.current_player() != self.hero:
             raise RuntimeError("observation requires hero decision")
-        # Exact Stage 1 traversal boundary: tokenizer, numeric features, action mask.
-        return HunlState(self.table, self.tokenizer, self.guard).observation()
+        # Exact Stage 1 traversal boundary when the native mask is off.
+        if not self._mask_active():
+            return HunlState(self.table, self.tokenizer, self.guard).observation()
+        return self.tokenizer.encode(self._hero_decision_snapshot())
 
     def observe(self):
         return {**self.observe_poker(), "match_ctx": self.ctx.tensor(self.context_fields)}
@@ -48,6 +70,7 @@ class BotzoneMatchEnv:
         if not self.done:
             raise RuntimeError("cannot reset an unfinished match")
         self.ctx, self.hands, self.done = MatchCtx(), [], False
+        self._hero_snap_key = None
         if self.pool is not None:
             self.opponent_name, self.opponent = self.pool.sample()
         if hasattr(self.opponent, "begin_match"):
@@ -69,9 +92,7 @@ class BotzoneMatchEnv:
     def opponent_step(self, action):
         if not self.defer_opponents or not self.pending_opponent():
             raise RuntimeError("no deferred opponent decision")
-        if action not in self.table.legal_action_ids():
-            raise ValueError("illegal opponent action")
-        self._push(int(action))
+        self._commit_opponent(action, message="illegal opponent action")
         return self._advance()
 
     def _deal(self):
@@ -81,16 +102,30 @@ class BotzoneMatchEnv:
             self._trace_events = []
             self._trace_hole = list(self.table.hole_cards(self.hero))
         self.ctx.begin_hand()
+        self._hero_snap_key = None
         self.opponent.begin_hand(1 - self.hero)
+
+    def _commit_opponent(self, action, *, message):
+        if isinstance(action, PotFractionBet):
+            self._push(action)
+            return
+        action = int(action)
+        if action not in self.table.legal_action_ids():
+            raise ValueError(message)
+        self._push(action)
 
     def _push(self, action):
         if self.hand_trace is not None:
             seat = self.table.current_player()
             snapshot = self.table.snapshot(seat)
-        self.table.step(action)
+        if isinstance(action, PotFractionBet):
+            recorded = apply_actor_decision(self.table, action)
+        else:
+            self.table.step(int(action))
+            recorded = int(action)
         if self.hand_trace is not None:
             event = self.table.events_for(self.hero)[-1]
-            self._trace_events.append(dict(seat=seat, street=snapshot.street, action=action,
+            self._trace_events.append(dict(seat=seat, street=snapshot.street, action=recorded,
                 board=list(snapshot.board_cards), pot=snapshot.pot, to_call=snapshot.to_call,
                 chips_added=event.chips_added, stack_before=event.stack_before))
         self.ctx.observe_action(self.table.events_for(self.hero)[-1])
@@ -127,10 +162,8 @@ class BotzoneMatchEnv:
             if self.defer_opponents:
                 return reward
             # Rule bots retain their full engine-legal actions as in Stage 1 evaluation.
-            action = int(self.opponent.act(self.table.snapshot(1 - self.hero)))
-            if action not in self.table.legal_action_ids():
-                raise ValueError("opponent selected an illegal action")
-            self._push(action)
+            action = self.opponent.act(self.table.snapshot(1 - self.hero))
+            self._commit_opponent(action, message="opponent selected an illegal action")
         raise RuntimeError("match action budget exceeded")
 
     def step(self, action):
@@ -138,7 +171,7 @@ class BotzoneMatchEnv:
             raise RuntimeError("match has ended")
         if self.pending_opponent():
             raise RuntimeError("wait for the deferred opponent decision")
-        if action not in self.guard.apply(self.table.snapshot(self.hero)).legal_action_ids:
+        if action not in self._hero_decision_snapshot().legal_action_ids:
             raise ValueError("hero action violates Stage 1 abstraction")
         self._push(int(action))
         reward = self._advance()

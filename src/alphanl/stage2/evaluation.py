@@ -17,8 +17,9 @@ EVAL_OPPONENTS = ("equity", "nit", "call", "maniac", "overbet", "reference")
 
 @torch.inference_mode()
 def play_match(model, opponent, *, decks, first_hero_seat, hand_trace=None):
+    mask = model.settings.get("botzone_native_allin_mask") if hasattr(model, "settings") else None
     env = BotzoneMatchEnv(model.config, opponent, decks=decks, first_hero_seat=first_hero_seat,
-                         hand_trace=hand_trace, context_fields=model.context_fields)
+                         hand_trace=hand_trace, context_fields=model.context_fields, allin_mask=mask)
     obs = env.reset()
     device = next(model.parameters()).device
     while not env.done:
@@ -50,8 +51,10 @@ class MatchEvaluator:
         self.opponents = tuple(EVAL_OPPONENTS if opponents is None else opponents)
         from alphanl.cfr.evaluation import OPPONENTS
         from alphanl.cfr.pro_bots import PRO_OPPONENTS
+        from .ladder_bots import LADDER_OPPONENTS
+        allowed = OPPONENTS + PRO_OPPONENTS + LADDER_OPPONENTS + ("reference",)
         if (len(set(self.opponents)) != len(self.opponents) or not {"equity","reference"} <= set(self.opponents)
-                or any(n not in OPPONENTS + PRO_OPPONENTS + ("reference",) for n in self.opponents)):
+                or any(n not in allowed for n in self.opponents)):
             raise ValueError("invalid held-out evaluation opponents")
         with torch.random.fork_rng(devices=[]):
             self.baseline = ResidualExploiterPolicy(model.reference, **model.settings).to(next(model.parameters()).device).eval()

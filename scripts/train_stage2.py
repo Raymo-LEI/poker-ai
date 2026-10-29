@@ -43,6 +43,14 @@ def main():
     if args.resume and args.warm_start:
         parser.error("resume and warm-start are mutually exclusive")
     settings = json.loads(args.config.read_text())
+    root_mask = settings.get("botzone_native_allin_mask")
+    policy = dict(settings.get("policy") or {})
+    policy_mask = policy.get("botzone_native_allin_mask")
+    if root_mask is not None and policy_mask is not None and root_mask != policy_mask:
+        parser.error("botzone_native_allin_mask at the config root and under policy disagree")
+    if root_mask is not None and policy_mask is None:
+        policy["botzone_native_allin_mask"] = root_mask
+    settings["policy"] = policy
     device = args.device or settings["device"]
     updates = args.updates if args.updates is not None else settings["updates"]
     count = settings.get("matches_per_update", 20)
@@ -102,9 +110,10 @@ def main():
                         metadata={**identity, "initialization": initialization, "matches": 0, "timesteps": 0})
     for update in range(start + 1, start + updates + 1):
         began = time.perf_counter()
+        mask = model.settings.get("botzone_native_allin_mask")
         envs = [BotzoneMatchEnv(model.config, pool=pool, seed=settings["seed"] + matches + i,
                                first_hero_seat=i % 2, defer_opponents=True,
-                               context_fields=model.context_fields) for i in range(count)]
+                               context_fields=model.context_fields, allin_mask=mask) for i in range(count)]
         capture = traces['enabled'] and traces['train_matches'] > 0 and (update == start + 1 or update % traces['train_every_updates'] == 0)
         writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_train_u{update:07d}',
             update=update, scope='training', max_bytes=traces['max_bytes'], experiment=identity) if capture else None

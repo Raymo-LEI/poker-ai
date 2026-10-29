@@ -15,12 +15,18 @@ def main():
     parser.add_argument("--match-pairs", type=int, default=50)
     parser.add_argument("--seed", type=int, default=92017)
     parser.add_argument("--equity-samples", type=int, default=64)
+    parser.add_argument("--opponents", default="",
+                        help="Comma-separated held-out names. Default keeps equity/nit/call/maniac/overbet/reference. "
+                             "Same duplicate decks either way. Ladder replicas: "
+                             "OffTree_Aggro_Boss,Check_Shove_Trapper,Flop_Raise_War_Bot")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("output already exists")
     torch.set_num_threads(1)
     model, blob = load_checkpoint(args.checkpoint, device=args.device)
-    evaluator = MatchEvaluator(model, match_pairs=args.match_pairs, seed=args.seed, equity_samples=args.equity_samples)
+    opponents = tuple(name for name in args.opponents.split(",") if name) or None
+    evaluator = MatchEvaluator(model, match_pairs=args.match_pairs, seed=args.seed,
+                               equity_samples=args.equity_samples, opponents=opponents)
     report = evaluator.evaluate(model, update=blob["update"], progress=lambda name: print(f"Evaluating {name}", flush=True))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")

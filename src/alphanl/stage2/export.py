@@ -75,6 +75,13 @@ def cat(values, dim=0):
                        'NUMERIC_VERSION="hunl_exact_fraction_v1"\n' + _definition(hunl, "HunlTokenizer"))
     sources["context"] = (base / "stage2/context.py").read_text().replace('import torch', 'from . import arraytorch as torch')
     sources["actions"] = (base / "cfr/actions.py").read_text()
+    allin_mask = (base / "stage2/allin_mask.py").read_text()
+    allin_mask = allin_mask.replace(
+        "from alphanl.cfr.actions import CFRActionGuard", "from .actions import CFRActionGuard")
+    allin_mask = allin_mask.replace(
+        "from alphanl.transformer.equity import estimated_equity, preflop_key",
+        "from .equity import estimated_equity, preflop_key")
+    sources["allin_mask"] = allin_mask
     sources["reconstruct"] = (REPO / "botzone_bots/model/reconstruct.py").read_text()
     forward = (REPO / "botzone_bots/model/forward.py").read_text()
     feature_function = _definition(forward, "raw_forward").replace('def raw_forward(', 'def features_forward(')

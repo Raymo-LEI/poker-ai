@@ -90,7 +90,12 @@ class NeuralMatchActor:
         self.ctx.finish_hand(net_bb, showdown=showdown)
 
     def encode(self, snapshot):
-        batch = self.tokenizer.encode(self.guard.apply(snapshot))
+        snap = self.guard.apply(snapshot)
+        # Self-play copies use the same voluntary all-in mask as the learner.
+        if self.kind == "residual":
+            from .allin_mask import mask_snapshot
+            snap = mask_snapshot(snap, self.model.settings.get("botzone_native_allin_mask"))
+        batch = self.tokenizer.encode(snap)
         if self.kind == "residual":
             batch["match_ctx"] = self.ctx.tensor(self.model.context_fields)
         return batch

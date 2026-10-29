@@ -1,9 +1,12 @@
 """Shapes, illegal-action masking, GAE, and a few PPO steps on random data."""
 
+import warnings
+
+import pytest
 import torch
 
 from alphanl.transformer.model import PokerTransformer, masked_log_probs
-from alphanl.transformer.ppo import compute_gae, ppo_losses, ppo_update
+from alphanl.transformer.ppo import compute_gae, explained_variance, ppo_losses, ppo_update
 from alphanl.transformer.tokenizer import NUM_NUMERIC, NUM_TYPES, VOCAB_SIZE
 
 
@@ -97,6 +100,33 @@ def test_gae_terminal_and_bootstrap():
     )
     assert torch.allclose(adv_b, torch.tensor([[5.0]]))
     assert torch.allclose(ret_b, torch.tensor([[5.0]]))
+
+
+@pytest.mark.parametrize("values, returns", [
+    ([], []),
+    ([0.5], [1.0]),
+    ([0.0, 2.0], [1.0, 1.0]),
+    ([0.0, 2.0], [1.0, float("nan")]),
+    ([0.0, 2.0], [1.0, float("inf")]),
+    ([float("nan"), 2.0], [1.0, 3.0]),
+    ([float("-inf"), 2.0], [1.0, 3.0]),
+    ([0.0, 0.0], [-3e38, 3e38]),
+    ([-3e38, 3e38], [1.0, 3.0]),
+])
+def test_explained_variance_undefined_is_finite_without_warnings(values, returns):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        assert explained_variance(torch.tensor(values), torch.tensor(returns)) == 0.0
+
+
+@pytest.mark.parametrize("values, expected", [
+    ([1.0, 2.0, 3.0], 1.0),
+    ([0.0, 0.0, 0.0], 0.0),
+    ([0.0, 1.0, 2.0], 1.0),
+    ([3.0, 2.0, 1.0], -3.0),
+])
+def test_explained_variance_preserves_defined_values(values, expected):
+    assert explained_variance(torch.tensor(values), torch.tensor([1.0, 2.0, 3.0])) == pytest.approx(expected)
 
 
 def test_entropy_coef_changes_only_the_entropy_term():

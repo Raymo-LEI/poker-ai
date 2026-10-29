@@ -21,6 +21,26 @@ from alphanl.stage2.train import collect_match, collect_matches, train_matches, 
 from alphanl.stage2.evaluation import MatchEvaluator, summarize_match_pairs, evaluation_metrics
 
 
+def test_metrics_sanitizer_preserves_finite_values_and_strict_json():
+    import importlib.util
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / "scripts/train_stage2.py"
+    spec = importlib.util.spec_from_file_location("metrics_trainer", script)
+    trainer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(trainer)
+    metrics = {"explained_variance": float("nan"), "overflow": float("inf"),
+               "underflow": float("-inf"), "loss": 1.25, "update": 104,
+               "passed": True, "label": "nan", "missing": None,
+               "nested": [{"ci95": (float("-inf"), 2.0)}]}
+    sanitized = trainer.sanitize_metrics(metrics)
+    decoded = json.loads(json.dumps(sanitized, allow_nan=False))
+    assert decoded == {"explained_variance": None, "overflow": None, "underflow": None,
+                       "loss": 1.25, "update": 104, "passed": True, "label": "nan",
+                       "missing": None, "nested": [{"ci95": [None, 2.0]}]}
+    assert np.isnan(metrics["explained_variance"])
+    assert metrics["nested"][0]["ci95"][0] == float("-inf")
+
+
 @pytest.fixture
 def league(tmp_path):
     torch.set_num_threads(1)
@@ -38,6 +58,25 @@ def league(tmp_path):
     pool = MatchOpponentPool(directory, seed=5, equity_samples=2, history_cache_size=8)
     pool.initialize(model)
     return model, pool
+
+
+def test_stage2_ppo_singleton_tail_metrics_are_strict_json(league):
+    import warnings
+    from alphanl.stage2.train import MatchRollout, train_match
+    model, _ = league
+    env = BotzoneMatchEnv(model.config, RuleActor("call", seed=3), seed=3)
+    with torch.no_grad():
+        batch = model.prepare(env.reset())
+        batch = {k: torch.cat([v] * 3) for k, v in batch.items()}
+        actions, logp, values, _ = model.act(batch)
+    rollout = MatchRollout(batch, actions, logp, values,
+                          torch.tensor([0.0, 0.0, 1.0]), torch.tensor([0.0, 0.0, 1.0]), {})
+    optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=.001)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        metrics = train_match(model, optimizer, rollout, epochs=1, minibatch_size=2, gamma=.9)
+    assert all(np.isfinite(v) for v in metrics.values())
+    assert json.loads(json.dumps(metrics, allow_nan=False)) == metrics
 
 
 def test_quota_is_exact_despite_rule_weakness_and_history_cache_shared(league):
@@ -233,7 +272,7 @@ def test_cache_misses_preserve_action_rng_and_self_snapshot_eviction(league):
     assert model.delta_head.weight.requires_grad
 
 
-def test_trainer_resume_replays_next_complete_quota_block(league, tmp_path, monkeypatch):
+def test_trainer_resume_replays_next_complete_quota_block(league, tmp_path, monkeypatch, capsys):
     import importlib.util
     import sys
     from pathlib import Path
@@ -251,12 +290,26 @@ def test_trainer_resume_replays_next_complete_quota_block(league, tmp_path, monk
     spec = importlib.util.spec_from_file_location("matchpool_trainer", script)
     trainer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(trainer)
+    train_matches = trainer.train_matches
+    def nonfinite_metrics(*args, **kwargs):
+        metrics = train_matches(*args, **kwargs)
+        return {**metrics, "explained_variance": float("nan"),
+                "positive_inf": float("inf"), "negative_inf": float("-inf")}
+    monkeypatch.setattr(trainer, "train_matches", nonfinite_metrics)
     def run(name, updates, resume=None):
         args = [str(script), "--config", str(config), "--out-dir", str(tmp_path/name), "--updates", str(updates)]
         if resume:
             args += ["--resume", str(resume)]
         monkeypatch.setattr(sys, "argv", args)
         trainer.main()
+        rows = [json.loads(line) for line in (tmp_path / name / "metrics.jsonl").read_text().splitlines()]
+        stdout_rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert rows == stdout_rows and len(rows) == updates
+        for row in rows:
+            assert row["explained_variance"] is None
+            assert row["positive_inf"] is None and row["negative_inf"] is None
+            assert np.isfinite(row["loss"])
+            json.dumps(row, allow_nan=False)
         return tmp_path / name / "train.pt"
     uninterrupted = run("uninterrupted", 2)
     first = run("first", 1)
@@ -290,7 +343,8 @@ def test_trainer_writes_failed_retention_before_stopping(league, tmp_path, monke
     trainer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(trainer)
     def fail(self, *args, update, **kwargs):
-        return {"update":update, "retention_pass":False, "equity_positive":False, "opponents":{}}
+        return {"update":update, "retention_pass":False, "equity_positive":False, "opponents":{},
+                "diagnostics": {"ci95": [float("-inf"), float("inf")], "undefined": float("nan")}}
     monkeypatch.setattr(trainer.MatchEvaluator, "evaluate", fail)
     output = tmp_path / "failed"
     monkeypatch.setattr(sys, "argv", [str(script), "--config",str(config), "--out-dir",str(output), "--updates","2"])
@@ -298,7 +352,8 @@ def test_trainer_writes_failed_retention_before_stopping(league, tmp_path, monke
         trainer.main()
     _, state = load_checkpoint(output / "train.pt")
     assert state["update"] == 1 and state["metadata"]["retention_failed"]
-    assert (output / "stage2_evaluations/update_0000001.json").exists()
+    report = json.loads((output / "stage2_evaluations/update_0000001.json").read_text())
+    assert report["diagnostics"] == {"ci95": [None, None], "undefined": None}
     assert not (output / "retained.pt").exists()
     metrics = json.loads((output/"metrics.jsonl").read_text())
     assert metrics["stage2/eval/retention_pass"] == 0

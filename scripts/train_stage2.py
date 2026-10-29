@@ -1,6 +1,7 @@
 """Explicit opt-in Stage 2 PPO; a 20-match quota block per update."""
 import argparse
 import json
+import math
 from pathlib import Path
 import random
 import time
@@ -10,6 +11,17 @@ from alphanl.stage2.policy import ResidualExploiterPolicy
 from alphanl.stage2.pool import MatchOpponentPool
 from alphanl.stage2.train import collect_matches, train_matches, save_checkpoint, load_checkpoint
 from alphanl.stage2.evaluation import MatchEvaluator, evaluation_metrics
+
+
+def sanitize_metrics(value):
+    """Copy JSON metrics, replacing nonfinite floats with null at any depth."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: sanitize_metrics(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [sanitize_metrics(item) for item in value]
+    return value
 
 
 def main():
@@ -92,10 +104,12 @@ def main():
                 progress=lambda name: print(f"Stage 2 update {update}: evaluating {name}", flush=True))
             report_dir = args.out_dir / "stage2_evaluations"
             report_dir.mkdir(exist_ok=True)
-            (report_dir / f"update_{update:07d}.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+            (report_dir / f"update_{update:07d}.json").write_text(
+                json.dumps(sanitize_metrics(report), indent=2, allow_nan=False) + "\n")
             row.update(evaluation_metrics(report))
         failed = report is not None and not report["retention_pass"]
         row["seconds"] = time.perf_counter() - began
+        row = sanitize_metrics(row)
         with (args.out_dir / "metrics.jsonl").open("a") as stream:
             stream.write(json.dumps(row, allow_nan=False) + "\n")
         metadata = {"reference": settings["reference"], "stage": "stage2", "timesteps": timesteps,

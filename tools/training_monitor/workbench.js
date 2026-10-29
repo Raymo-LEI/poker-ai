@@ -7,6 +7,17 @@
     villain_postflop_fold: "对手翻后弃牌", showdown_hero_last_aggressor: "模型最后主动下注后摊牌",
     showdown_villain_last_aggressor_large_hero_call: "对手主动下注 / 模型大额跟注后摊牌", other_showdown: "其他摊牌"};
   const OPPONENT_LABELS = {random: "Random", calling_station: "Calling station", aggressive: "Aggressive", equity: "Pot odds equity", nit: "Tight passive nit", overbet: "Overbet", iter_1: "首轮策略", prev_checkpoint: "上一检查点"};
+  const STAGE2_EVAL_NAMES = ["equity", "reference", "TAG_Pro", "Trapper_CR", "random", "call", "maniac", "overbet", "nit"];
+  const STAGE2_EVAL_LABELS = {equity:"Equity",reference:"冻结参考",TAG_Pro:"TAG_Pro",Trapper_CR:"Trapper_CR",random:"Random",call:"Calling station",maniac:"Aggressive",overbet:"Overbet",nit:"Nit"};
+
+  function stage2EvaluationSeries(rows) {
+    const names = new Set(STAGE2_EVAL_NAMES);
+    for (const row of rows) for (const key of Object.keys(row)) {
+      const match = /^stage2\/eval\/([^/]+)\/mbb_per_hand$/.exec(key);
+      if (match) names.add(match[1]);
+    }
+    return [...names].map(name => ({key:`stage2/eval/${name}/mbb_per_hand`,label:`${STAGE2_EVAL_LABELS[name] || name} · 独立评测 mbb/hand`}));
+  }
 
   function coordinates(rows, axis) {
     let elapsed = 0, samples = 0, timeKnown = true, samplesKnown = true;
@@ -42,14 +53,28 @@
 
   function stage2EvaluationCards(data, format) {
     const e = data.stage2_eval_latest || {}, number = (key,digits) => format(e[key],digits);
-    return [
+    const cards = [
       ["独立评测 · Equity",number("stage2/eval/equity/mbb_per_hand",1),"mbb/hand",`评测 U=${e["stage2/eval/update"] ?? "—"}`],
       ["Equity 比赛胜率",format(isNumber(e["stage2/eval/equity/match_win"]) ? e["stage2/eval/equity/match_win"]*100 : null,1),"%","完整 50 手比赛；平局不算胜"],
       ["参考保留率测试",number("stage2/eval/reference/mbb_per_hand",1),"mbb/hand","候选对冻结学生参考"],
       ["Retention gate",isNumber(e["stage2/eval/retention_pass"]) ? e["stage2/eval/retention_pass"] === 1 ? "PASS" : "FAIL" : "—","","以评测器发布结果为准"]];
+    const names = stage2EvaluationSeries([e]).map(series => series.key.split("/")[2]);
+    for (const name of names.filter(name => name !== "equity" && name !== "reference")) {
+      const prefix = `stage2/eval/${name}/`;
+      const alias = {call:"calling_station",maniac:"aggressive"}[name] || name;
+      const low = e[prefix+"mbb_ci95_low"] ?? e[`eval/winrate_vs_${alias}_mbb_ci_low`];
+      const high = e[prefix+"mbb_ci95_high"] ?? e[`eval/winrate_vs_${alias}_mbb_ci_high`];
+      const detail = [`评测 U=${e["stage2/eval/update"] ?? "—"}`];
+      if (isNumber(low) && isNumber(high)) detail.push(`95% CI [${format(low,1)}, ${format(high,1)}]`);
+      if (isNumber(e[prefix+"match_win"])) detail.push(`比赛胜率 ${format(e[prefix+"match_win"]*100,1)}%`);
+      if (isNumber(e[prefix+"hands"])) detail.push(`${format(e[prefix+"hands"],0)} 手`);
+      cards.push([`独立评测 · ${STAGE2_EVAL_LABELS[name] || name}`,number(prefix+"mbb_per_hand",1),"mbb/hand",
+        isNumber(e[prefix+"mbb_per_hand"]) ? detail.join(" · ") : "未采集独立评测"]);
+    }
+    return cards;
   }
 
-  if (typeof module !== "undefined" && module.exports) module.exports = {coordinates, matchedEndpoints, freshness, latestEvaluation, stage2EvaluationCards};
+  if (typeof module !== "undefined" && module.exports) module.exports = {coordinates, matchedEndpoints, freshness, latestEvaluation, stage2EvaluationCards, stage2EvaluationSeries};
   if (typeof document === "undefined") return;
 
   const api = window.Overwatch;
@@ -135,7 +160,7 @@
     $("s2-opponents").replaceChildren(s2.block_updates ? table(["对手","本次实际采样","滚动窗口场数","窗口 mbb/hand","窗口比赛胜率"], (s2.opponents || []).map(o => [o.name,fmt(o.sampled,0),fmt(o.matches,0),fmt(o.mbb_per_hand,1),pct(o.match_win)+"%"])) : table(["对手","记录场数","平均净 BB / 场","胜 / 和 / 负"], enabled ? (s2.opponents || []).map(o => [o.name,fmt(o.matches,0),fmt(o.mean_net_bb,2),`${o.wins} / ${o.draws} / ${o.matches-o.wins-o.draws}`]) : []));
     mini("s2-eval-cards", enabled ? stage2EvaluationCards(data,fmt) : []);
     const evalRows = data.rows.filter(row => isNumber(row["stage2/eval/update"]));
-    chart("s2-evaluation", enabled ? evalRows : [], ["equity","reference"].map(name => ({key:`stage2/eval/${name}/mbb_per_hand`,label:name+" · 独立评测 mbb/hand"})), {zero:true});
+    chart("s2-evaluation", enabled ? evalRows : [], stage2EvaluationSeries(evalRows), {zero:true});
     const hud = [["vpip","VPIP"],["pfr","PFR"],["three_bet","3-bet"],["fold_to_preflop_raise","面对翻前加注 Fold"],["flop_aggression","Flop aggression"],["turn_aggression","Turn aggression"],["river_aggression","River aggression"],["fold_to_postflop_bet","面对翻后下注 Fold"],["all_in_frequency","All-in"],["showdown_win","摊牌胜率"],["check_raise_freq","Check-raise / opportunity"],["cbet_freq","Flop C-bet / opportunity"]];
     mini("s2-context", enabled ? hud.map(([key,label]) => [label,pct(r[`stage2/context/${key}`]),"%","最后一场对手 · 含先验"]) : []);
   }

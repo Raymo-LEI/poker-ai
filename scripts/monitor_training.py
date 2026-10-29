@@ -11,12 +11,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 from pathlib import Path
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
 
 REPO = Path(__file__).resolve().parents[1]
+if str(REPO / "scripts") not in sys.path:
+    sys.path.insert(0, str(REPO / "scripts"))
+from monitor_workbench import stage2_report_row, Workbench, extra_paths, preview
 ASSETS = REPO / "tools" / "training_monitor"
 LOGS = ("metrics.csv", "performance.csv", "metrics.jsonl", "eval.jsonl",
         "diagnostics.jsonl", "checkpoint_performance.jsonl", "benchmark.json", "report.json")
@@ -27,10 +31,12 @@ MAX_HISTORY_REPORTS = 200
 
 def history_reports(directory):
     """Only include the run's periodic full-budget evaluations, not interventions."""
+    stage2 = directory / 'stage2_evaluations'
+    stage2_reports = [p for p in stage2.glob('update_*.json') if p.is_file() and p.resolve().is_relative_to(directory.resolve())] if stage2.is_dir() else []
     base = directory / "evaluations/readiness_periodic"
     if not base.is_dir() or not base.resolve().is_relative_to(directory.resolve()):
-        return []
-    reports = []
+        return sorted(stage2_reports, key=lambda p: p.stat().st_mtime_ns)[-MAX_HISTORY_REPORTS:]
+    reports = stage2_reports
     for child in base.iterdir():
         if (child.name.startswith("full_budget_t") and child.name[13:].isdigit()
                 and child.is_dir() and child.resolve().is_relative_to(directory.resolve())):
@@ -148,11 +154,22 @@ def normalize(row):
     calls = sum(converted.get(f"p{p}_inference_calls", 0) for p in (0, 1))
     if calls > 0:
         converted["system/average_inference_batch"] = sum(converted.get(f"p{p}_inference_rows", 0) for p in (0, 1)) / calls
+    for key,value in list(converted.items()):
+        if key.startswith('stage2/eval/'):
+            parts = key.split('/')
+            if len(parts) == 4:
+                field = {'mbb_per_hand':'', 'mbb_ci95_low':'_ci_low', 'mbb_ci95_high':'_ci_high', 'match_pairs':'_pairs'}.get(parts[3])
+                if field is not None:
+                    name = {'call':'calling_station','maniac':'aggressive'}.get(parts[2],parts[2])
+                    converted[f'eval/winrate_vs_{name}_mbb{field}'] = value
     return converted
 
 
 def readiness_rows(report):
-    """Adapt the repository's frozen-policy evaluation report, if present."""
+    """Adapt recorded evaluation reports without loading a model."""
+    if report.get("format") == "stage2_duplicate_matches_v1":
+        row = stage2_report_row(report)
+        return [row] if row else []
     if report.get("format") != "sd_cfr_readiness_v1":
         return []
     target = number(report.get("hero_iteration"))
@@ -237,6 +254,7 @@ class Store:
         self.source_label = source_label
         self.cache = {}
         self.lock = threading.Lock()
+        self.workbench = Workbench()
 
     def discover(self):
         result = {}
@@ -247,7 +265,7 @@ class Store:
             for directory in candidates:
                 if not directory.resolve().is_relative_to(root):
                     continue
-                paths = [safe_file(directory, name) for name in LOGS]
+                paths = [safe_file(directory, name) for name in LOGS + ("status.json", "launch_manifest.json")]
                 paths = [path for path in paths if path is not None]
                 if not paths:
                     continue
@@ -256,6 +274,31 @@ class Store:
                                  "path": str(directory),
                                  "updated_at": max(p.stat().st_mtime for p in paths)}
         return result
+
+    def catalog(self):
+        items = []
+        for info in self.discover().values():
+            try:
+                items.append(preview(Path(info["path"]), info))
+            except (OSError, ValueError, TypeError):
+                items.append({**info, "category": "other", "reported_phase": "unknown", "effective": {}})
+        return {"experiments": sorted(items, key=lambda r: r["updated_at"], reverse=True), "source": self.source_label}
+
+    def run_directory(self, ident):
+        info = self.discover().get(ident)
+        if info is None:
+            raise KeyError(ident)
+        return Path(info["path"])
+
+    def hands(self, ident, trace_id, **filters):
+        return self.workbench.hands(self.run_directory(ident), trace_id, **filters)
+
+    def hand(self, ident, trace_id, record):
+        return self.workbench.hand(self.run_directory(ident), trace_id, record)
+
+    def health(self):
+        return {"page": "available", "log_service": "responding", "source": self.source_label,
+                "process_liveness": "unknown", "checked_at": time.time()}
 
     def load(self, ident):
         with self.lock:
@@ -268,6 +311,7 @@ class Store:
             paths = {name: safe_file(directory, name) for name in names}
             history = history_reports(directory)
             paths.update({p.relative_to(directory).as_posix(): p for p in history})
+            paths.update(extra_paths(directory))
             signature = tuple((name, p.stat().st_mtime_ns, p.stat().st_size)
                               for name, p in paths.items() if p is not None)
             cached = self.cache.get(ident)
@@ -351,13 +395,14 @@ class Store:
             strategies = read_object(paths["strategies/index.json"], warnings)
             checkpoint = paths["train.pt"]
             data = {**info, "updated_at": max([info["updated_at"]] + [p.stat().st_mtime for p in history]),
-                    "kind": "Stage 2 PPO" if config.get("stage") == "stage2" or latest.get("stage2") == 1 else "PPO" if step_key == "update" else "SD-CFR", "source": self.source_label,
+                    "kind": "Stage 2 PPO" if config.get("stage") == "stage2" or any(r.get("stage2") == 1 for r in rows) else "PPO" if step_key == "update" else "SD-CFR",
+                    "stage": "stage2" if config.get("stage") == "stage2" or any(r.get("stage2") == 1 for r in rows) else "stage1", "source": self.source_label,
                     "evaluation_only": bool(paths["report.json"] and not paths["metrics.csv"]
                                             and not paths["metrics.jsonl"] and not paths["benchmark.json"]),
                     "step_key": step_key, "rows": rows, "latest": latest,
                     "eval_latest": eval_latest, "hud_latest": hud_latest,
-                    "diagnostic_latest": diagnostic_rows[-1] if diagnostic_rows else {},
                     "stage2_eval_latest": next((r for r in reversed(rows) if "stage2/eval/update" in r), {}),
+                    "diagnostic_latest": diagnostic_rows[-1] if diagnostic_rows else {},
                     "config": config, "environment": environment,
                     "sources": [{"name": name, "bytes": p.stat().st_size,
                                  "updated_at": p.stat().st_mtime} for name, p in paths.items() if p is not None],
@@ -366,6 +411,7 @@ class Store:
                     "strategies": strategies, "warnings": list(dict.fromkeys(warnings))[:30],
                     "evaluation_notes": report.get("notes", []),
                     "history_limit": MAX_ROWS}
+            data["workbench"] = self.workbench.detail(directory, data, readiness_rows)
             # Bound cache size when directories are rotated/deleted.
             self.cache = {k: v for k, v in self.cache.items() if k in runs}
             self.cache[ident] = (signature, data)
@@ -421,7 +467,22 @@ def make_handler(store):
                 elif url.path == "/api/run":
                     ident = parse_qs(url.query).get("id", [""])[0]
                     self.json(200, store.load(ident), conditional=True)
-                elif url.path in ("/", "/index.html", "/app.js", "/styles.css"):
+                elif url.path == "/api/catalog":
+                    self.json(200, store.catalog(), conditional=True)
+                elif url.path == "/api/health":
+                    self.json(200, store.health())
+                elif url.path in ("/api/hands", "/api/hand"):
+                    query = parse_qs(url.query)
+                    ident = query.get("id", [""])[0]
+                    trace_id = query.get("trace", [""])[0]
+                    if url.path == "/api/hand":
+                        result = store.hand(ident, trace_id, int(query.get("record", ["0"])[0]))
+                    else:
+                        result = store.hands(ident, trace_id, offset=int(query.get("offset", ["0"])[0]),
+                            limit=int(query.get("limit", ["30"])[0]), seat=query.get("seat", ["all"])[0],
+                            category_filter=query.get("category", ["all"])[0], order=query.get("order", ["loss"])[0])
+                    self.json(200, result, conditional=True)
+                elif url.path in ("/", "/index.html", "/app.js", "/styles.css", "/workbench.js", "/workbench.css"):
                     name = "index.html" if url.path == "/" else url.path[1:]
                     mime = {"html": "text/html", "js": "text/javascript", "css": "text/css"}[name.rsplit(".", 1)[1]]
                     self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")

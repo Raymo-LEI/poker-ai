@@ -13,6 +13,17 @@ from .policy import ResidualExploiterPolicy, residual_ppo_loss
 
 FORMAT = "stage2_match_residual_v1"
 
+
+def match_report(env):
+    """One completed match, with identity kept out of the policy observation."""
+    if not env.done or env.ctx.hands_played != 50:
+        raise ValueError("cannot report an unfinished match")
+    return {"hands": env.hands, "hands_played": env.ctx.hands_played,
+            "hero_net_bb": env.ctx.hero_net_bb, "context": env.ctx.as_dict(),
+            "opponent": env.opponent_name,
+            "opponent_snapshot": getattr(env.opponent, "snapshot_id", None),
+            "opponent_variant": getattr(env.opponent, "variant", None)}
+
 @dataclass
 class MatchRollout:
     batch: dict
@@ -45,8 +56,7 @@ def collect_match(model, env):
     rewards[0] += env.initial_reward
     return MatchRollout(cat_batches(batches), torch.cat(actions), torch.cat(logps), torch.cat(values),
                         torch.tensor(rewards, device=device), torch.tensor(dones, device=device),
-                        {"hands": env.hands, "hands_played": env.ctx.hands_played,
-                         "hero_net_bb": env.ctx.hero_net_bb, "context": env.ctx.as_dict()})
+                        match_report(env))
 
 
 def train_match(model, optimizer, rollout, *, epochs=4, minibatch_size=256, clip_eps=.2,
@@ -74,8 +84,28 @@ def train_match(model, optimizer, rollout, *, epochs=4, minibatch_size=256, clip
                 raise FloatingPointError("nonfinite Stage 2 gradients")
             optimizer.step()
             metrics_rows.append((len(ids), metrics))
-    return {key: sum(n * m[key] for n, m in metrics_rows) / sum(n for n, _ in metrics_rows)
-            for key in metrics_rows[0][1]}
+    metrics = {key: sum(n * m[key] for n, m in metrics_rows) / sum(n for n, _ in metrics_rows)
+               for key in metrics_rows[0][1]}
+    metrics.update(final_policy_diagnostics(model, rollout.batch, minibatch_size=minibatch_size))
+    return metrics
+
+
+@torch.no_grad()
+def final_policy_diagnostics(model, batch, *, minibatch_size=256):
+    """Measure the final update on collected states, separately from epoch means."""
+    from alphanl.transformer.model import masked_log_probs
+    totals = dict(final_base_kl=0., final_policy_tv=0., final_argmax_changed=0.)
+    count = len(batch['legal_mask'])
+    for start in range(0, count, minibatch_size):
+        part = {k: v[start:start + minibatch_size] for k, v in batch.items()}
+        part = model.prepared(part)
+        logits, _ = model(part)
+        _, logp, probs, legal = masked_log_probs(logits, part['legal_mask'])
+        _, ref_logp, ref, _ = masked_log_probs(part['ref_logits'], part['legal_mask'])
+        totals['final_base_kl'] += float((probs * (logp-ref_logp).masked_fill(~legal, 0.)).sum(-1).clamp_min(0.).sum())
+        totals['final_policy_tv'] += float((probs-ref).abs().sum(-1).sum() / 2)
+        totals['final_argmax_changed'] += float((probs.argmax(-1) != ref.argmax(-1)).sum())
+    return {k: v / count for k, v in totals.items()}
 
 
 def save_checkpoint(path, model, *, optimizer=None, pool=None, update=0, metadata=None):
@@ -111,7 +141,7 @@ def load_checkpoint(path, *, device="cpu"):
 
 
 @torch.no_grad()
-def collect_matches(model, envs):
+def collect_matches(model, envs, *, on_match_end=None):
     """Advance concurrent matches, grouping hero and snapshot opponent inference.
 
     Each env owns its actor for all 50 hands. Rewards before/between hero
@@ -127,6 +157,16 @@ def collect_matches(model, envs):
         env.reset()
         records.append({"batches": [], "actions": [], "logps": [], "values": [], "rewards": [],
                         "initial": env.initial_reward})
+
+    reported = set()
+    def publish_completed():
+        for index, env in enumerate(envs):
+            if env.done and index not in reported:
+                if on_match_end is not None:
+                    on_match_end(index, match_report(env))
+                reported.add(index)
+
+    publish_completed()
 
     def credit(index, reward):
         row = records[index]
@@ -146,6 +186,7 @@ def collect_matches(model, envs):
             credit(i, env.opponent_step(action))
         ready = [i for i, env in enumerate(envs) if not env.done and not env.pending_opponent()]
         if not ready:
+            publish_completed()
             continue
         batch = model.prepare({k: v.to(device) for k, v in cat_batches([envs[i].observe() for i in ready]).items()})
         actions, logps, values, _ = model.act(batch)
@@ -158,6 +199,7 @@ def collect_matches(model, envs):
             row["rewards"].append(0.)
             _, reward, _, _ = env.step(int(actions[j]))
             credit(i, reward)
+        publish_completed()
     rollouts = []
     for env, row in zip(envs, records):
         if not row["actions"]:
@@ -167,8 +209,7 @@ def collect_matches(model, envs):
         dones[-1] = 1.
         rollouts.append(MatchRollout(cat_batches(row["batches"]), torch.cat(row["actions"]), torch.cat(row["logps"]),
             torch.cat(row["values"]), torch.tensor(row["rewards"], device=device), dones,
-            {"hands": env.hands, "hands_played": 50, "hero_net_bb": env.ctx.hero_net_bb,
-             "context": env.ctx.as_dict(), "opponent": env.opponent_name}))
+            match_report(env)))
     return rollouts
 
 

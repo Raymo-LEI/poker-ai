@@ -85,23 +85,34 @@ def main():
         capture = traces['enabled'] and traces['train_matches'] > 0 and (update == start + 1 or update % traces['train_every_updates'] == 0)
         writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_train_u{update:07d}',
             update=update, scope='training', max_bytes=traces['max_bytes']) if capture else None
-        with writer if writer is not None else nullcontext():
+        # Persist each completed 50-hand match before PPO; a quota block has no
+        # single opponent. Never label the block mean as a match result.
+        with (args.out_dir / "matches.jsonl").open("a") as match_stream, (writer if writer is not None else nullcontext()):
             for index, env in enumerate(envs[:traces['train_matches']] if capture else []):
                 # Opponent is sampled at env.reset(), so read its identity when the hand finishes.
                 def sink(hand, env=env, index=index):
                     writer.sink(match=matches + index + 1, opponent=env.opponent_name,
                         opponent_snapshot=getattr(env.opponent, 'snapshot_id', None))(hand)
                 env.hand_trace = sink
-            rollouts = collect_matches(model, envs)
+            def completed(index, report):
+                pool.record(report["opponent"], report["hero_net_bb"])
+                record = {k: v for k, v in report.items() if k not in ("hands", "context")}
+                record.update(format="stage2_training_match_v1", update=update,
+                              match=matches + index + 1)
+                match_stream.write(json.dumps(record, allow_nan=False) + "\n")
+                match_stream.flush()
+            rollouts = collect_matches(model, envs, on_match_end=completed)
         metrics = train_matches(model, optimizer, rollouts, **settings["ppo"])
-        for env in envs:
-            pool.record(env.opponent_name, env.ctx.hero_net_bb)
         if update % pool.self_snapshot_every == 0:
             pool.add_self_snapshot(model, update=update)
         timesteps += sum(len(r.actions) for r in rollouts)
         matches += count
         row = {"update": update, "stage2": 1, "timesteps": timesteps, **metrics,
                "stage2/matches": matches, "stage2/hands": matches * 50,
+               "stage2/opponent": "mixed",
+               "stage2/match_wins": sum(env.ctx.hero_net_bb > 0 for env in envs),
+               "stage2/match_draws": sum(env.ctx.hero_net_bb == 0 for env in envs),
+               "stage2/match_losses": sum(env.ctx.hero_net_bb < 0 for env in envs),
                "stage2/hero_net_bb": sum(env.ctx.hero_net_bb for env in envs) / count,
                "stage2/match_win": sum(env.ctx.hero_net_bb > 0 for env in envs) / count,
                "stage2/defense_fraction": sum(env.opponent_name in ("reference", "history", "self") for env in envs) / count,
@@ -112,6 +123,7 @@ def main():
                **{f"stage2/window/{name}/{key}": value for name, stats in pool.rolling_metrics().items()
                   for key, value in stats.items()},
                **{f"stage2/sampled/{name}": sum(env.opponent_name == name for env in envs) for name in pool.weights}}
+        row.update({f"stage2/feedback/{name}": value for name, value in pool.matches.items()})
         report = None
         if update % every == 0:
             capture_eval = traces['enabled'] and traces['eval_match_pairs_per_opponent'] > 0

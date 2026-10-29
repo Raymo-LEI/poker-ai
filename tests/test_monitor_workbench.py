@@ -187,6 +187,7 @@ def test_stage2_jsonl_catalog_and_training_scope(tmp_path):
     assert data['workbench']['runtime']['training_step'] == 3
     s2 = data['workbench']['stage2']
     assert s2['latest_opponent'] == 'equity'
+    assert s2['window_wins'] == 2 and s2['window_losses'] == 1
     assert s2['window_net_bb_mean'] == pytest.approx(8/3)
     assert s2['opponents'][0]['mean_net_bb'] == 6
     assert s2['opponents'][1]['wins'] == 0
@@ -212,6 +213,29 @@ def test_stage2_quota_block_uses_actual_counts_and_rolling_opponents(tmp_path):
     assert s2['window_net_bb_mean']==4
     assert s2['opponents'][0]=={'name':'equity','matches':14,'mbb_per_hand':0,'match_win':0,'sampled':7}
     assert not data['eval_latest']
+
+
+def test_stage2_block_win_counts_use_matches_not_update_means(tmp_path):
+    run = tmp_path / 'block_wins'
+    run.mkdir()
+    write(run, 'config.json', {'stage':'stage2', 'matches_per_update':20})
+    # Both block means are negative, yet 18 of the actual matches won.
+    rows = [{'update':u, 'stage2':1, 'stage2/hero_net_bb':-140.7,
+             'stage2/sampled/equity':8, 'stage2/sampled/history':12,
+             'stage2/match_win':.45, 'stage2/match_draws':1} for u in (1,2)]
+    (run/'metrics.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+    store = monitor.Store([tmp_path])
+    summary = store.load('0/block_wins')['workbench']['stage2']
+    assert summary['window_matches'] == 40
+    assert summary['window_wins'] == 18
+    assert summary['window_draws'] == 2 and summary['window_losses'] == 20
+    assert summary['latest_opponent'] == 'mixed'
+    assert summary['latest_sampled'] == {'equity':8, 'history':12}
+    assert all(o['name'] != 'unknown' for o in summary['opponents'])
+    # An incomplete ledger must never replace exact block counters.
+    write(run, 'matches.jsonl', {'format':'stage2_training_match_v1', 'update':2,
+          'match':21, 'opponent':'equity', 'hero_net_bb':100})
+    assert store.load('0/block_wins')['workbench']['stage2']['window_wins'] == 18
 
 
 def test_stage2_report_only_preserves_independent_results_and_trace_metadata(tmp_path):

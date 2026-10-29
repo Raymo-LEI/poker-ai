@@ -277,9 +277,31 @@ def stage2_summary(root, data, config):
                           'mbb_per_hand':numeric(latest.get(prefix+'mbb_per_hand')),
                           'match_win':numeric(latest.get(prefix+'match_win')),
                           'sampled':numeric(latest.get('stage2/sampled/'+name))})
+    # Per-match records are authoritative for W/D/L. Older block logs still
+    # expose exact wins via match_win * sampled_count; a block mean is never a win.
+    ledger = tail_json(safe_path(root, 'matches.jsonl'), max_bytes=2 * 1024 * 1024, max_rows=5000)
+    recent_updates = {r['update'] for r, _ in recent}
+    ledger = [r for r in ledger if r.get('format') == 'stage2_training_match_v1'
+              and r.get('update') in recent_updates and numeric(r.get('hero_net_bb')) is not None
+              and isinstance(r.get('opponent'), str)]
+    wins = sum(n for value, n in weighted if value > 0) if not block else None
+    draws = sum(n for value, n in weighted if value == 0) if not block else None
+    if block and recent and all(numeric(r.get('stage2/match_win')) is not None for r, _ in recent):
+        wins = sum(round(r['stage2/match_win'] * n) for (r, _), (_, n) in zip(recent, weighted))
+    if block and recent and all(numeric(r.get('stage2/match_draws')) is not None for r, _ in recent):
+        draws = sum(r['stage2/match_draws'] for r, _ in recent)
+    # Reject a partial ledger rather than presenting incomplete totals as exact.
+    if block and len(ledger) == count and len({r.get('match') for r in ledger}) == count:
+        wins = sum(r['hero_net_bb'] > 0 for r in ledger)
+        draws = sum(r['hero_net_bb'] == 0 for r in ledger)
+    sampled = {k.split('/')[-1]: v for k, v in latest.items()
+               if k.startswith('stage2/sampled/') and numeric(v) is not None and v > 0}
     return {'enabled':True, 'block_updates':block,
-            'latest_opponent':latest.get('stage2/opponent'),
+            'latest_opponent':'mixed' if block else latest.get('stage2/opponent'),
+            'latest_sampled':sampled,
             'window_updates':len(recent), 'window_matches':count,
+            'window_wins':wins, 'window_draws':draws,
+            'window_losses':count-wins-draws if wins is not None and draws is not None else None,
             'window_net_bb_mean':sum(value*n for value,n in weighted)/count if count else None,
             'opponents':opponents if block else [{'name':name,'matches':len(values),
                 'mean_net_bb':sum(values)/len(values), 'wins':sum(v>0 for v in values),

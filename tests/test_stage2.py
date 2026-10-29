@@ -110,6 +110,7 @@ def test_two_full_matches_backprop_frozen_reference_checkpoint(config, tmp_path)
     for seed, name in [(1, "call"), (2, "equity")]:
         env = BotzoneMatchEnv(config, RuleActor(name, seed=seed, equity_samples=4), seed=seed)
         rollout = collect_match(model, env)
+        assert rollout.report['opponent'] == name
         assert env.ctx.hands_played == 50
         assert len(env.hands) == 50
         assert [h["hero_seat"] for h in env.hands] == [1,0] * 25

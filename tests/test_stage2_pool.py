@@ -190,11 +190,22 @@ def test_vector_rollout_conserves_rewards_done_and_frozen_reference(league):
     model, pool = league
     frozen = {k: v.clone() for k,v in model.reference.state_dict().items()}
     envs = [BotzoneMatchEnv(model.config, pool=pool, seed=700+i, defer_opponents=True) for i in range(20)]
-    rollouts = collect_matches(model, envs)
+    completed = {}
+    def record(index, report):
+        assert index not in completed
+        assert envs[index].done and len(report['hands']) == 50
+        assert report['opponent'] == envs[index].opponent_name
+        assert torch.equal(model.delta_head.weight, torch.zeros_like(model.delta_head.weight))
+        completed[index] = report
+        pool.record(report['opponent'], report['hero_net_bb'])
+    rollouts = collect_matches(model, envs, on_match_end=record)
+    assert len(completed) == 20
+    assert sum(pool.matches.values()) == 20
     assert Counter(e.opponent_name for e in envs)["history"] == 3
     for env, rollout in zip(envs, rollouts):
         assert rollout.dones.sum() == 1 and rollout.dones[-1] == 1
         assert rollout.report["hands_played"] == 50
+        assert rollout.report == completed[envs.index(env)]
         assert float(rollout.rewards.sum()) == pytest.approx(env.ctx.hero_net_bb / 200, abs=2e-5)
         if isinstance(env.opponent, NeuralMatchActor):
             assert env.opponent.ctx.hands_played == 50
@@ -203,6 +214,61 @@ def test_vector_rollout_conserves_rewards_done_and_frozen_reference(league):
     metrics = train_matches(model, optimizer, rollouts, epochs=1, minibatch_size=256)
     assert all(np.isfinite(v) for v in metrics.values())
     assert all(torch.equal(v, frozen[k]) for k,v in model.reference.state_dict().items())
+    assert metrics['final_base_kl'] >= 0
+    assert 0 <= metrics['final_policy_tv'] <= 1
+    assert 0 <= metrics['final_argmax_changed'] <= 1
+
+
+def test_pfsp_feedback_changes_without_crossing_priority_threshold():
+    pool = MatchOpponentPool('unused')
+    pool.record('equity', -200.)
+    probabilities = pool.probabilities()
+    pool.record('equity', -100.)
+    assert pool.matches['equity'] == 2
+    assert pool.rolling_metrics()['equity']['mbb_per_hand'] == -3000.
+    assert pool.probabilities() == probabilities
+
+
+def test_training_cli_writes_match_ledger_and_hand_traces_together(league, tmp_path):
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    from alphanl.cfr.distillation import save_student
+    model, pool = league
+    root = Path(__file__).resolve().parents[1]
+    reference = tmp_path / 'reference.pt'
+    save_student(reference, model.reference, pool.manifest, {})
+    settings = json.loads((root / 'configs/stage2/botzone_50hand.json').read_text())
+    settings.update(reference=str(reference), strategies=str(pool.strategies),
+                    pool=pool.contract, device='cpu')
+    settings['ppo']['epochs'] = 1
+    settings['traces'].update(enabled=True, train_matches=2)
+    config_path = tmp_path / 'config.json'
+    config_path.write_text(json.dumps(settings))
+    output = tmp_path / 'run'
+    subprocess.run([sys.executable, str(root / 'scripts/train_stage2.py'), '--config', str(config_path),
+                    '--out-dir', str(output), '--updates', '1'],
+                   env={**os.environ, 'PYTHONPATH': str(root / 'src')}, capture_output=True,
+                   text=True, check=True)
+    matches = [json.loads(line) for line in (output / 'matches.jsonl').read_text().splitlines()]
+    metrics = json.loads((output / 'metrics.jsonl').read_text())
+    hands = [json.loads(line) for line in
+             (output / 'evaluations/stage2_train_u0000001/hands.jsonl').read_text().splitlines()]
+    assert len(matches) == 20 and len({row['match'] for row in matches}) == 20
+    assert len(hands) == 100
+    assert metrics['stage2/opponent'] == 'mixed'
+    assert metrics['stage2/match_wins'] == sum(row['hero_net_bb'] > 0 for row in matches)
+    for row in matches:
+        assert row['opponent'] in pool.weights and row['hands_played'] == 50
+        assert metrics['stage2/feedback/' + row['opponent']] == sum(
+            other['opponent'] == row['opponent'] for other in matches)
+    for match in (1, 2):
+        ledger = next(row for row in matches if row['match'] == match)
+        traced = [row for row in hands if row['match'] == match]
+        assert len(traced) == 50
+        assert {row['opponent'] for row in traced} == {ledger['opponent']}
+        assert sum(row['payoff_chips'] for row in traced) / 100 == ledger['hero_net_bb']
 
 
 def test_resumable_schedule_self_weights_and_rng(league, tmp_path):

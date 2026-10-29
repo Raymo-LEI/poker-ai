@@ -19,7 +19,10 @@ class BotzoneMatchEnv:
         self.config, self.opponent = config, opponent
         if (pool is None) == (opponent is None):
             raise ValueError("provide exactly one fixed opponent or MatchPool")
-        self.pool, self.opponent_name = pool, None
+        self.pool = pool
+        self.opponent_name = (getattr(opponent, "name", None) or
+                              {"cfr": "history"}.get(getattr(opponent, "kind", None),
+                                  getattr(opponent, "kind", None)))
         self.defer_opponents, self.decks = defer_opponents, decks
         if decks is not None and len(decks) != 50:
             raise ValueError("a duplicate match needs exactly 50 decks")

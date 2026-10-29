@@ -100,6 +100,34 @@ test('Stage 2 independent cards preserve real zero and failed retention without 
   assert.equal(stage2EvaluationCards({latest:{'stage2/hero_net_bb':9999}},format)[0][1],'—');
 });
 
+test('Stage 2 pro evaluation cards and series use recorded independent scores and intervals', () => {
+  const {stage2EvaluationCards,stage2EvaluationSeries} = require('../tools/training_monitor/workbench.js');
+  const format = v => typeof v === 'number' && Number.isFinite(v) ? String(v) : '—';
+  const evaluation = {'stage2/eval/update':100,
+    'stage2/eval/TAG_Pro/mbb_per_hand':-441.8,'stage2/eval/TAG_Pro/match_win':.42,
+    'stage2/eval/TAG_Pro/hands':5000,
+    'eval/winrate_vs_TAG_Pro_mbb_ci_low':-914.3,'eval/winrate_vs_TAG_Pro_mbb_ci_high':30.7,
+    'stage2/eval/Trapper_CR/mbb_per_hand':0,'stage2/eval/Trapper_CR/match_win':0,
+    'stage2/eval/Trapper_CR/mbb_ci95_low':-100,'stage2/eval/Trapper_CR/mbb_ci95_high':0,
+    'stage2/eval/future_pro/mbb_per_hand':12};
+  const cards = stage2EvaluationCards({latest:{'stage2/window/TAG_Pro/mbb_per_hand':9999},stage2_eval_latest:evaluation},format);
+  const tag = cards.find(row=>row[0].includes('TAG_Pro'));
+  const trap = cards.find(row=>row[0].includes('Trapper_CR'));
+  assert.equal(tag[1],'-441.8');
+  assert.match(tag[3],/95% CI \[-914.3, 30.7\]/);
+  assert.match(tag[3],/5000 手/);
+  assert.equal(trap[1],'0');
+  assert.match(trap[3],/比赛胜率 0%/);
+  assert.match(trap[3],/95% CI \[-100, 0\]/);
+  const keys = stage2EvaluationSeries([evaluation]).map(row=>row.key);
+  assert.ok(keys.includes('stage2/eval/TAG_Pro/mbb_per_hand'));
+  assert.ok(keys.includes('stage2/eval/Trapper_CR/mbb_per_hand'));
+  assert.ok(keys.includes('stage2/eval/future_pro/mbb_per_hand'));
+  assert.ok(!keys.includes('stage2/eval/self/mbb_per_hand'));
+  const missing = stage2EvaluationCards({latest:{'stage2/window/TAG_Pro/mbb_per_hand':9999}},format);
+  assert.equal(missing.find(row=>row[0].includes('TAG_Pro'))[1],'—');
+});
+
 test('formal selector excludes unmarked, smoke and forged truthy flags by default', () => {
   const context = vm.createContext({});
   vm.runInContext(source.slice(source.indexOf('function visibleRuns'),source.indexOf('function experimentScope')),context);

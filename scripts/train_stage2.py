@@ -78,16 +78,28 @@ def main():
         began = time.perf_counter()
         envs = [BotzoneMatchEnv(model.config, pool=pool, seed=settings["seed"] + matches + i,
                                first_hero_seat=i % 2, defer_opponents=True) for i in range(count)]
-        rollouts = collect_matches(model, envs)
+        # Persist each completed 50-hand match before PPO; a quota block has no
+        # single opponent. Never label the block mean as a match result.
+        with (args.out_dir / "matches.jsonl").open("a") as match_stream:
+            def completed(index, report):
+                pool.record(report["opponent"], report["hero_net_bb"])
+                record = {k: v for k, v in report.items() if k not in ("hands", "context")}
+                record.update(format="stage2_training_match_v1", update=update,
+                              match=matches + index + 1)
+                match_stream.write(json.dumps(record, allow_nan=False) + "\n")
+                match_stream.flush()
+            rollouts = collect_matches(model, envs, on_match_end=completed)
         metrics = train_matches(model, optimizer, rollouts, **settings["ppo"])
-        for env in envs:
-            pool.record(env.opponent_name, env.ctx.hero_net_bb)
         if update % pool.self_snapshot_every == 0:
             pool.add_self_snapshot(model, update=update)
         timesteps += sum(len(r.actions) for r in rollouts)
         matches += count
         row = {"update": update, "stage2": 1, "timesteps": timesteps, **metrics,
                "stage2/matches": matches, "stage2/hands": matches * 50,
+               "stage2/opponent": "mixed",
+               "stage2/match_wins": sum(env.ctx.hero_net_bb > 0 for env in envs),
+               "stage2/match_draws": sum(env.ctx.hero_net_bb == 0 for env in envs),
+               "stage2/match_losses": sum(env.ctx.hero_net_bb < 0 for env in envs),
                "stage2/hero_net_bb": sum(env.ctx.hero_net_bb for env in envs) / count,
                "stage2/match_win": sum(env.ctx.hero_net_bb > 0 for env in envs) / count,
                "stage2/defense_fraction": sum(env.opponent_name in ("reference", "history", "self") for env in envs) / count,
@@ -98,6 +110,7 @@ def main():
                **{f"stage2/window/{name}/{key}": value for name, stats in pool.rolling_metrics().items()
                   for key, value in stats.items()},
                **{f"stage2/sampled/{name}": sum(env.opponent_name == name for env in envs) for name in pool.weights}}
+        row.update({f"stage2/feedback/{name}": value for name, value in pool.matches.items()})
         report = None
         if update % every == 0:
             report = evaluator.evaluate(model, update=update,

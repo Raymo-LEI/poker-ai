@@ -136,6 +136,8 @@ def normalize(row):
         "clip_fraction": "train/clip_fraction", "explained_variance": "train/explained_variance",
         "legal_entropy": "hud/rollout_legal_entropy",
         "base_kl": "stage2/base_kl", "kl_penalty": "stage2/kl_penalty", "beta_kl": "stage2/beta_kl",
+        "final_base_kl": "stage2/final_base_kl", "final_policy_tv": "stage2/final_policy_tv",
+        "final_argmax_changed": "stage2/final_argmax_changed",
     }
     for old, new in aliases.items():
         if old in converted and new not in converted:

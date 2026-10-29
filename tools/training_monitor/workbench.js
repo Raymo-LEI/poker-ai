@@ -123,10 +123,11 @@
     const pct = value => isNumber(value) ? fmt(value * 100, 1) : "—";
     mini("s2-cards", enabled ? [
       ["完整比赛 / 累计手数", `${fmt(r["stage2/matches"],0)} / ${fmt(r["stage2/hands"],0)}`, "", "训练日志计数 · 含续训历史"],
-      [s2.block_updates ? "本次更新平均净收益" : "最近一场净收益", fmt(r["stage2/hero_net_bb"],2), "BB/场", s2.block_updates ? "本更新内完整比赛均值" : `对手 ${s2.latest_opponent || "未记录"}`],
+      [s2.block_updates ? "本次更新平均净收益" : "最近一场净收益", fmt(r["stage2/hero_net_bb"],2), "BB/场", s2.block_updates ? `混合对手：${Object.entries(s2.latest_sampled || {}).map(([name,n]) => `${name} × ${n}`).join(" · ")}` : `对手 ${s2.latest_opponent || "未记录"}`],
       ["最近窗口均值", fmt(s2.window_net_bb_mean,2), "BB/场", `最近 ${s2.window_matches || 0} 场 · 非独立评测`],
+      ["窗口比赛胜场", fmt(s2.window_wins,0), "场", isNumber(s2.window_losses) ? `${s2.window_draws} 和 / ${s2.window_losses} 负` : "旧日志未记录平局数；不从更新均值推算胜负"],
       ["参考策略 KL", fmt(r["stage2/base_kl"],6), "nats", "冻结学生参考 · 非 exploitability"]] : []);
-    chart("s2-kl", rows, [{key:"stage2/base_kl",label:"KL(final || ref)"}], {zero:true});
+    chart("s2-kl", rows, [{key:"stage2/base_kl",label:"KL · epoch mean"},{key:"stage2/final_base_kl",label:"KL · after update"}], {zero:true});
     chart("s2-return", rows, [{key:"stage2/hero_net_bb",label:"50 手净 BB"}], {zero:true});
     chart("s2-beta", rows, [{key:"stage2/beta_kl",label:"平均 beta"},{key:"stage2/kl_penalty",label:"KL penalty"}], {zero:true});
     const names = ["equity","nit","call","maniac","overbet","push_fold","reference","history","self"];

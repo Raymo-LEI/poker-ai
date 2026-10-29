@@ -7,7 +7,7 @@
   "updates": 2,
   "matches_per_update": 20,
   "learning_rate": 0.0003,
-  "policy": {"alpha": 1.0, "hidden": 64, "beta_kl": 1.0, "late_beta_kl": 0.1},
+  "policy": {"alpha": 1.0, "hidden": 64, "beta_kl": 0.05, "late_beta_kl": 0.03},
   "ppo": {"epochs": 4, "minibatch_size": 256, "gamma": 1.0, "gae_lambda": 1.0},
   "pool": {
     "weights": {"equity": 0.35, "nit": 0.12, "call": 0.06, "maniac": 0.035, "overbet": 0.035,

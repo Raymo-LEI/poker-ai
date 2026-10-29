@@ -190,11 +190,22 @@ def test_vector_rollout_conserves_rewards_done_and_frozen_reference(league):
     model, pool = league
     frozen = {k: v.clone() for k,v in model.reference.state_dict().items()}
     envs = [BotzoneMatchEnv(model.config, pool=pool, seed=700+i, defer_opponents=True) for i in range(20)]
-    rollouts = collect_matches(model, envs)
+    completed = {}
+    def record(index, report):
+        assert index not in completed
+        assert envs[index].done and len(report['hands']) == 50
+        assert report['opponent'] == envs[index].opponent_name
+        assert torch.equal(model.delta_head.weight, torch.zeros_like(model.delta_head.weight))
+        completed[index] = report
+        pool.record(report['opponent'], report['hero_net_bb'])
+    rollouts = collect_matches(model, envs, on_match_end=record)
+    assert len(completed) == 20
+    assert sum(pool.matches.values()) == 20
     assert Counter(e.opponent_name for e in envs)["history"] == 3
     for env, rollout in zip(envs, rollouts):
         assert rollout.dones.sum() == 1 and rollout.dones[-1] == 1
         assert rollout.report["hands_played"] == 50
+        assert rollout.report == completed[envs.index(env)]
         assert float(rollout.rewards.sum()) == pytest.approx(env.ctx.hero_net_bb / 200, abs=2e-5)
         if isinstance(env.opponent, NeuralMatchActor):
             assert env.opponent.ctx.hands_played == 50
@@ -203,6 +214,19 @@ def test_vector_rollout_conserves_rewards_done_and_frozen_reference(league):
     metrics = train_matches(model, optimizer, rollouts, epochs=1, minibatch_size=256)
     assert all(np.isfinite(v) for v in metrics.values())
     assert all(torch.equal(v, frozen[k]) for k,v in model.reference.state_dict().items())
+    assert metrics['final_base_kl'] >= 0
+    assert 0 <= metrics['final_policy_tv'] <= 1
+    assert 0 <= metrics['final_argmax_changed'] <= 1
+
+
+def test_pfsp_feedback_changes_without_crossing_priority_threshold():
+    pool = MatchOpponentPool('unused')
+    pool.record('equity', -200.)
+    probabilities = pool.probabilities()
+    pool.record('equity', -100.)
+    assert pool.matches['equity'] == 2
+    assert pool.rolling_metrics()['equity']['mbb_per_hand'] == -3000.
+    assert pool.probabilities() == probabilities
 
 
 def test_resumable_schedule_self_weights_and_rng(league, tmp_path):

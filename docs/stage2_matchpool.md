@@ -60,6 +60,20 @@ The script exits 2 for a measured retention failure. Smaller `--match-pairs` and
 
 Training entrypoint and config remain `scripts/train_stage2.py` and `configs/stage2/botzone_50hand.json`. Choose actual distilled-reference and archive paths and an explicit training budget. The default is still two CPU updates, now forty complete matches. Importing modules or opening the monitor starts no training.
 
+## Match accounting and KL diagnostics
+
+Each completed match is flushed to `matches.jsonl` before PPO. Its record includes the update, match id, exact opponent family, frozen snapshot id or rule variant, hand count and net BB. `metrics.jsonl` remains one row per PPO update: `stage2/opponent=mixed`, actual sampled counts, match wins/draws/losses, and lifetime per-family `stage2/feedback/*` counters. Twenty match results must never be reconstructed from the sign of one update's mean return. Older logs expose exact win counts through `stage2/match_win` and actual sampled counts, but cannot recover unlogged individual outcomes or exact tie counts. The monitor keeps unknown tie/loss counts missing.
+
+PFSP feedback is recorded on match completion. The next quota block uses updated rolling results. Probabilities can legitimately remain constant for many updates because the priority function has only two levels (1 and 3); constant probabilities alone do not imply absent feedback or constant opponent selection. Compare actual sampled counts, rolling results and lifetime feedback counters.
+
+The example configuration uses `alpha=1.0`, `beta_kl=0.05`, and `late_beta_kl=0.03`. Beta follows hand progress, with no adaptive `target_kl` controller. Saved checkpoints keep their explicit settings, and normal resume still rejects changed policy settings. Changing beta requires an explicit new experiment; it does not silently alter a loaded checkpoint. Existing constructor defaults retain compatibility with older callers.
+
+`base_kl` is the average measured during PPO minibatches. `final_base_kl`, `final_policy_tv` (total variation distance), and `final_argmax_changed` measure the finished update on collected states. KL is measured in nats and is not a percentage of changed actions. Lowering its penalty permits more deviation but does not guarantee higher KL or playing strength.
+
+For a zero-update environment diagnostic, run `scripts/audit_stage2_alignment.py --reference ... --output ...`. Its default is four complete matches / 200 hands against each of random, calling station, overbet and standard equity. Both seat orders reuse common deals. It compares observations, reference probabilities, sampled action sequences and every hand's payoff with a direct Stage 1 table/tokenizer/student path. `scripts/audit_stage2_pool.py` additionally compares a zero-residual reference and a candidate on the same frozen pool identities and deals, then runs bounded disposable original/relaxed-beta trials. Neither command replaces formal acceptance evaluation.
+
+An archived CFR strategy mixture and its distilled student are distinct policies. Report each artifact's own evaluation and opponent weights; a uniform gauntlet mean is not an estimate of the weakness-weighted, jittered training pool's return.
+
 ## Implementation validation
 
 Tests cover exact quotas despite weakness reweighting, threefold priority and window expiration, standard equity baseline equivalence, fixed jitter, hidden opponent identity, full-match rewards/dones and HUDs, grouped inference, resident cache reuse/rotation, frozen residual snapshots, checkpoint schedule/RNG replay, common-deal evaluation gains, and monitor retention/gain rendering including real zero values.

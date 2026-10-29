@@ -84,6 +84,8 @@ python scripts/export_stage2_agent.py \
 
 裁判发给下一手的 request 不保证包含上一手终结动作或摊牌标记。部署统计器立即记录自己的已知动作；无法观测的对手终结动作不会伪造。只对可以从自身终结 call 确定的摊牌更新摊牌胜率。训练环境能观测完整公共终结轨迹，因此部署 HUD 中部分机会可能被截尾；正式上线前必须在目标协议评测其分布差异。这一限制不涉及读取隐藏底牌。
 
+上传 Botzone 不用这个单文件（它内嵌权重，且模块依赖 Python 3.7+）：用 `tools/pack_botzone_stage2.py` 生成源码 zip 和外置 `stage2_model.npz`，见 [Stage 2 Botzone 入口](botzone_stage2_upload.md)。
+
 `agent.acceptance.json` 单独报告加载与单线程决策（投影、上下文、Equity、编码、前向和采样）延迟，任何测量决策超过 15ms 或加载超过 1s 都令脚本非零退出。它是本机 gate；Botzone CPU/NumPy 版本、源码大小、内存和上传限制仍需在真实平台验收，不由本机 smoke 推断。
 
 ## 本轮 CPU 验证

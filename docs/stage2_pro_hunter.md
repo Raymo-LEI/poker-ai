@@ -146,6 +146,16 @@ Training is launched, not certified complete or stronger. Inspect independent
 fixed-parameter evaluations at updates 100/200/300 and keep the original
 checkpoints available for comparison.
 
+A concurrent Botzone forward-bundle change was subsequently merged into this
+branch. The external-weights constructor now preserves both 12- and 14-field
+HUDs; the source-only zip was regenerated without model weights. Post-merge
+checks passed **85 local tests** (two platform/interpreter-dependent skips),
+**16 Linux tests** (one optional Python 3.6 interpreter skip), and ten frontend
+tests. The Linux run includes a complete judge match under the platform-style
+resource cap. A dedicated test checks 14-field external weights with the
+dataclasses shim. The running GPU experiment keeps its original isolated
+source snapshot; this repository merge does not modify that process.
+
 ## Online Slumbot protocol
 
 The frozen C200 is evaluated for ten complete 50-hand HUD blocks, with no

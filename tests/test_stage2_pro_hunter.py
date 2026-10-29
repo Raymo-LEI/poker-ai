@@ -189,3 +189,27 @@ def test_only_presend_dns_is_retried(monkeypatch):
     session=Ambiguous()
     with pytest.raises(requests.ReadTimeout):safe_post(session,'act',{})
     assert session.calls==1
+
+
+def test_fourteen_field_botzone_external_weights_and_shim(tmp_path):
+    import os,subprocess
+    from alphanl.stage2.export import export_botzone_weights,pack_botzone_zip
+    model=policy(PRO_CONTEXT_FIELDS)
+    with torch.no_grad():model.delta_head.weight.normal_(0,.1)
+    checkpoint=tmp_path/'v3.pt';save_checkpoint(checkpoint,model)
+    weights=tmp_path/'v3.npz';export_botzone_weights(checkpoint,weights)
+    archive=tmp_path/'v3.zip';pack_botzone_zip(archive)
+    code=("import sys,json\nsys.path.insert(0,%r)\n" % str(archive)
+        +"import dataclasses_compat\nsys.modules['dataclasses']=dataclasses_compat\n"
+        +"import botzone_entry as entry\nfrom stage2_runtime import runtime\n"
+        +"agent,_,_=entry.load_agent(runtime)\n"
+        +"request=dict(num_players=2,dealer_id=0,my_id=1,my_chips=19950,my_cards=[51,23],public_cards=[],history=[],hand=0,max_hand=50,total_win_chips=[0,0],total_win_games=[0,0])\n"
+        +"snap,_=runtime.request_snapshot(request)\nctx,_=runtime.context_from_payload({'requests':[request]})\n"
+        +"batch=agent.observation(snap,ctx)\nprint(json.dumps({'batch':{k:v.tolist() for k,v in batch.items()},'logits':agent.logits(batch).tolist()}))\n")
+    result=subprocess.run([sys.executable,'-c',code],env=dict(os.environ,POKER_STAGE2_WEIGHTS=str(weights)),
+        capture_output=True,text=True,check=True)
+    row=json.loads(result.stdout)
+    types={'token_ids':torch.long,'type_ids':torch.long,'pad_mask':torch.bool}
+    batch={k:torch.tensor(v,dtype=types.get(k,torch.float32)) for k,v in row['batch'].items()}
+    assert batch['match_ctx'].shape==(1,14)
+    np.testing.assert_allclose(row['logits'],model(batch)[0].detach().numpy(),rtol=2e-4,atol=2e-4)

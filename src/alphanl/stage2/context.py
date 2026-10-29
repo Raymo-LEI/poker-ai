@@ -1,6 +1,7 @@
 """Public, opportunity-based Bayesian HUD. No opponent cards enter this state."""
 from dataclasses import dataclass, field, asdict
 import math
+from typing import Optional
 
 CONTEXT_FIELDS = (
     "hand_progress", "bankroll_diff", "vpip", "pfr", "three_bet",
@@ -35,7 +36,7 @@ class MatchCtx:
     opponent_checks: set = field(default_factory=set)
     check_raise_seen: set = field(default_factory=set)
     postflop_bets: set = field(default_factory=set)
-    last_preflop_aggressor_is_me: bool | None = None
+    last_preflop_aggressor_is_me: Optional[bool] = None
     flop_opponent_acted: bool = False
 
     def begin_hand(self):

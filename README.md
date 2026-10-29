@@ -9,7 +9,7 @@
 - **标准 200BB SD-CFR：** [PokerKit](https://github.com/uoftcprg/pokerkit) 牌桌，双方各 20,000 筹码、盲注 50/100；五个抽象行动、regret matching、external sampling、双方独立 reservoir、迭代加权回归、历史策略快照与断点恢复。采样在单进程中交错推进多棵树，树结束后立即补入新根。细节见 [SD-CFR 说明](docs/sd_cfr.md)和[规则说明](docs/hunl_environment.md)。
 - **Transformer PPO：** 下注历史 token 编码器、策略与价值头、自博弈及 PFSP 对手池；支持 `rlcard`、`pokerkit` 和独立的 Botzone 规则后端。另有卷积控制组、行为克隆和旧 [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) 基线适配。不同后端的行动顺序与特征语义不能混用，见 [Transformer 路径](docs/step3_transformer.md)和[控制组说明](docs/bc_and_baseline.md)。
 - **50 手 residual exploiter 原型：** 冻结 SD-CFR 历史策略作为基础策略，收集对手的公开行动统计，用残差策略做短局 PPO 更新。目前是 CPU 接线和训练冒烟，未完成长期训练、质量评估或部署。见 [exploiter 说明](docs/exploiter.md)。
-- **Botzone 入口：** 有规则机器人与 NumPy 模型前向的打包代码。模型入口已用开发用随机初值验证结构；仓库不附带可用于正式对战的训练权重。正式使用需另行导出真实训练权重并核对目标比赛规则。见 [规则机器人](docs/botzone_rulebot_upload.md)和[模型入口](docs/botzone_model_upload.md)。
+- **Botzone 入口：** 有规则机器人与 NumPy 模型前向的打包代码。模型入口已用开发用随机初值验证结构；仓库不附带可用于正式对战的训练权重。正式使用需另行导出真实训练权重并核对目标比赛规则。见 [规则机器人](docs/botzone_rulebot_upload.md)和[模型入口](docs/botzone_model_upload.md)。Stage 2 的前向另有 Botzone 包 `botzone_bots/stage2.zip`（Python 3.6 + NumPy、权重放用户存储空间），已用真实裁判在单核、256MB 下跑完整比赛，见 [Stage 2 Botzone 入口](docs/botzone_stage2_upload.md)。
 
 标准 HUNL、旧 `rlcard` 环境和 Botzone simple 裁判并非同一套规则；不同深度或后端的对战指标也不能直接横比。
 

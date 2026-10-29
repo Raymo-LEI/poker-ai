@@ -16,16 +16,22 @@ from . import reconstruct as judge
 from .forward import features_forward, _linear, _gelu
 
 class Agent:
-    def __init__(self):
-        archive = np.load(io.BytesIO(base64.b64decode(WEIGHT_DATA)), allow_pickle=False)
-        self.weights = {k: archive[k] for k in archive.files}
-        archive.close()
-        self.config = CONFIG
-        self.settings = SETTINGS
-        self.tokenizer = HunlTokenizer(CONFIG["model"]["max_seq_len"], **{k:CONFIG[k] for k in
+    def __init__(self, weights=None, config=None, settings=None, numeric_version=None):
+        if weights is None:
+            archive = np.load(io.BytesIO(base64.b64decode(WEIGHT_DATA)), allow_pickle=False)
+            weights = {k: archive[k] for k in archive.files}
+            archive.close()
+        config = CONFIG if config is None else config
+        self.weights = weights
+        self.config = config
+        self.settings = SETTINGS if settings is None else settings
+        self.tokenizer = HunlTokenizer(config["model"]["max_seq_len"], **{k:config[k] for k in
             ("position_conditioning", "equity_features", "equity_samples", "equity_seed")})
-        self.guard = CFRActionGuard.from_config(SimpleNamespace(**CONFIG))
-        self.meta = {"arch": CONFIG["model"]}
+        if numeric_version is not None and self.tokenizer.numeric_version != numeric_version:
+            raise ValueError("bundled tokenizer %s does not match weights %s"
+                             % (self.tokenizer.numeric_version, numeric_version))
+        self.guard = CFRActionGuard.from_config(SimpleNamespace(**config))
+        self.meta = {"arch": config["model"]}
         # Charge BLAS initialization to model loading, not the first decision.
         self.logits({**self.tokenizer.blank(), "match_ctx":np.zeros((1,12), dtype=np.float32)})
 
@@ -157,7 +163,8 @@ def context_from_payload(payload):
     return ctx, {"format":"stage2_agent_data_v1", "context":ctx.state_dict(), "hand":hand, "seen":seen, "last":last, "known_showdown":known_showdown}
 
 
-def respond(agent, payload):
+def respond(agent, payload, safety=None):
+    safety = SAFETY if safety is None else safety
     request = _object(payload["requests"][-1])
     decision_key = json.dumps([request.get("hand", 0), request["my_id"], request["my_cards"], request["history"], request["public_cards"]], sort_keys=True)
     saved = _object(payload.get("data") or {})
@@ -165,7 +172,7 @@ def respond(agent, payload):
         return {"response":saved["response"], "data":saved}
     snap, responses = request_snapshot(request)
     context, data = context_from_payload(payload)
-    action = agent.act(snap, context, safety=SAFETY)
+    action = agent.act(snap, context, safety=safety)
     response = responses[action]
     if not judge.judge_accepts(judge.reconstruct(request), response):
         raise ValueError("export selected judge-illegal response")

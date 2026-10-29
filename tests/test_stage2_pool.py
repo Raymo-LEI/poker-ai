@@ -387,6 +387,15 @@ def test_trainer_resume_replays_next_complete_quota_block(league, tmp_path, monk
     assert original["pool"]["results"] == state["pool"]["results"]
     assert original["pool"]["rng"] == state["pool"]["rng"]
     assert torch.equal(original["torch_rng"], state["torch_rng"])
+    # Registration is independent of model/RNG state and follows each new output.
+    for directory in (tmp_path/'uninterrupted', tmp_path/'first', tmp_path/'resumed'):
+        identity = json.loads((directory/'experiment.json').read_text())
+        assert identity['kind'] == 'development'
+        metrics = [json.loads(line) for line in (directory/'metrics.jsonl').read_text().splitlines()]
+        assert all(row['experiment_id'] == identity['experiment_id'] for row in metrics)
+        trace = next((directory/'evaluations').glob('*/hands.jsonl'))
+        assert all(json.loads(line)['experiment_id'] == identity['experiment_id'] for line in trace.read_text().splitlines())
+
 
 
 def test_trainer_writes_failed_retention_before_stopping(league, tmp_path, monkeypatch):

@@ -1,6 +1,10 @@
 "use strict";
 
 const $ = id => document.getElementById(id);
+function visibleRuns(runs, scope = "formal") {
+  return runs.filter(run => scope === "all" || run.experiment?.is_formal === true);
+}
+function experimentScope() { return $("run-scope").value; }
 const THEMES = ["neural", "paper"];
 let COLORS = [];
 function applyTheme(name) {
@@ -223,7 +227,10 @@ function render(data) {
   const isPPO = ["PPO", "Stage 2 PPO"].includes(data.kind);
   const shared = data.config?.separate_player_models === false || finite(latest.shared_train_steps);
   const rows = data.rows.slice(-Number($("window").value));
-  $("run-name").textContent = data.name;
+  $("run-name").textContent = data.experiment?.name || data.name;
+  $("run-experiment-kind").textContent = data.experiment?.label || "未标记";
+  $("run-experiment-kind").classList.toggle("good", data.experiment?.is_formal === true);
+  $("run-experiment-kind").title = data.experiment?.experiment_id || "未登记实验 ID";
   $("run-kind").textContent = data.stage === "stage2" ? "Stage 2 · Residual PPO" : data.kind;
   const trainingDevice = data.workbench?.effective?.effective_device || data.config?.device;
   $("run-device").textContent = trainingDevice ? `训练 ${trainingDevice}${data.environment?.device && data.environment.device !== trainingDevice ? " · 评测 " + data.environment.device : ""}` : data.environment?.gpu || data.environment?.device || "设备未记录";
@@ -410,18 +417,19 @@ async function refresh(force = false) {
   try {
     const data = await getJSON("/api/runs", signal);
     if (request !== generation) return;
+    const runs = visibleRuns(data.runs, experimentScope());
     const selected = $("run-select").value;
     let remembered = null;
     try { remembered = localStorage.getItem("overwatch-run"); } catch (_) { /* optional */ }
-    const ident = data.runs.some(r => r.id === selected) ? selected : data.runs.some(r => r.id === remembered) ? remembered : data.runs[0]?.id;
-    $("run-select").replaceChildren(...data.runs.map(run => {
-      const option = el("option", "", run.name); option.value = run.id; return option;
+    const ident = runs.some(r => r.id === selected) ? selected : runs.some(r => r.id === remembered) ? remembered : runs[0]?.id;
+    $("run-select").replaceChildren(...runs.map(run => {
+      const option = el("option", "", `[${run.experiment?.label || "未标记"}] ${run.experiment?.name || run.name}`); option.value = run.id; return option;
     }));
     if (!ident) {
-      $("run-select").append(el("option", "", "暂无训练实验"));
+      $("run-select").append(el("option", "", "当前范围暂无实验"));
       current = null;
       $("export").disabled = true;
-      render({name: "暂无训练实验", kind: "SD-CFR", rows: [], latest: {}, eval_latest: {}, hud_latest: {}, config: {}, environment: {}, sources: [], warnings: ["监控目录里还没有日志。启动训练，或使用 --runs-dir 指向实际训练输出目录。"], history_limit: 5000});
+      render({name: "当前范围暂无实验", kind: "SD-CFR", rows: [], latest: {}, eval_latest: {}, hud_latest: {}, config: {}, environment: {}, sources: [], warnings: [experimentScope() === "formal" ? "尚无带正式标识的实验。可切换“全部记录”查看旧日志；正式训练需显式声明，已有运行可补写 experiment.json。" : "监控目录里还没有日志。启动训练，或使用 --runs-dir 指向实际训练输出目录。"], history_limit: 5000});
       current = null;
       $("export").disabled = true;
     } else {
@@ -448,6 +456,11 @@ async function refresh(force = false) {
 
 $("refresh").addEventListener("click", () => refresh(true));
 $("run-select").addEventListener("change", () => refresh(true));
+$("run-scope").addEventListener("change", () => {
+  $("run-select").value = "";
+  window.OverwatchWorkbench?.scopeChanged();
+  refresh(true);
+});
 $("window").addEventListener("change", () => { if (current) render(current); });
 $("probe-metric").addEventListener("change", () => { if (current) render(current); });
 $("eval-select").addEventListener("change", () => { if (current) render(current); });
@@ -486,6 +499,6 @@ document.querySelectorAll("[data-theme-option]").forEach(button => button.addEve
   if (!$("wb-comparison").classList.contains("hidden")) $("wb-compare-axis").dispatchEvent(new Event("change"));
 }));
 $("export").disabled = true;
-window.Overwatch = {chart, fmt, bytes, date, age, el, mini, getJSON, evaluationLabel, getCurrent: () => current,
+window.Overwatch = {visibleRuns, getScope: experimentScope, chart, fmt, bytes, date, age, el, mini, getJSON, evaluationLabel, getCurrent: () => current,
   selectRun: ident => { $("run-select").value = ident; return refresh(true); }};
 refresh();

@@ -8,7 +8,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 FILES = (
     'scripts/monitor_training.py', 'scripts/monitor_workbench.py', 'scripts/monitor_remote.py',
-    'scripts/package_monitor.py', 'tools/training_monitor/index.html',
+    'scripts/package_monitor.py', 'scripts/experiment_metadata.py', 'scripts/label_experiment.py', 'tools/training_monitor/index.html',
     'tools/training_monitor/app.js', 'tools/training_monitor/workbench.js',
     'tools/training_monitor/styles.css', 'tools/training_monitor/workbench.css',
     '打开训练监控.command', '连接服务器监控.command',

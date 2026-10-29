@@ -411,7 +411,7 @@ class SDCFRTrainer:
             self.strategy_paths[iteration] = path
         self._write_strategy_index()
         out.mkdir(parents=True, exist_ok=True)
-        _append_csv(out / "metrics.csv", metrics)
+        _append_csv(out / "metrics.csv", {**metrics, **getattr(self, "experiment", {})})
         timing["iteration_s"] = time.perf_counter() - iteration_started
         self.last_timing = timing
         timing_path = out / "performance.csv"

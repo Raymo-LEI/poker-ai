@@ -99,3 +99,12 @@ test('Stage 2 independent cards preserve real zero and failed retention without 
   assert.equal(cards[3][1],'FAIL');
   assert.equal(stage2EvaluationCards({latest:{'stage2/hero_net_bb':9999}},format)[0][1],'—');
 });
+
+test('formal selector excludes unmarked, smoke and forged truthy flags by default', () => {
+  const context = vm.createContext({});
+  vm.runInContext(source.slice(source.indexOf('function visibleRuns'),source.indexOf('function experimentScope')),context);
+  const runs = [{id:'formal',experiment:{is_formal:true}}, {id:'smoke',experiment:{is_formal:false}},
+    {id:'old'}, {id:'forged',experiment:{is_formal:'true'}}];
+  assert.equal(context.visibleRuns(runs).map(r=>r.id).join(','),'formal');
+  assert.equal(context.visibleRuns(runs,'all').length,4);
+});

@@ -199,6 +199,7 @@
       estimate = `${human(effective.matches_per_update)} 场完整 50 手比赛 / update · 配置本次追加 ${human(effective.updates)} 次更新；续训终点需运行元数据确认`;
       $("wb-progress").replaceChildren(progress("训练更新进度", step, null, estimate), progress("独立评测进度", evalStep, null, "训练净收益不会填入独立评测"));
     }
+    $("wb-effective").append(fact("实验标识", data.experiment?.label || "未标记", data.experiment?.experiment_id || "旧记录需显式登记"));
     $("wb-config-source").textContent = `${effective.source || "配置来源未记录"} · 源码指纹文件数 ${effective.source_file_count || 0}`;
     drawEvents("wb-home-events", (wb.events || []).slice(0, 4));
     drawEvents("wb-events", wb.events || []);
@@ -246,7 +247,9 @@
 
   function renderCatalog() {
     const query = $("wb-search").value.trim().toLowerCase(), category = $("wb-category").value;
-    const rows = catalog.filter(item => (category === "all" || item.category === category) && `${item.name} ${JSON.stringify(item.effective)}`.toLowerCase().includes(query));
+    const scoped = api.visibleRuns(catalog, api.getScope());
+    selected = new Set([...selected].filter(id => scoped.some(item => item.id === id)));
+    const rows = scoped.filter(item => (category === "all" || item.category === category) && `${item.name} ${JSON.stringify(item.effective)}`.toLowerCase().includes(query));
     $("wb-catalog").replaceChildren(...rows.map(item => {
       const row = el("tr"), chooseCell = el("td"), choose = el("input");
       choose.type = "checkbox"; choose.checked = selected.has(item.id); choose.setAttribute("aria-label", "对比 " + item.name);
@@ -254,7 +257,7 @@
         if (choose.checked && selected.size >= 4) { choose.checked = false; note("wb-catalog-error", "一次最多对比四个实验，请先取消一个选择。"); return; }
         choose.checked ? selected.add(item.id) : selected.delete(item.id); storeSelected(); renderCatalog();
       }); chooseCell.append(choose); row.append(chooseCell);
-      const name = el("td", "wb-experiment-name"); name.append(el("strong", "", item.name));
+      const name = el("td", "wb-experiment-name"); name.append(el("strong", "", `[${item.experiment?.label || "未标记"}] ${item.experiment?.name || item.name}`));
       const effective = item.effective || {};
       name.append(el("small", "", `seed ${effective.seed ?? "—"} · ${effective.model?.d_model ? "d=" + effective.model.d_model : "模型未记录"} · 容量 ${fmt(effective.effective_capacity, 0)} · steps ${fmt(effective.train_steps, 0)}`));
       row.append(name, el("td", "", CATEGORIES[item.category] || "其他"), el("td", "", `${item.stage === "stage2" ? "S2 U=" : "T="}${item.last_step ?? "—"} / ${item.eval_step ?? "—"}`));
@@ -510,7 +513,9 @@
   $("wb-hands-prev").addEventListener("click", () => { traceOffset = Math.max(0,traceOffset-20); loadHands(); });
   $("wb-hands-next").addEventListener("click", () => { traceOffset += 20; loadHands(); });
   window.addEventListener("hashchange", () => { route(); window.scrollTo({top:0}); });
-  window.OverwatchWorkbench = {render};
+  window.OverwatchWorkbench = {render, scopeChanged: () => {
+    comparison = []; $("wb-comparison").classList.add("hidden"); renderCatalog();
+  }};
   route(); loadHealth(); if (api.getCurrent()) render(api.getCurrent());
   setInterval(() => {
     if (document.hidden || !$("auto-refresh").checked) return;

@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 REPO = Path(__file__).resolve().parents[1]
 if str(REPO / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO / "scripts"))
+from experiment_metadata import read_experiment
 from monitor_workbench import stage2_report_row, Workbench, extra_paths, preview
 ASSETS = REPO / "tools" / "training_monitor"
 LOGS = ("metrics.csv", "performance.csv", "metrics.jsonl", "eval.jsonl",
@@ -267,13 +268,13 @@ class Store:
             for directory in candidates:
                 if not directory.resolve().is_relative_to(root):
                     continue
-                paths = [safe_file(directory, name) for name in LOGS + ("status.json", "launch_manifest.json")]
+                paths = [safe_file(directory, name) for name in LOGS + ("status.json", "launch_manifest.json", "experiment.json")]
                 paths = [path for path in paths if path is not None]
                 if not paths:
                     continue
                 ident = f"{index}/{directory.relative_to(root).as_posix()}"
                 result[ident] = {"id": ident, "name": directory.name,
-                                 "path": str(directory),
+                                 "path": str(directory), "experiment": read_experiment(directory),
                                  "updated_at": max(p.stat().st_mtime for p in paths)}
         return result
 

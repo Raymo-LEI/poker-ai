@@ -4,6 +4,9 @@ import argparse
 import json
 import math
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from experiment_metadata import KINDS, write_experiment, experiment_tags
 import random
 import time
 import torch
@@ -33,6 +36,8 @@ def main():
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--updates", type=int)
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--experiment-kind", choices=KINDS, help="explicit formal/development/smoke identity; default development")
+    parser.add_argument("--experiment-name", help="human-readable run label")
     args = parser.parse_args()
     settings = json.loads(args.config.read_text())
     device = args.device or settings["device"]
@@ -77,6 +82,11 @@ def main():
             torch.cuda.set_rng_state_all(blob["cuda_rng"])
         random.setstate(blob["python_rng"])
     args.out_dir.mkdir(parents=True, exist_ok=False)
+    declared = settings.get("experiment") or {}
+    experiment = write_experiment(args.out_dir, kind=args.experiment_kind or declared.get("kind"),
+        name=args.experiment_name or declared.get("name"), stage="stage2")
+    identity = experiment_tags(experiment)
+    settings["experiment"] = experiment
     (args.out_dir / "config.json").write_text(json.dumps(settings, indent=2) + "\n")
     for update in range(start + 1, start + updates + 1):
         began = time.perf_counter()
@@ -84,7 +94,7 @@ def main():
                                first_hero_seat=i % 2, defer_opponents=True) for i in range(count)]
         capture = traces['enabled'] and traces['train_matches'] > 0 and (update == start + 1 or update % traces['train_every_updates'] == 0)
         writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_train_u{update:07d}',
-            update=update, scope='training', max_bytes=traces['max_bytes']) if capture else None
+            update=update, scope='training', max_bytes=traces['max_bytes'], experiment=identity) if capture else None
         # Persist each completed 50-hand match before PPO; a quota block has no
         # single opponent. Never label the block mean as a match result.
         with (args.out_dir / "matches.jsonl").open("a") as match_stream, (writer if writer is not None else nullcontext()):
@@ -97,6 +107,7 @@ def main():
             def completed(index, report):
                 pool.record(report["opponent"], report["hero_net_bb"])
                 record = {k: v for k, v in report.items() if k not in ("hands", "context")}
+                record.update(identity)
                 record.update(format="stage2_training_match_v1", update=update,
                               match=matches + index + 1)
                 match_stream.write(json.dumps(record, allow_nan=False) + "\n")
@@ -107,7 +118,7 @@ def main():
             pool.add_self_snapshot(model, update=update)
         timesteps += sum(len(r.actions) for r in rollouts)
         matches += count
-        row = {"update": update, "stage2": 1, "timesteps": timesteps, **metrics,
+        row = {**identity, "update": update, "stage2": 1, "timesteps": timesteps, **metrics,
                "stage2/matches": matches, "stage2/hands": matches * 50,
                "stage2/opponent": "mixed",
                "stage2/match_wins": sum(env.ctx.hero_net_bb > 0 for env in envs),
@@ -128,11 +139,12 @@ def main():
         if update % every == 0:
             capture_eval = traces['enabled'] and traces['eval_match_pairs_per_opponent'] > 0
             writer = HandTraceWriter(args.out_dir / 'evaluations' / f'stage2_eval_u{update:07d}',
-                update=update, scope='evaluation', max_bytes=traces['max_bytes']) if capture_eval else None
+                update=update, scope='evaluation', max_bytes=traces['max_bytes'], experiment=identity) if capture_eval else None
             with writer if writer is not None else nullcontext():
                 report = evaluator.evaluate(model, update=update, trace_writer=writer,
                     trace_match_pairs=traces['eval_match_pairs_per_opponent'],
                     progress=lambda name: print(f"Stage 2 update {update}: evaluating {name}", flush=True))
+            report.update(identity)
             report_dir = args.out_dir / "stage2_evaluations"
             report_dir.mkdir(exist_ok=True)
             (report_dir / f"update_{update:07d}.json").write_text(
@@ -143,7 +155,7 @@ def main():
         row = sanitize_metrics(row)
         with (args.out_dir / "metrics.jsonl").open("a") as stream:
             stream.write(json.dumps(row, allow_nan=False) + "\n")
-        metadata = {"reference": settings["reference"], "stage": "stage2", "timesteps": timesteps,
+        metadata = {**identity, "reference": settings["reference"], "stage": "stage2", "timesteps": timesteps,
                     "matches": matches, "evaluation_settings": evaluation,
                     "evaluation_baseline": evaluator.baseline_totals, "retention_failed": failed,
                     "last_matches": [r.report for r in rollouts]}

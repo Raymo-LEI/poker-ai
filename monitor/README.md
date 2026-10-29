@@ -54,3 +54,10 @@ python3 scripts/package_monitor.py --output /tmp/overwatch-monitor.zip
 Stage 2 的 `config.json`、`metrics.jsonl`、`stage2_evaluations/update_*.json` 均由训练器写入。
 回放使用 `evaluations/<source>/report.json` 旁的 `hands.jsonl`。
 更新时同步完整包，避免新 HTML 搭配旧后端；退出旧监控后再启动新版本。
+
+## 正式实验
+
+默认只列出显式登记的正式实验；切换“全部记录（含测试）”可查看旧日志。
+新训练传 `--experiment-kind formal --experiment-name '实验名称'`；
+已有 run 使用 `python3 scripts/label_experiment.py /absolute/run --kind formal --stage stage2`。
+以 run 根目录的 `experiment.json` 为依据，监控本身只读，不改训练日志。

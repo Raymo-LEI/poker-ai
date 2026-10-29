@@ -1,12 +1,22 @@
 "use strict";
 
 const $ = id => document.getElementById(id);
-const COLORS = ["#c1ec91", "#74c7bb", "#e7ba79", "#9baee9", "#ee9c87", "#d4b9dc"];
+const THEMES = ["neural", "paper"];
+let COLORS = [];
+function applyTheme(name) {
+  const root = document.documentElement, theme = THEMES.includes(name) ? name : THEMES[0];
+  root.dataset.theme = theme;
+  const css = getComputedStyle(root);
+  COLORS = [1, 2, 3, 4, 5, 6].map(i => css.getPropertyValue(`--series-${i}`).trim());
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", css.getPropertyValue("--theme-color").trim());
+  document.querySelectorAll("[data-theme-option]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.themeOption === theme)));
+  return theme;
+}
 const OPPONENTS = [
   ["Random", "random"], ["Calling station", "calling_station"],
   ["Aggressive", "aggressive"], ["Slumbot", "slumbot"],
   ["首轮策略", "iter_1"], ["上一检查点", "prev_checkpoint"],
-  ["Overbet", "overbet"], ["Tight passive nit", "nit"], ["Pot odds equity", "equity"],
+  ["Overbet", "overbet"], ["Tight passive nit", "nit"], ["Pot odds equity", "equity"], ["冻结学生参考", "reference"],
 ];
 const ACTIONS = ["fold", "call", "half_pot", "pot", "all_in"];
 const ACTION_LABELS = ["Fold", "Check / Call", "½ Pot", "Pot", "All-in"];
@@ -138,7 +148,7 @@ function chart(id, rows, series, options = {}) {
     }
     let d = "", pen = false;
     for (const row of rows) {
-      if (!finite(row[s.key])) { pen = false; continue; }
+      if (!finite(row[s.key])) { if (!options.connectMissing) pen = false; continue; }
       d += `${pen ? " L" : " M"}${x(row.step)},${y(row[s.key])}`;
       pen = true;
     }
@@ -178,6 +188,11 @@ function chart(id, rows, series, options = {}) {
   container.replaceChildren(svg, legend(available.map(s => [s.label, s.color || COLORS[series.indexOf(s) % COLORS.length]])), tip);
 }
 
+function evaluationLabel(evaluation) {
+  const budget = evaluation.pairs ?? evaluation.results?.find(r => finite(r.pairs))?.pairs;
+  return `T=${evaluation.step} · ${evaluation.label} · seed=${evaluation.seed ?? "未记录"}${finite(budget) ? " · " + budget + " 对" : ""}${evaluation.intervention ? " · guard 干预" : ""}`;
+}
+
 function evaluationView(data, requested = "latest") {
   const hasEvaluation = row => Object.entries(row).some(([key, value]) => key.startsWith("eval/") && finite(value));
   const hasHud = row => Object.entries(row).some(([key, value]) => key.startsWith("hud/") && key !== "hud/rollout_legal_entropy" && finite(value));
@@ -188,68 +203,43 @@ function evaluationView(data, requested = "latest") {
     hud: selected ? (hasHud(selected) ? selected : {}) : data.hud_latest || {}};
 }
 
-function renderStage2(data, enabled) {
-  $("stage2").classList.toggle("hidden", !enabled);
-  $("stage2-nav").classList.toggle("hidden", !enabled);
-  if (!enabled) return;
-  const latest = data.latest || {}, rows = data.rows;
-  mini("stage2-cards", [
-    ["完整比赛", fmt(latest["stage2/matches"], 0), "场", "每场固定同一对手 50 手"],
-    ["训练手数", fmt(latest["stage2/hands"], 0), "手", "不作为独立评测胜率"],
-    ["KL(final || ref)", fmt(latest["stage2/base_kl"], 6), "nats", "冻结 Stage 1 参考策略"],
-    ["KL 系数", fmt(latest["stage2/beta_kl"], 3), "", "前 10 手较强锚定"],
-  ]);
-  chart("stage2-kl-chart", rows, [{key:"stage2/base_kl", label:"KL to reference"}, {key:"stage2/kl_penalty", label:"KL penalty"}]);
-  chart("stage2-return-chart", rows, [{key:"stage2/hero_net_bb", label:"Match net BB"}], {zero:true});
-  const evaluation = data.stage2_eval_latest || {};
-  const metric = (name, field) => evaluation[`stage2/eval/${name}/${field}`];
-  const interval = name => `95% CI ${fmt(metric(name, "mbb_ci95_low"), 0)} … ${fmt(metric(name, "mbb_ci95_high"), 0)}`;
-  mini("stage2-eval-cards", [
-    ["Standard Pot odds equity", fmt(metric("equity", "mbb_per_hand"), 1), "mbb/hand", `Target > 0 · ${interval("equity")}`],
-    ["Equity Match Win", fmt(metric("equity", "match_win") * 100, 1), "%", "Independent complete 50-hand matches"],
-    ["GTO Retention", fmt(metric("reference", "mbb_per_hand"), 1), "mbb/hand", `Floor ≥ -20 · ${interval("reference")}`],
-    ["Retention gate", finite(evaluation["stage2/eval/retention_pass"]) ? (evaluation["stage2/eval/retention_pass"] ? "PASS" : "FAIL") : "—", "", "Measured reference mirror; KL alone is no guarantee"],
-    ["Evaluation update", fmt(evaluation["stage2/eval/update"], 0), "", `${fmt(metric("equity", "deck_pairs"), 0)} deck pairs · ${fmt(metric("equity", "matches"), 0)} matches per opponent/policy`],
-  ]);
-  mini("stage2-gain-cards", [["nit", "Nit"], ["call", "Calling station"], ["maniac", "Aggressive"], ["overbet", "Overbet"]].map(([name,label]) =>
-    [`${label} gain Δ`, fmt(metric(name,"gain_mbb_per_hand"),1), "mbb/hand", `Stage 2 − frozen Stage 1 · base ${fmt(metric(name,"base_mbb_per_hand"),1)}`]));
-  chart("stage2-equity-chart", rows, [{key:"stage2/eval/equity/mbb_per_hand",label:"Standard equity"}, {key:"stage2/eval/reference/mbb_per_hand",label:"GTO retention"}], {zero:true});
-  chart("stage2-gain-chart", rows, ["nit","call","maniac","overbet"].map(name => ({key:`stage2/eval/${name}/gain_mbb_per_hand`,label:`${name} Δ`})), {zero:true});
-  const opponents = [["equity","Pot odds equity family"],["nit","Tight passive nit"],["call","Calling station"],["maniac","Aggressive"],["overbet","Overbet"],["push_fold","Maniac push/fold"],["reference","Distilled mirror"],["history","Stage 1 history"],["self","Stage 2 history"]];
-  chart("stage2-pfsp-chart", rows, opponents.map(([key,label]) => ({key:`stage2/pfsp/${key}`,label})));
-  const fields = [["vpip","VPIP"],["pfr","PFR"],["three_bet","3-Bet"],["fold_to_preflop_raise","Fold to preflop raise"], ["flop_aggression","Flop aggression"],["turn_aggression","Turn aggression"],["river_aggression","River aggression"],["fold_to_postflop_bet","Fold to postflop bet"],["all_in_frequency","All-in frequency"],["showdown_win","Showdown win"]];
-  mini("stage2-context", fields.map(([key,label]) => [label, fmt(latest[`stage2/context/${key}`] * 100, 1), "%", "本场公开行动 · Bayesian smoothing"]));
-}
-
 function render(data) {
-  const view = evaluationView(data, current?.id === data.id ? $("eval-select").value : "latest");
+  const requested = current?.id === data.id ? $("eval-select").value : "latest";
+  const view = evaluationView(data, requested);
+  const evaluations = data.workbench?.evaluations || [];
+  const picked = evaluations.find(e => "eval:" + e.id === requested);
+  if (picked) {
+    view.evaluation = picked.metrics;
+    view.hud = picked.metrics;
+    view.selection = requested;
+  }
   current = data;
   const latest = data.latest || {}, recentEvaluation = data.eval_latest || {}, probe = data.diagnostic_latest || {};
   const {evaluation, hud} = view;
-  $("eval-select").replaceChildren(...[["latest", "最新评测"], ...view.snapshots.slice().reverse().map(row => [String(row.step), `T=${row.step}`])].map(([value, label]) => {
+  $("eval-select").replaceChildren(...[["latest", "最新默认评测"], ...(evaluations.length ? evaluations.slice().reverse().map(e => ["eval:" + e.id, evaluationLabel(e)]) : view.snapshots.slice().reverse().map(row => [String(row.step), `T=${row.step}`]))].map(([value, label]) => {
     const option = el("option", "", label); option.value = value; return option;
   }));
   $("eval-select").value = view.selection;
-  const isStage2 = data.kind === "Stage 2 PPO";
-  const isPPO = data.kind === "PPO" || isStage2;
-  renderStage2(data, isStage2);
+  const isPPO = ["PPO", "Stage 2 PPO"].includes(data.kind);
   const shared = data.config?.separate_player_models === false || finite(latest.shared_train_steps);
   const rows = data.rows.slice(-Number($("window").value));
   $("run-name").textContent = data.name;
-  $("run-kind").textContent = data.kind;
-  $("run-device").textContent = data.environment?.gpu || data.environment?.device || data.config?.device || "设备未记录";
+  $("run-kind").textContent = data.stage === "stage2" ? "Stage 2 · Residual PPO" : data.kind;
+  const trainingDevice = data.workbench?.effective?.effective_device || data.config?.device;
+  $("run-device").textContent = trainingDevice ? `训练 ${trainingDevice}${data.environment?.device && data.environment.device !== trainingDevice ? " · 评测 " + data.environment.device : ""}` : data.environment?.gpu || data.environment?.device || "设备未记录";
   $("run-age").textContent = "最后写入 " + age(data.updated_at) + " · " + date(data.updated_at);
   const lastStep = latest.step;
   const evalKey = "eval/winrate_vs_random_mbb";
   const checkpoint = data.checkpoint;
   $("summary").replaceChildren(
     card(data.evaluation_only ? "评测策略迭代 / ITERATION" : isPPO ? "当前更新 / UPDATE" : "当前迭代 / ITERATION", fmt(lastStep, 0), "", `${data.rows.length} 条合并记录 · ${data.kind}${data.evaluation_only ? " 评测" : ""}`, true),
-    card("最新单轮耗时", fmt(latest.iteration_s ?? latest.seconds), "s", "日志中的完整轮次耗时"),
+    card("最新单轮耗时", fmt(latest.iteration_s ?? latest.seconds), "s", isPPO ? "更新记录含周期评测；不含随后 checkpoint 保存" : "日志中的完整轮次耗时"),
     card("对 Random 胜率", fmt(recentEvaluation[evalKey], 1), "mbb/h", finite(recentEvaluation[evalKey]) ? `评测于 #${recentEvaluation.step} · ${finite(recentEvaluation[evalKey + "_ci_low"]) && finite(recentEvaluation[evalKey + "_ci_high"]) ? "有 95% CI" : "未提供置信区间"}` : "等待独立对战评测"),
     card("最近训练 Checkpoint", checkpoint ? bytes(checkpoint.bytes) : "—", "", checkpoint ? date(checkpoint.updated_at) : "未发现本目录 train.pt")
   );
   $("loss-title").textContent = isPPO ? "策略与价值损失" : "Regret 回归损失";
   $("loss-description").textContent = isPPO ? "PPO policy loss / value loss" : shared ? `迭代加权 ${data.config?.loss === "huber" ? "Smooth L1" : "MSE"} · 共享位置条件网络 · Target / ${data.config?.regret_target_scale || 100} BB` : "迭代加权 MSE · 两个独立玩家";
+  if (!isPPO && data.config?.iteration_weight_power) $("loss-description").textContent += ` · ${data.config.normalize_iteration_weights ? "(t / T)" : "t"}^${data.config.iteration_weight_power}`;
   chart("loss-chart", rows, isPPO ? [{key: "train/policy_loss", label: "Policy loss"}, {key: "train/value_loss", label: "Value loss"}] : shared ? [{key: "shared_loss", label: "共享 Loss"}] : [{key: "train/loss_p0", label: "P0 loss"}, {key: "train/loss_p1", label: "P1 loss"}]);
   $("buffer-title").textContent = isPPO ? "累计训练步数" : "样本与训练进度";
   $("buffer-description").textContent = isPPO ? "Timesteps · 实际采集步数" : "Reservoir 中保留的 regret 样本";
@@ -277,6 +267,7 @@ function render(data) {
     [shared ? "共享网络更新次数" : "单轮拟合预算 P0 / P1", shared ? fmt(latest.shared_train_steps, 0) : fmt(latest.p0_train_steps, 0) + " / " + fmt(latest.p1_train_steps, 0), "", shared ? "每轮一个训练循环 · Warm-start" : "两个独立训练循环"],
     ...(shared ? [["训练抽样 BB / SB", fmt(latest.p0_training_draws, 0) + " / " + fmt(latest.p1_training_draws, 0), "", latest.fit_deferred_missing_seat ? "缺少座位样本，已延迟拟合" : "每个 Mini-batch 精确 1:1"], ["拟合验收 BB / SB", (latest.p0_fit_acceptance ? "PASS" : "未达标") + " / " + (latest.p1_fit_acceptance ? "PASS" : "未达标"), "", "两席均需 R² > 0.50 且 End/Start < 0.30"]] : []),
   ]);
+  document.querySelector(".diagnostic-row").classList.toggle("hidden", isPPO);
   const probeMetric = $("probe-metric").value;
   chart("probe-chart", rows, [0, 1].map(p => ({key: `train/${probeMetric}_p${p}`, label: p === 0 ? "P0 / BB" : "P1 / SB"})), {zero: probeMetric.endsWith("r2"), emptyText: probeMetric === "probe_loss_ratio" ? "历史训练未记录起点。新训练代码在拟合前后测量同一批次；Checkpoint 回测只提供 End / Zero 和 R²。" : "训练边界或离线 Checkpoint 探针写入后显示。"});
   chart("samples-chart", rows, [{key: "p0_regret_samples", label: "P0 / BB"}, {key: "p1_regret_samples", label: "P1 / SB"}]);
@@ -285,7 +276,8 @@ function render(data) {
   $("eval-tag").className = "tag" + (Object.keys(evaluation).length ? " good" : "");
   $("eval-step").textContent = finite(evaluation.step) ? (evaluation["diagnostic/eval_average_policy"] === 1 ? `平均策略 σ1…σ${evaluation.step}` : "评测快照 · T=" + evaluation.step) : "所选轮次未采集对战评测";
   $("hud-eval-note").textContent = finite(hud["hud/eval_hands"]) ? `T=${hud.step} · ${fmt(hud["hud/eval_hands"], 0)} 手自博弈` : view.selection !== "latest" ? `T=${view.selection} 未采集动作统计` : "仅展示实际采集的决策统计";
-  const winrateRows = view.history.filter(r => OPPONENTS.some(([, k]) => finite(r[`eval/winrate_vs_${k}_mbb`])));
+  const history = picked ? evaluations.filter(e => e.selection === picked.selection && e.intervention === picked.intervention && e.guard_override === picked.guard_override && e.seed === picked.seed && e.pairs === picked.pairs && e.sampling_power === picked.sampling_power).map(e => e.metrics) : view.history;
+  const winrateRows = history.filter(r => OPPONENTS.some(([, k]) => finite(r[`eval/winrate_vs_${k}_mbb`])));
   $("eval-history-note").textContent = winrateRows.length ? `全部 ${winrateRows.length} 次评测 · T=${winrateRows.map(r => r.step).join(" / ")}。右侧快照和 C 面板随评测轮次切换；训练显示范围不裁剪此曲线。` : "等待独立对战评测；不会从训练 Loss 推算。";
   chart("winrate-chart", winrateRows, OPPONENTS.map(([label, k]) => ({key: `eval/winrate_vs_${k}_mbb`, label, lower: `eval/winrate_vs_${k}_mbb_ci_low`, upper: `eval/winrate_vs_${k}_mbb_ci_high`})), {zero: true, emptyTitle: "棋力尚未评测", emptyText: "当前日志只有训练数据。写入真实的 eval/ 指标后，这里显示胜率和置信区间。"});
   $("opponents").replaceChildren(...OPPONENTS.map(([label, k]) => {
@@ -306,7 +298,7 @@ function render(data) {
   ]);
   const hudFields = [["SB VPIP", "preflop_vpip_sb", "preflop_vpip_sb_hands"], ["SB PFR", "preflop_pfr_sb", "preflop_pfr_sb_hands"], ["BB VPIP", "preflop_vpip_bb", "preflop_vpip_bb_hands"], ["BB 3-Bet", "preflop_3bet_bb", "preflop_3bet_bb_opportunities"]];
   $("hud-context").classList.toggle("hidden", isPPO);
-  $("hud-context").textContent = (shared ? "共享位置网络：P0 / P1 是 BB / SB 座位统计，共用同一个网络。" : "双网络：P0 对应 BB，P1 对应 SB。") + (data.config?.preflop_action_guard ? " 翻前 guard 开启：深筹码开局 All-in 受动作约束，0% 不代表模型自主学会不推。" : " 翻前 guard 未启用。");
+  $("hud-context").textContent = (shared ? "共享位置网络：P0 / P1 是 BB / SB 座位统计，共用同一个网络。" : "双网络：P0 对应 BB，P1 对应 SB。") + (data.config?.spr_action_guard ? " SPR guard 开启；动作比例受掩码约束。" : "") + (data.config?.preflop_action_guard ? " 翻前 guard 开启：深筹码开局 All-in 受动作约束，0% 不代表模型自主学会不推。" : " 翻前 guard 未启用。");
   mini("hud-cards", [...hudFields.map(([label, key, denominator]) => {
     const measured = finite(hud["hud/" + key]);
     const count = hud["hud/" + denominator];
@@ -342,7 +334,12 @@ function render(data) {
   })));
   chart("timing-chart", rows, isPPO ? [{key: "seconds", label: "Update time"}] : [{key: "p0_collect_s", label: "P0 采样"}, {key: "p1_collect_s", label: "P1 采样"}, {key: "shared_fit_s", label: "共享拟合"}, {key: "p0_fit_s", label: "P0 拟合"}, {key: "p1_fit_s", label: "P1 拟合"}]);
   chart("throughput-chart", rows, [{key: "system/regret_samples_per_s", label: "Regret samples / s"}], {emptyText: isPPO ? "该项为 CFR regret 采样吞吐；PPO 日志无对应数据。" : "需要同一轮的 regret 样本数与采样耗时。"});
-  mini("performance-extra", [
+  mini("performance-extra", isPPO ? [
+    ["当前更新耗时", fmt(latest.seconds, 3), "s", "含周期评测；checkpoint 在其后保存"],
+    ["累计决策步数", fmt(latest.timesteps, 0), "", "英雄决策数；不是完整手数"],
+    ["PPO epochs", fmt(data.config?.ppo?.epochs, 0), "", "配置值"],
+    ["PPO batch", fmt(data.config?.ppo?.minibatch_size, 0), "", "配置值"],
+  ] : [
     ["平均推理 Batch", fmt(latest["system/average_inference_batch"], 2), "rows", "总推理行数 / 总调用数"],
     [shared ? "共享训练吞吐" : "P0 训练吞吐", fmt(shared ? latest.shared_training_draws_per_s : latest.p0_training_draws_per_s, 1), "/ s", "训练样本抽取速率"],
     [shared ? "训练 Batch" : "P1 训练吞吐", fmt(shared ? data.config?.minibatch_size : latest.p1_training_draws_per_s, shared ? 0 : 1), shared ? "rows" : "/ s", shared ? "BB / SB 各占一半" : "训练样本抽取速率"],
@@ -358,6 +355,7 @@ function render(data) {
   if (!data.rows.length) $("notices").prepend(el("div", "notice", "当前实验尚无完整日志记录，等待训练写入。"));
   $("history-note").textContent = `最多展示最近 ${fmt(data.history_limit, 0)} 条 · 只读`;
   $("export").disabled = false;
+  window.OverwatchWorkbench?.render(data);
 }
 
 async function getJSON(url, signal) {
@@ -477,6 +475,17 @@ const observer = new IntersectionObserver(entries => {
   const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
   if (visible) document.querySelectorAll(".nav-link").forEach(link => link.classList.toggle("active", link.hash === "#" + visible.target.id));
 }, {rootMargin: "-5% 0px -65% 0px", threshold: 0});
-["overview", "strength", "strategy", "performance", "stage2", "details"].forEach(id => observer.observe($(id)));
+["overview", "strength", "strategy", "performance", "details"].forEach(id => observer.observe($(id)));
+let savedTheme = null;
+try { savedTheme = localStorage.getItem("overwatch-theme"); } catch (_) { /* optional */ }
+applyTheme(savedTheme);
+document.querySelectorAll("[data-theme-option]").forEach(button => button.addEventListener("click", () => {
+  const theme = applyTheme(button.dataset.themeOption);
+  try { localStorage.setItem("overwatch-theme", theme); } catch (_) { /* optional */ }
+  if (current) render(current);
+  if (!$("wb-comparison").classList.contains("hidden")) $("wb-compare-axis").dispatchEvent(new Event("change"));
+}));
 $("export").disabled = true;
+window.Overwatch = {chart, fmt, bytes, date, age, el, mini, getJSON, evaluationLabel, getCurrent: () => current,
+  selectRun: ident => { $("run-select").value = ident; return refresh(true); }};
 refresh();

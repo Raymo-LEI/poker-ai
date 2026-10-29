@@ -275,7 +275,6 @@ def test_separate_probe_log_joins_by_iteration_and_keeps_real_zero(tmp_path):
     assert data["diagnostic_latest"]["train/probe_r2_p1"] == -.2
     assert data["latest"]["train/probe_end_zero_ratio_p0"] == .98
 
-
 def test_stage2_metrics_panel_schema(tmp_path):
     run = tmp_path / "stage2"
     run.mkdir()
@@ -305,4 +304,4 @@ def test_stage2_independent_eval_survives_new_training_rows(tmp_path):
     assert data["stage2_eval_latest"]["stage2/eval/update"] == 100
     assert data["stage2_eval_latest"]["stage2/eval/equity/mbb_per_hand"] == 0
     assert data["stage2_eval_latest"]["stage2/eval/retention_pass"] == 0
-    assert not data["eval_latest"]
+    assert data["eval_latest"]["eval/winrate_vs_equity_mbb"] == 0

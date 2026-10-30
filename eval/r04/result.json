@@ -1,0 +1,58 @@
+{
+  "task_id": "R04",
+  "status": "PASS",
+  "code_commit": null,
+  "outputs": [
+    "eval/r04/action_schema_v2.json",
+    "eval/r04/migration_compat.md",
+    "eval/r04/a5_a6_smoke_report.json",
+    "eval/r04/response_equivalence.json",
+    "eval/r04/hardcoded_action_width_audit.json"
+  ],
+  "checks": [
+    {
+      "id": "boundary_legal_and_stack",
+      "pass": true,
+      "evidence": "eval/r04/a5_a6_smoke_report.json states=1000 illegal_or_overstack=0 conservation_failures=0"
+    },
+    {
+      "id": "duplicate_chip_responses",
+      "pass": true,
+      "evidence": "duplicate_executable=0; lower action id keeps a shared chip response"
+    },
+    {
+      "id": "shared_action_mass",
+      "pass": true,
+      "evidence": "eval/r04/response_equivalence.json comparison=chip_response_probability_mass shared_response_mismatches=0"
+    },
+    {
+      "id": "quarterpot_coverage_not_skill",
+      "pass": true,
+      "evidence": "quarterpot_effective_new_coverage=0.224 quarter_collapsed=386 quarter_masked=390 small_bet_skill_claimed=false"
+    },
+    {
+      "id": "fail_closed_schema",
+      "pass": true,
+      "evidence": "tests/test_r04_action_schema.py rejects botzone_5action_v1 and a width-5 A6 head"
+    },
+    {
+      "id": "judge_sha_unchanged",
+      "pass": true,
+      "evidence": "tests/fixtures/botzone_judge.py sha256 b70702fdcd28333f91087f1a3dc3ede1ca59737404622c64dc6dbf7e9206e544"
+    },
+    {
+      "id": "no_formal_training",
+      "pass": true,
+      "evidence": "gpu_hours_used=0; A5 and A6 train_budget_steps=0"
+    }
+  ],
+  "gpu_hours_used": 0,
+  "quarterpot_effective_new_coverage": 0.224,
+  "next_task": "R05",
+  "limitations": [
+    "Formal GPU training is not authorized and was not run. R05 owns the training budget.",
+    "Frozen five-wide Teacher, PPO, export, and guard modules stay on botzone_5action_v1. They are audited and fail closed against A6; their heads were not widened.",
+    "Quarter-pot is a new executable size on 22.4% of the 1000 boundary states. That is coverage, not a small-bet skill claim.",
+    "V6 weights were not modified."
+  ]
+}

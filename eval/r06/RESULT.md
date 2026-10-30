@@ -2,7 +2,7 @@
 
 Status: **INCOMPLETE**. Kuhn correctness and checkpoint restore ran on CPU. The A5 and A6 GPU pilots were not started.
 
-Implementation commit: `14fe4b9dc4384a681b5d230b19ba363bb7de3d87`.
+Schema-head commit: `c00ae9b058d18370821ebd8022f5e7785bdd2ee3`.
 
 GPU hours used: **0**. The registered cap stays 1000. No strength gain is claimed.
 

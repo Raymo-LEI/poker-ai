@@ -1,7 +1,7 @@
 {
   "task_id": "R06",
   "status": "INCOMPLETE",
-  "code_commit": "14fe4b9dc4384a681b5d230b19ba363bb7de3d87",
+  "code_commit": "c00ae9b058d18370821ebd8022f5e7785bdd2ee3",
   "outputs": [
     "eval/r06/teacher_pilot_report.json",
     "eval/r06/manifests/a5.json",

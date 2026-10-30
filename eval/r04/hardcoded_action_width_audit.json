@@ -1,0 +1,67 @@
+{
+  "a5_sha256": "683572125ca42eb2325aca2d242d5c74b4c6b08ae5335bcd8c2b630ad160016d",
+  "a6_sha256": "854b7e5c189dcdb0cf287bb6d5f0c5e6ef36e768da45e4430ad8c48e7d114078",
+  "retained_v1_sha256": "084d8116b4bb03a89c9daf889cacb9167badd9a78bded1c0bc8fc7087d5c25dd",
+  "sites": [
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/botzone/actions.py",
+      "site": "NUM_ACTIONS = 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/transformer/schema.py",
+      "site": "NUM_ACTIONS = 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/nl_obs.py",
+      "site": "NUM_ACTIONS = 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/transformer/conv_net.py",
+      "site": "conv head width NUM_ACTIONS"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/transformer/conv_obs.py",
+      "site": "legal_mask width 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/stage2/policy.py",
+      "site": "delta_head width 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/exploiter/policy.py",
+      "site": "delta_head width 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/cfr/fidelity.py",
+      "site": "target width 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/cfr/parallel.py",
+      "site": "regret width 5"
+    },
+    {
+      "disposition": "frozen_botzone_5action_v1_fail_closed",
+      "path": "src/alphanl/tf_teacher.py",
+      "site": "reshape(-1, 5)"
+    },
+    {
+      "disposition": "table_driven",
+      "path": "src/alphanl/botzone/action_spec.py",
+      "site": "width from ActionSchema"
+    },
+    {
+      "disposition": "not_botzone_action_schema",
+      "path": "src/alphanl/cfr/kuhn.py",
+      "site": "width 5"
+    }
+  ]
+}

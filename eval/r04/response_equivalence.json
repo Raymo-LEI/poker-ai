@@ -1,0 +1,20 @@
+{
+  "comparison": "chip_response_probability_mass",
+  "not": "naive action-id alignment",
+  "note": "Uniform mass over each schema's executable ids is summed by chip response. A6 quarter-pot counts as new coverage only when that chip amount is absent from A5.",
+  "quarter_collapsed": 386,
+  "quarter_masked": 390,
+  "quarter_new": 224,
+  "quarterpot_effective_new_coverage": 0.224,
+  "shared_mass_mean_abs_diff": 0.010195530726256986,
+  "shared_mass_pairs": 3938,
+  "shared_names": [
+    "fold",
+    "check_call",
+    "half_pot",
+    "pot",
+    "all_in"
+  ],
+  "shared_response_mismatches": 0,
+  "small_bet_skill_claimed": false
+}

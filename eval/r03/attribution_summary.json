@@ -1,0 +1,188 @@
+{
+  "baseline_defects": [
+    {
+      "case_id": "river_ks_nut_flush_facing_bet",
+      "deploy_fold": 0.0,
+      "layer": "ppo",
+      "note": "Old V6 raw fold on a certified river nuts state exceeds 1%. Baseline defect, not an R03 failure.",
+      "raw_fold": 0.015751611639874142
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet__suit1",
+      "deploy_fold": 0.11899010434932039,
+      "layer": "ppo",
+      "note": "Old V6 raw fold on a certified river nuts state exceeds 1%. Baseline defect, not an R03 failure.",
+      "raw_fold": 0.11899010434932038
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet__suit2",
+      "deploy_fold": 0.0714078350019907,
+      "layer": "ppo",
+      "note": "Old V6 raw fold on a certified river nuts state exceeds 1%. Baseline defect, not an R03 failure.",
+      "raw_fold": 0.0714078350019907
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet__suit3",
+      "deploy_fold": 0.0,
+      "layer": "ppo",
+      "note": "Old V6 raw fold on a certified river nuts state exceeds 1%. Baseline defect, not an R03 failure.",
+      "raw_fold": 0.015717704289094282
+    }
+  ],
+  "cases": 29,
+  "discrete_diagnostics_identical": true,
+  "frozen_student_status": "MISSING",
+  "gpu_hours_used": 0,
+  "hard_dominated": 8,
+  "illegal_mass_deploy_max": 0.0,
+  "illegal_mass_raw_max": 0.0,
+  "judge_sha256": "b70702fdcd28333f91087f1a3dc3ede1ca59737404622c64dc6dbf7e9206e544",
+  "npz_sha256": "dfd57d307c6d4d9eb5d789ba145370792752ea85f5f43ba57b5dd787e3b4faaa",
+  "pt_np_by_case": [
+    {
+      "case_id": "river_ks_nut_flush",
+      "max_abs": 3.23310777455843e-07
+    },
+    {
+      "case_id": "river_ks_nut_flush__suit1",
+      "max_abs": 1.6392605778348113e-07
+    },
+    {
+      "case_id": "river_ks_nut_flush__suit2",
+      "max_abs": 4.102110628956268e-08
+    },
+    {
+      "case_id": "river_ks_nut_flush__suit3",
+      "max_abs": 5.5258415510017755e-08
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet",
+      "max_abs": 2.3412876137829386e-07
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet__suit1",
+      "max_abs": 1.0302357983382748e-07
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet__suit2",
+      "max_abs": 3.027345521489089e-08
+    },
+    {
+      "case_id": "river_ks_nut_flush_facing_bet__suit3",
+      "max_abs": 2.6410103992624556e-08
+    },
+    {
+      "case_id": "turn_nut_flush",
+      "max_abs": 9.661997063536987e-08
+    },
+    {
+      "case_id": "turn_nut_flush__suit1",
+      "max_abs": 1.4039452012060138e-07
+    },
+    {
+      "case_id": "turn_nut_flush__suit2",
+      "max_abs": 3.7667640617744524e-08
+    },
+    {
+      "case_id": "turn_nut_flush__suit3",
+      "max_abs": 1.0836677444281406e-08
+    },
+    {
+      "case_id": "flop_74_top_pair_gutshot",
+      "max_abs": 2.5832641192824468e-08
+    },
+    {
+      "case_id": "flop_74_top_pair_gutshot__suit1",
+      "max_abs": 5.005296849214247e-08
+    },
+    {
+      "case_id": "flop_74_top_pair_gutshot__suit2",
+      "max_abs": 4.174482182150996e-08
+    },
+    {
+      "case_id": "flop_74_top_pair_gutshot__suit3",
+      "max_abs": 3.6603115927125174e-08
+    },
+    {
+      "case_id": "river_board_two_pair",
+      "max_abs": 1.3074103710764007e-07
+    },
+    {
+      "case_id": "river_board_two_pair__suit1",
+      "max_abs": 4.581579504669975e-08
+    },
+    {
+      "case_id": "river_board_two_pair__suit2",
+      "max_abs": 1.0458474053454125e-07
+    },
+    {
+      "case_id": "river_board_two_pair__suit3",
+      "max_abs": 2.777949892340814e-08
+    },
+    {
+      "case_id": "flop_nut_flush_draw",
+      "max_abs": 2.2988032044590767e-07
+    },
+    {
+      "case_id": "flop_nut_flush_draw__suit1",
+      "max_abs": 5.4470481791746295e-08
+    },
+    {
+      "case_id": "flop_nut_flush_draw__suit2",
+      "max_abs": 8.938140028114105e-08
+    },
+    {
+      "case_id": "flop_nut_flush_draw__suit3",
+      "max_abs": 1.3321975583791001e-07
+    },
+    {
+      "case_id": "flop_facing_overbet_reraise",
+      "max_abs": 6.87469533522389e-08
+    },
+    {
+      "case_id": "flop_facing_overbet_reraise__suit1",
+      "max_abs": 2.3932845361063215e-07
+    },
+    {
+      "case_id": "flop_facing_overbet_reraise__suit2",
+      "max_abs": 9.132124290101018e-08
+    },
+    {
+      "case_id": "flop_facing_overbet_reraise__suit3",
+      "max_abs": 1.2033998686433733e-08
+    },
+    {
+      "case_id": "flop_85_top_pair_gutshot",
+      "max_abs": 9.071388507031486e-08
+    }
+  ],
+  "pt_np_limit": 0.0001,
+  "pt_np_max_abs": 3.23310777455843e-07,
+  "research_pending": 21,
+  "status": "PASS",
+  "task_id": "R03",
+  "teacher_status": "MISSING",
+  "unattributed": [
+    "turn_nut_flush",
+    "turn_nut_flush__suit1",
+    "turn_nut_flush__suit2",
+    "turn_nut_flush__suit3",
+    "flop_74_top_pair_gutshot",
+    "flop_74_top_pair_gutshot__suit1",
+    "flop_74_top_pair_gutshot__suit2",
+    "flop_74_top_pair_gutshot__suit3",
+    "river_board_two_pair",
+    "river_board_two_pair__suit1",
+    "river_board_two_pair__suit2",
+    "river_board_two_pair__suit3",
+    "flop_nut_flush_draw",
+    "flop_nut_flush_draw__suit1",
+    "flop_nut_flush_draw__suit2",
+    "flop_nut_flush_draw__suit3",
+    "flop_facing_overbet_reraise",
+    "flop_facing_overbet_reraise__suit1",
+    "flop_facing_overbet_reraise__suit2",
+    "flop_facing_overbet_reraise__suit3",
+    "flop_85_top_pair_gutshot"
+  ]
+}

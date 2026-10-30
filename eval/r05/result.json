@@ -1,0 +1,61 @@
+{
+  "task_id": "R05",
+  "status": "INCOMPLETE",
+  "code_commit": "51659a61693da175b179902ed7c90f1c137a0d27",
+  "outputs": [
+    "eval/r05/cost_probe.json",
+    "eval/r05/budget_proposal.json",
+    "eval/r05/experiment_registry.json"
+  ],
+  "checks": [
+    {
+      "id": "cpu_probe_measured",
+      "pass": true,
+      "evidence": "eval/r05/cost_probe.json A5 587 decisions in 0.366s, A6 660 decisions in 0.386s, RSS VmHWM 234188 kB, V6 npz copy 6060293 bytes"
+    },
+    {
+      "id": "budget_proposal_not_approved",
+      "pass": true,
+      "evidence": "eval/r05/budget_proposal.json claims_user_approval false, total_gpu_hours_cap null, phase gpu_hours_cap null"
+    },
+    {
+      "id": "experiment_registry",
+      "pass": true,
+      "evidence": "eval/r05/experiment_registry.json freezes R01 seeds 101/202/303, four opponent families, thresholds, final access; selection cap is PROPOSAL_NOT_FROZEN"
+    },
+    {
+      "id": "process_and_checkpoint_headroom",
+      "pass": true,
+      "evidence": "single process, 1 thread; rollback headroom 18180879 bytes = 3x measured V6 npz"
+    },
+    {
+      "id": "gpu_probe",
+      "pass": false,
+      "status": "BUDGET_BLOCKED",
+      "evidence": "training_gpu_budget UNREGISTERED; peak VRAM and GPU step time not measured; 20 minute probe requested, not approved"
+    },
+    {
+      "id": "judge_sha_unchanged",
+      "pass": true,
+      "evidence": "tests/fixtures/botzone_judge.py sha256 b70702fdcd28333f91087f1a3dc3ede1ca59737404622c64dc6dbf7e9206e544"
+    },
+    {
+      "id": "no_formal_training",
+      "pass": true,
+      "evidence": "gpu_hours_used 0; Teacher, distill, PPO, and solve were not started"
+    }
+  ],
+  "gpu_hours_used": 0,
+  "gpu_probe_status": "NOT_RUN_UNREGISTERED_BUDGET",
+  "cpu_probe_status": "MEASURED",
+  "budget_proposal_claims_approval": false,
+  "budget_proposal_ready_for_user_review": true,
+  "next_task": "R06",
+  "limitations": [
+    "GPU probe and formal training are blocked until the user approves a probe budget. No hour cap was invented.",
+    "Teacher-label throughput was not measured because the snapshots are absent.",
+    "Checkpoint headroom is 3x the frozen V6 npz, not a future training checkpoint.",
+    "FrozenHistory internal weights remain unlocked.",
+    "This host is a 4-vCPU cloud VM, not the Mac used for earlier Route1 notes."
+  ]
+}

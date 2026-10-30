@@ -1,0 +1,909 @@
+[
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "river_ks_nut_flush",
+    "deploy_probs_1e8": [
+      0,
+      24537544,
+      18312916,
+      57149540,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      24537544,
+      18312916,
+      57149540,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "none",
+    "source": "constructed_absolute_nuts"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "river_ks_nut_flush__suit1",
+    "deploy_probs_1e8": [
+      0,
+      43302097,
+      11447680,
+      45250223,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      43302097,
+      11447680,
+      45250223,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "none",
+    "source": "constructed_absolute_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "river_ks_nut_flush__suit2",
+    "deploy_probs_1e8": [
+      0,
+      36042114,
+      14548974,
+      49408912,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      36042114,
+      14548974,
+      49408912,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "none",
+    "source": "constructed_absolute_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "river_ks_nut_flush__suit3",
+    "deploy_probs_1e8": [
+      0,
+      14557262,
+      14359499,
+      71083239,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      14557262,
+      14359499,
+      71083239,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "none",
+    "source": "constructed_absolute_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": true,
+    "case_id": "river_ks_nut_flush_facing_bet",
+    "deploy_probs_1e8": [
+      0,
+      34481881,
+      18934736,
+      46583382,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      1575161,
+      33938736,
+      18636484,
+      45849619,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "ppo",
+    "source": "constructed_absolute_nuts"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": true,
+    "case_id": "river_ks_nut_flush_facing_bet__suit1",
+    "deploy_probs_1e8": [
+      11899010,
+      43292570,
+      11826244,
+      32982176,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      11899010,
+      43292570,
+      11826244,
+      32982176,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "ppo",
+    "source": "constructed_absolute_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": true,
+    "case_id": "river_ks_nut_flush_facing_bet__suit2",
+    "deploy_probs_1e8": [
+      7140784,
+      32238920,
+      15904666,
+      44715630,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      7140784,
+      32238920,
+      15904666,
+      44715630,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "ppo",
+    "source": "constructed_absolute_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": true,
+    "case_id": "river_ks_nut_flush_facing_bet__suit3",
+    "deploy_probs_1e8": [
+      0,
+      10239500,
+      14830042,
+      74930458,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      1571770,
+      10078558,
+      14596948,
+      73752723,
+      0
+    ],
+    "proof_grade": "hard_dominated",
+    "root_cause_layer": "ppo",
+    "source": "constructed_absolute_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "turn_nut_flush",
+    "deploy_probs_1e8": [
+      0,
+      27072546,
+      19193416,
+      53734037,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      27072546,
+      19193416,
+      53734037,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_turn_nuts"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "turn_nut_flush__suit1",
+    "deploy_probs_1e8": [
+      0,
+      36679953,
+      12844489,
+      50475558,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      36679953,
+      12844489,
+      50475558,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_turn_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "turn_nut_flush__suit2",
+    "deploy_probs_1e8": [
+      0,
+      36705197,
+      16456726,
+      46838077,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      36705197,
+      16456726,
+      46838077,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_turn_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "turn_nut_flush__suit3",
+    "deploy_probs_1e8": [
+      0,
+      18807228,
+      15477123,
+      65715649,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      18807228,
+      15477123,
+      65715649,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_turn_nuts_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "flop_74_top_pair_gutshot",
+    "deploy_probs_1e8": [
+      0,
+      63241936,
+      11811029,
+      24947034,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      63241936,
+      11811029,
+      24947034,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_top_pair_gutshot"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "flop_74_top_pair_gutshot__suit1",
+    "deploy_probs_1e8": [
+      0,
+      33412862,
+      18365813,
+      48221325,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      33412862,
+      18365813,
+      48221325,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_top_pair_gutshot_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "flop_74_top_pair_gutshot__suit2",
+    "deploy_probs_1e8": [
+      0,
+      67014922,
+      11006145,
+      21978933,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      67014922,
+      11006145,
+      21978933,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_top_pair_gutshot_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "flop_74_top_pair_gutshot__suit3",
+    "deploy_probs_1e8": [
+      0,
+      59457139,
+      14611609,
+      25931253,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      59457139,
+      14611609,
+      25931253,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_top_pair_gutshot_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "river_board_two_pair",
+    "deploy_probs_1e8": [
+      0,
+      100000000,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      82469462,
+      7257505,
+      10273033,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_board_two_pair"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "river_board_two_pair__suit1",
+    "deploy_probs_1e8": [
+      0,
+      100000000,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      64634647,
+      12828001,
+      22537352,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_board_two_pair_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "river_board_two_pair__suit2",
+    "deploy_probs_1e8": [
+      0,
+      100000000,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      83052341,
+      6965438,
+      9982221,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_board_two_pair_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "river_board_two_pair__suit3",
+    "deploy_probs_1e8": [
+      0,
+      100000000,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      88385200,
+      4916876,
+      6697925,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_board_two_pair_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "flop_nut_flush_draw",
+    "deploy_probs_1e8": [
+      0,
+      30150889,
+      18022704,
+      51826407,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      30150889,
+      18022704,
+      51826407,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_flush_draw"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "flop_nut_flush_draw__suit1",
+    "deploy_probs_1e8": [
+      0,
+      66281698,
+      7841347,
+      25876956,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      66281698,
+      7841347,
+      25876956,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_flush_draw_suit_permutation"
+  },
+  {
+    "argmax_deploy": 1,
+    "argmax_raw": 1,
+    "baseline_defect": false,
+    "case_id": "flop_nut_flush_draw__suit2",
+    "deploy_probs_1e8": [
+      0,
+      47444718,
+      13798474,
+      38756808,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      47444718,
+      13798474,
+      38756808,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_flush_draw_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "flop_nut_flush_draw__suit3",
+    "deploy_probs_1e8": [
+      0,
+      21432494,
+      17826049,
+      60741457,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      21432494,
+      17826049,
+      60741457,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_flush_draw_suit_permutation"
+  },
+  {
+    "argmax_deploy": 0,
+    "argmax_raw": 0,
+    "baseline_defect": false,
+    "case_id": "flop_facing_overbet_reraise",
+    "deploy_probs_1e8": [
+      100000000,
+      0,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      59014915,
+      20368563,
+      4988857,
+      5751210,
+      9876454
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_overbet_reraise"
+  },
+  {
+    "argmax_deploy": 0,
+    "argmax_raw": 0,
+    "baseline_defect": false,
+    "case_id": "flop_facing_overbet_reraise__suit1",
+    "deploy_probs_1e8": [
+      100000000,
+      0,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      72847485,
+      14856813,
+      2489235,
+      2528562,
+      7277904
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_overbet_reraise_suit_permutation"
+  },
+  {
+    "argmax_deploy": 0,
+    "argmax_raw": 0,
+    "baseline_defect": false,
+    "case_id": "flop_facing_overbet_reraise__suit2",
+    "deploy_probs_1e8": [
+      100000000,
+      0,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      58442603,
+      18193400,
+      2918067,
+      3687342,
+      16758587
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_overbet_reraise_suit_permutation"
+  },
+  {
+    "argmax_deploy": 0,
+    "argmax_raw": 0,
+    "baseline_defect": false,
+    "case_id": "flop_facing_overbet_reraise__suit3",
+    "deploy_probs_1e8": [
+      100000000,
+      0,
+      0,
+      0,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      85020507,
+      9537417,
+      1726880,
+      1879759,
+      1835437
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_overbet_reraise_suit_permutation"
+  },
+  {
+    "argmax_deploy": 3,
+    "argmax_raw": 3,
+    "baseline_defect": false,
+    "case_id": "flop_85_top_pair_gutshot",
+    "deploy_probs_1e8": [
+      0,
+      38545384,
+      21102048,
+      40352568,
+      0
+    ],
+    "encoding_illegal_responses": [],
+    "history_truncated": false,
+    "legal_ids": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "ppo_raw_probs_1e8": [
+      0,
+      38545384,
+      21102048,
+      40352568,
+      0
+    ],
+    "proof_grade": "research_pending",
+    "root_cause_layer": "unattributed",
+    "source": "constructed_top_pair_gutshot_rank_shift"
+  }
+]

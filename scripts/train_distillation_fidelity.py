@@ -11,6 +11,7 @@ import sys
 import time
 import torch
 from alphanl.cfr.distillation import PolicyNetwork,load_student,prepare_archive,save_student
+from alphanl.cfr.teacher_window import archive_kwargs,assert_window_matches,load_teacher_window
 from alphanl.cfr.fidelity import ExactTeacher,collect_pool_states,FidelityTrainer,fidelity_report
 from alphanl.cfr.evaluation import RuleActor,duplicate_match
 from eval_distilled_gauntlet import StudentActor
@@ -74,6 +75,8 @@ def main():
     p.add_argument('--dataset',type=Path)
     p.add_argument('--device',choices=('cpu','cuda'),default='cpu')
     p.add_argument('--seed',type=int,default=20261029)
+    p.add_argument('--window-manifest',type=Path,
+                   default=Path(__file__).resolve().parents[1]/'eval/r03/teacher_window_manifest.json')
     p.add_argument('--stage2-template',type=Path)
     p.add_argument('--stage2-out',type=Path)
     p.add_argument('--stage2-updates',type=int,default=300)
@@ -83,7 +86,9 @@ def main():
     if bool(a.stage2_template)!=bool(a.stage2_out):p.error('provide both Stage 2 paths or neither')
     a.out_dir.mkdir(parents=True,exist_ok=False)
     torch.set_num_threads(1);torch.manual_seed(a.seed)
-    config,manifest=prepare_archive(a.strategies,after=149,through=350)
+    window=load_teacher_window(a.window_manifest)
+    config,manifest=prepare_archive(a.strategies,**archive_kwargs(window))
+    assert_window_matches(manifest,window)
     teacher_report=json.loads(a.teacher_report.read_text())
     if teacher_report['settings']['pairs']!=2500:p.error('acceptance requires the full 2500-pair teacher report')
     original,_=load_student(a.reference,device=a.device)

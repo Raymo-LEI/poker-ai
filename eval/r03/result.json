@@ -1,0 +1,95 @@
+{
+  "task_id": "R03",
+  "status": "PASS",
+  "code_commit": null,
+  "outputs": [
+    "eval/r03/attribution.jsonl",
+    "eval/r03/counterexample_suite/",
+    "eval/r03/root_cause_report.md",
+    "eval/r03/attribution_summary.json",
+    "eval/r03/teacher_window_manifest.json"
+  ],
+  "checks": [
+    {
+      "id": "discrete_diagnostics_identical",
+      "pass": true,
+      "evidence": "eval/r03/attribution_summary.json discrete_diagnostics_identical true; two runs of V6_R6_MODEL.npz share legal ids, argmax, and 1e-8 probability ticks"
+    },
+    {
+      "id": "pt_np_fp32",
+      "pass": true,
+      "evidence": "pt_np_max_abs 3.23310777455843e-7 <= 1e-4 on the same FP32 V6 weights"
+    },
+    {
+      "id": "no_illegal_mass",
+      "pass": true,
+      "evidence": "illegal_mass_deploy_max 0; illegal_mass_raw_max 0"
+    },
+    {
+      "id": "counterexample_source_and_grade",
+      "pass": true,
+      "evidence": "29 cases in eval/r03/counterexample_suite; each has source and proof_grade hard_dominated or research_pending"
+    },
+    {
+      "id": "root_cause_and_unattributed",
+      "pass": true,
+      "evidence": "eval/r03/root_cause_report.md; facing-bet river nuts with raw fold>1% labeled ppo; research-pending cases listed in unattributed"
+    },
+    {
+      "id": "baseline_defect_not_fail",
+      "pass": true,
+      "evidence": "river_ks_nut_flush_facing_bet and three suit cycles recorded as baseline defects; status remains PASS"
+    },
+    {
+      "id": "teacher_window_manifest",
+      "pass": true,
+      "evidence": "eval/r03/teacher_window_manifest.json after_exclusive 149 through 350; zero own-reach returns UNREACHABLE/OOD without unweighted fill"
+    },
+    {
+      "id": "judge_sha_unchanged",
+      "pass": true,
+      "evidence": "tests/fixtures/botzone_judge.py sha256 b70702fdcd28333f91087f1a3dc3ede1ca59737404622c64dc6dbf7e9206e544"
+    },
+    {
+      "id": "no_formal_training",
+      "pass": true,
+      "evidence": "gpu_hours_used 0; CPU inference only"
+    }
+  ],
+  "gpu_hours_used": 0,
+  "baseline_defects_recorded": [
+    "river_ks_nut_flush_facing_bet",
+    "river_ks_nut_flush_facing_bet__suit1",
+    "river_ks_nut_flush_facing_bet__suit2",
+    "river_ks_nut_flush_facing_bet__suit3"
+  ],
+  "unattributed": [
+    "turn_nut_flush",
+    "turn_nut_flush__suit1",
+    "turn_nut_flush__suit2",
+    "turn_nut_flush__suit3",
+    "flop_74_top_pair_gutshot",
+    "flop_74_top_pair_gutshot__suit1",
+    "flop_74_top_pair_gutshot__suit2",
+    "flop_74_top_pair_gutshot__suit3",
+    "river_board_two_pair",
+    "river_board_two_pair__suit1",
+    "river_board_two_pair__suit2",
+    "river_board_two_pair__suit3",
+    "flop_nut_flush_draw",
+    "flop_nut_flush_draw__suit1",
+    "flop_nut_flush_draw__suit2",
+    "flop_nut_flush_draw__suit3",
+    "flop_facing_overbet_reraise",
+    "flop_facing_overbet_reraise__suit1",
+    "flop_facing_overbet_reraise__suit2",
+    "flop_facing_overbet_reraise__suit3",
+    "flop_85_top_pair_gutshot"
+  ],
+  "next_task": "R04",
+  "limitations": [
+    "Teacher SuperStudent snapshots and policy_best.pt were not attached. Those layers are MISSING and were not filled with an unweighted average.",
+    "The 33-match Mac replay tree was not used. Counterexamples are constructed public infosets plus suit and rank permutations.",
+    "Old V6 raw fold above 1% on certified river nuts is a baseline defect. The new-model gate stays at R08/R09/R13."
+  ]
+}

@@ -2,7 +2,7 @@
 
 状态：**PASS**。训练内核按未修改的官方裁判 `Holdem.player_action` 逐步转移。没有正式训练，GPU 小时为 0。
 
-`code_commit` 写在同目录的 `result.json`（实现提交的 SHA）。
+实现提交：`30cd4b6c0c79dc2527e0e5c97f9ae20d71f3c564`。pytest 记录在 `eval/r02/pytest_kernel.txt`（13 passed）。
 
 ## 检查
 

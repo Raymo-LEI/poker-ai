@@ -1,0 +1,9 @@
+{
+  "selected_candidate": null,
+  "strength_claim": false,
+  "reason": "A short pilot is not a strength result. Quarter-pot stays in the A6 manifest.",
+  "follow_on": "Bind the regret head width to botzone_a6_v2 before any GPU pilot. Do not run the five-wide head and call it A6.",
+  "a5_schema_sha256": "683572125ca42eb2325aca2d242d5c74b4c6b08ae5335bcd8c2b630ad160016d",
+  "a6_schema_sha256": "854b7e5c189dcdb0cf287bb6d5f0c5e6ef36e768da45e4430ad8c48e7d114078",
+  "quarter_pot_retained": true
+}

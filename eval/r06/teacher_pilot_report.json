@@ -1,0 +1,69 @@
+{
+  "task_id": "R06",
+  "gpu_hours_used": 0,
+  "cuda_used": false,
+  "strength_claim": false,
+  "hunl_convergence_claimed": false,
+  "kuhn_tabular": {
+    "iterations": 1000,
+    "seed": 1,
+    "traversals_per_player": 6,
+    "initial_exploitability": 0.45833333333333337,
+    "final_exploitability": 0.015795902241550322,
+    "player_zero_value": -0.0550058100518242,
+    "equilibrium_value": -0.05555555555555555,
+    "regret_samples": 14616,
+    "payoff": {
+      "units": "ante 1, bet 1, showdown stake 1 or 2",
+      "bet_fold_returns": [
+        1.0,
+        -1.0
+      ],
+      "bet_call_returns": [
+        2.0,
+        -2.0
+      ],
+      "zero_sum": true,
+      "equilibrium_value": -0.05555555555555555,
+      "nash_value": -0.055555555555555546,
+      "nash_exploitability": 5.551115123125783e-17,
+      "uniform_exploitability": 0.45833333333333337
+    },
+    "own_reach": {
+      "check_probability": 0.25,
+      "cb_mass": 1.0,
+      "expected_cb_mass": 1.0,
+      "matches": true,
+      "weighting": "iteration times own reach, not opponent or chance reach"
+    }
+  },
+  "deep_cfr_approximation": {
+    "game": "kuhn_versus_two_node_regret_fit",
+    "not_a_hunl_result": true,
+    "hunl_convergence_claimed": false,
+    "tabular_kuhn_exploitability": 0.015795902241550322,
+    "neural_fit_game": "two_node_signed_payoff",
+    "neural_iterations": 2,
+    "neural_losses_finite": true,
+    "note": "The neural fit is a two-iteration CPU regret regression on a toy game. Its loss is not a Hold'em exploitability and is not evidence the teacher converged."
+  },
+  "snapshot_restore": {
+    "game": "two_node_signed_payoff_not_hunl",
+    "gpu_hours_used": 0,
+    "cuda_used": false,
+    "completed_iteration_in_checkpoint": 1,
+    "snapshot_iteration": 1,
+    "snapshot_weight": 1,
+    "iteration_equals_weight": true,
+    "restored_iteration_before_resume": 1,
+    "resume_metrics_match_continuation": true,
+    "losses_finite": true,
+    "p0_buffer_size": 4,
+    "p1_buffer_size": 4,
+    "both_seats_sampled": true,
+    "regret_target_scale": 1.0,
+    "poststreet_coverage": "not_applicable_this_game_has_no_board"
+  },
+  "a6_head_width_check": "fail closed: head width 5 != botzone_a6_v2 width 6",
+  "gpu_pilot_status": "PENDING_AUTODL_PARENT"
+}

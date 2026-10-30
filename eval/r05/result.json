@@ -1,7 +1,7 @@
 {
   "task_id": "R05",
   "status": "INCOMPLETE",
-  "code_commit": null,
+  "code_commit": "51659a61693da175b179902ed7c90f1c137a0d27",
   "outputs": [
     "eval/r05/cost_probe.json",
     "eval/r05/budget_proposal.json",

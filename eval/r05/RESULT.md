@@ -2,7 +2,7 @@
 
 Status: **INCOMPLETE**. CPU costs were measured. The GPU probe was not run. The budget proposal is ready for review and is not approved.
 
-Implementation commit is recorded in `result.json` after this file is committed.
+Implementation commit: `51659a61693da175b179902ed7c90f1c137a0d27`.
 
 ## What was measured
 

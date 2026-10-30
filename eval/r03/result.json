@@ -1,7 +1,7 @@
 {
   "task_id": "R03",
   "status": "PASS",
-  "code_commit": null,
+  "code_commit": "e7feb6fce0edaf2429c2f56f953dc6a172e4cfc1",
   "outputs": [
     "eval/r03/attribution.jsonl",
     "eval/r03/counterexample_suite/",

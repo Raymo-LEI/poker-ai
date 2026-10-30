@@ -2,7 +2,7 @@
 
 状态：**PASS**。没有正式训练。GPU 小时 = 0。
 
-实现提交的 SHA 写在 `result.json` 的 `code_commit`。
+实现提交：`e7feb6fce0edaf2429c2f56f953dc6a172e4cfc1`。
 
 ## 检查
 

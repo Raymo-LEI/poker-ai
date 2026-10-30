@@ -1,0 +1,140 @@
+{
+  "task_id": "R07",
+  "status": "INCOMPLETE",
+  "code_commit": "51638a4aa99a7fd5990cc874b4021f6168c38a37",
+  "base_commit": "60b7b6386ac022cc34caffa1e70f76444d571668",
+  "bind_commit": "c00ae9b058d18370821ebd8022f5e7785bdd2ee3",
+  "outputs": [
+    "eval/r07/frozen_teacher_manifest.json",
+    "eval/r07/manifests/a6_seed101.json",
+    "eval/r07/manifests/a6_seed202.json",
+    "eval/r07/manifests/a6_seed303.json",
+    "eval/r07/manifests/a5_seed101.json",
+    "eval/r07/manifests/a5_seed202.json",
+    "eval/r07/manifests/a5_seed303.json",
+    "eval/r07/learning_curves.json",
+    "eval/r07/selection_rationale.json",
+    "eval/r07/holdout_report.json",
+    "eval/r07/weakness_slices.json",
+    "eval/r07/budget_debit.json",
+    "eval/r07/cpu_gate_botzone_a6_v2_seed101.json",
+    "eval/r07/cpu_gate_botzone_a5_v2_seed101.json"
+  ],
+  "checks": [
+    {
+      "id": "a6_keeps_quarter_pot",
+      "pass": true,
+      "evidence": "eval/r07/manifests/a6_seed101.json quarter_pot_required true, num_actions 6; seeds 202 and 303 match"
+    },
+    {
+      "id": "a5_control_present",
+      "pass": true,
+      "evidence": "eval/r07/manifests/a5_seed101.json num_actions 5, quarter_pot false"
+    },
+    {
+      "id": "three_seeds_not_best_only",
+      "pass": true,
+      "evidence": "frozen_teacher_manifest.json seeds [101, 202, 303]; selection_rationale.json best_seed_only false, selected_teacher null"
+    },
+    {
+      "id": "milestones_without_t1000",
+      "pass": true,
+      "evidence": "milestones [50, 100, 200, 400, 800]; optional_t1000 false"
+    },
+    {
+      "id": "loss_weight_separated_from_mixture",
+      "pass": true,
+      "evidence": "loss_iteration_weight_power 1; strategy_mixture_weight is iteration * own_reach; t_squared_loss_used_as_mixture false"
+    },
+    {
+      "id": "burn_in_frozen",
+      "pass": true,
+      "evidence": "burn_in_iterations_excluded_from_scoring is 1..49; burn_in_frozen_before_scores true"
+    },
+    {
+      "id": "schema_cpu_gate",
+      "pass": true,
+      "evidence": "pytest 2 passed; dry-run and --execute exit 0 for a6_seed101 width 6 and a5_seed101 width 5; v1 checkpoint rejected; gpu_hours_used 0"
+    },
+    {
+      "id": "width5_trainer_forbidden",
+      "pass": true,
+      "evidence": "production_width5_trainer FORBIDDEN so SDCFRTrainer cannot drop quarter_pot"
+    },
+    {
+      "id": "gpu_formal_train",
+      "pass": false,
+      "status": "PENDING_AUTODL_PARENT",
+      "evidence": "No HUNL iteration was run. CUDA --execute exits 2. Curves status NOT_MEASURED. This task debit is 0."
+    },
+    {
+      "id": "holdout_and_weakness",
+      "pass": false,
+      "status": "NOT_RUN",
+      "evidence": "holdout_report.json NOT_RUN; weakness_slices.json NOT_RUN; final_set_used false; auto_extend_training false"
+    },
+    {
+      "id": "certified_river_fold",
+      "pass": false,
+      "status": "NOT_MEASURED",
+      "evidence": "certified_river_raw_fold_max 0.01 is registered and not measured"
+    },
+    {
+      "id": "registered_strength",
+      "pass": false,
+      "status": "NOT_MEASURED",
+      "evidence": "thresholds recorded; strength_claim false; LBR/ABR is not full exploitability"
+    },
+    {
+      "id": "a6_vs_a5_cost_benefit",
+      "pass": false,
+      "status": "NOT_MEASURED",
+      "evidence": "selection_rationale.json a6_vs_a5_cost_benefit NOT_MEASURED"
+    },
+    {
+      "id": "distill_not_spent",
+      "pass": true,
+      "evidence": "distill_authorized false; distill_hours 0"
+    },
+    {
+      "id": "budget_cap_unchanged",
+      "pass": true,
+      "evidence": "total_gpu_hours_cap 1000; cap_raised false; gpu_hours_used_this_task 0; remaining 999.9996208573829"
+    },
+    {
+      "id": "judge_sha_unchanged",
+      "pass": true,
+      "evidence": "tests/fixtures/botzone_judge.py sha256 b70702fdcd28333f91087f1a3dc3ede1ca59737404622c64dc6dbf7e9206e544"
+    }
+  ],
+  "gpu_hours_used": 0,
+  "gpu_hours_used_total": 0.0003791426171341704,
+  "remaining_gpu_hours": 999.9996208573829,
+  "gpu_hours_cap": 1000,
+  "train_hours": 0,
+  "label_hours": 0,
+  "eval_hours": 0,
+  "distill_hours": 0,
+  "per_seed_stop_hours": 6,
+  "stop_if_first_iteration_exceeds_hours": 1,
+  "worst_case_serial_hours": 36,
+  "soft_formal_teacher_hint_hours": 400,
+  "soft_hint_is_not_a_target": true,
+  "per_milestone_hours_measured": false,
+  "gpu_train_status": "PENDING_AUTODL_PARENT",
+  "autodl_parent_required": true,
+  "cuda_execute_starts_training": false,
+  "distill_authorized": false,
+  "strength_claim": false,
+  "quarter_pot_retained": true,
+  "selected_teacher": null,
+  "seeds": [101, 202, 303],
+  "milestones": [50, 100, 200, 400, 800],
+  "next_task_blocked": "R08",
+  "limitations": [
+    "Formal Teacher iterations were not run. Learning curves, holdout, weakness slices, river Fold, and A6 versus A5 cost were not measured.",
+    "This VM did not SSH to AutoDL. --execute with CUDA visible exits 2 and spends 0 hours.",
+    "The width-5 SDCFRTrainer must not be used for these manifests.",
+    "The 6 hour per-seed stop is a launch guard, not a measured iteration time, and is not approval to spend the 400 hour hint."
+  ]
+}

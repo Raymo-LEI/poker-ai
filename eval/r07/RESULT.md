@@ -2,6 +2,8 @@
 
 Status: **INCOMPLETE**. The formal Teacher was not trained. No seed was selected. Distill is not authorized.
 
+Plan commit: `51638a4aa99a7fd5990cc874b4021f6168c38a37`.
+
 GPU hours used by this task: **0**. Registered total stays `0.0003791426171341704` of the 1000 hour cap. Remaining stays `999.9996208573829`. The cap was not raised.
 
 ## What this host did

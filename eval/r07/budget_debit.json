@@ -1,0 +1,30 @@
+{
+  "task": "R07",
+  "gpu_hours_used_this_task": 0,
+  "gpu_hours_used_total": 0.0003791426171341704,
+  "remaining_gpu_hours": 999.9996208573829,
+  "total_gpu_hours_cap": 1000.0,
+  "cap_raised": false,
+  "distill_hours": 0,
+  "train_hours": 0,
+  "label_hours": 0,
+  "eval_hours": 0,
+  "per_seed_stop_hours": 6.0,
+  "worst_case_serial_hours_if_every_seed_hits_the_stop": 36.0,
+  "soft_formal_teacher_hint_hours": 400.0,
+  "soft_hint_is_not_a_target": true,
+  "per_milestone_hour_budget_hours": null,
+  "per_milestone_hours_measured": false,
+  "optional_t1000_scheduled": false,
+  "jobs_serial": [
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed101.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed202.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed303.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a5_seed101.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a5_seed202.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a5_seed303.json --execute"
+  ],
+  "max_concurrent_training_jobs": 1,
+  "production_width5_trainer": "FORBIDDEN",
+  "note": "6 hour stop per seed is a launch guard, not a measured Teacher iteration time and not approval to spend the 400 hour hint. Six seeds times 6 hours is 36 hours, still under the remaining budget. Stop a seed if its first iteration exceeds 1 hour."
+}

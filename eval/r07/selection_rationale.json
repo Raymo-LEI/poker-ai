@@ -1,0 +1,35 @@
+{
+  "selected_teacher": null,
+  "reason": "No dev scores exist. Thin evidence is INCOMPLETE, not a reason to train longer automatically.",
+  "distill_authorized": false,
+  "a6_primary_schema": "botzone_a6_v2",
+  "a5_control_schema": "botzone_a5_v2",
+  "quarter_pot_retained": true,
+  "seeds_reported_separately": [
+    101,
+    202,
+    303
+  ],
+  "best_seed_only": false,
+  "strength_claim": false,
+  "opponents": {
+    "Equity": 0.25,
+    "TAG_Pro": 0.25,
+    "Trapper_CR": 0.25,
+    "FrozenHistory": 0.25
+  },
+  "frozen_history_internal_weights": "REGISTERED_PLACEHOLDER_NOT_LOCKED",
+  "thresholds": {
+    "noninferiority_mbb_per_hand_lower_bound_gt": -20,
+    "primary_lower_bound_gt": 0,
+    "primary_point_estimate_min_mbb_per_hand": 20,
+    "multiplicity": "Bonferroni n=5 familywise alpha 0.05",
+    "source": "evaluation_contract.default_final_strength_gate_proposal",
+    "status": "REGISTERED_NOT_CLAIMED"
+  },
+  "certified_river_raw_fold_max": 0.01,
+  "certified_river_raw_fold_status": "NOT_MEASURED",
+  "a6_vs_a5_cost_benefit": "NOT_MEASURED",
+  "final_set_used": false,
+  "auto_extend_training": false
+}

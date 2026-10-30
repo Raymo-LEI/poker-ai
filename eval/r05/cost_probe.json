@@ -1,0 +1,164 @@
+{
+  "action_schema_path": "eval/r04/action_schema_v2.json",
+  "authorization": {
+    "formal_training": "NOT_RUN",
+    "gpu_hours_used": 0,
+    "gpu_probe": "NOT_RUN",
+    "training_gpu_budget": "UNREGISTERED"
+  },
+  "cpu": {
+    "a5_kernel_play": {
+      "cuda_used": false,
+      "decisions": 587,
+      "decisions_per_second": 1604.8883356686415,
+      "hands": 200,
+      "num_actions": 5,
+      "rss_after": {
+        "VmHWM": {
+          "kb": 234188,
+          "unit": "kB"
+        },
+        "VmRSS": {
+          "kb": 234188,
+          "unit": "kB"
+        },
+        "ru_maxrss_kb": 234028
+      },
+      "rss_before": {
+        "VmHWM": {
+          "kb": 230708,
+          "unit": "kB"
+        },
+        "VmRSS": {
+          "kb": 230708,
+          "unit": "kB"
+        },
+        "ru_maxrss_kb": 230496
+      },
+      "schema_id": "botzone_a5_v2",
+      "seconds_per_decision": 0.0006230963100516099,
+      "source": "derived_from_cpu_probe",
+      "wall_seconds": 0.365757534000295
+    },
+    "a6_kernel_play": {
+      "cuda_used": false,
+      "decisions": 660,
+      "decisions_per_second": 1710.8735835612192,
+      "hands": 200,
+      "num_actions": 6,
+      "rss_after": {
+        "VmHWM": {
+          "kb": 234216,
+          "unit": "kB"
+        },
+        "VmRSS": {
+          "kb": 234216,
+          "unit": "kB"
+        },
+        "ru_maxrss_kb": 234028
+      },
+      "rss_before": {
+        "VmHWM": {
+          "kb": 234188,
+          "unit": "kB"
+        },
+        "VmRSS": {
+          "kb": 234188,
+          "unit": "kB"
+        },
+        "ru_maxrss_kb": 234028
+      },
+      "schema_id": "botzone_a6_v2",
+      "seconds_per_decision": 0.0005844967212121419,
+      "source": "derived_from_cpu_probe",
+      "wall_seconds": 0.38576783600001363
+    },
+    "checkpoint_copy": {
+      "bytes": 6060293,
+      "copied_bytes": 6060293,
+      "copy_wall_seconds": 0.002615106000121159,
+      "cuda_used": false,
+      "rollback_headroom": {
+        "assumption": "one live export plus one previous copy plus one rollback copy",
+        "bytes": 18180879,
+        "not_a_future_training_checkpoint": true,
+        "source": "assumption:3x_measured_v6_npz"
+      },
+      "sample": "eval/r03/weights/V6_R6_MODEL.npz",
+      "sha256": "dfd57d307c6d4d9eb5d789ba145370792752ea85f5f43ba57b5dd787e3b4faaa",
+      "source": "derived_from_cpu_probe"
+    },
+    "cold_import": {
+      "command": "python3 -c 'import BranchableKernel, A5, A6'",
+      "cuda_used": false,
+      "cwd": "/workspace",
+      "import_wall_seconds": 0.08859316699999908,
+      "source": "derived_from_cpu_probe",
+      "subprocess_wall_seconds": 0.11760137199962628
+    },
+    "teacher_label": {
+      "cuda_used": false,
+      "decisions_per_second": null,
+      "reason": "Teacher snapshots and policy_best.pt are not in this tree. No labels were invented.",
+      "source": "not_measured",
+      "status": "NOT_RUN",
+      "wall_seconds": null
+    }
+  },
+  "gpu": {
+    "cuda_used": false,
+    "peak_vram_bytes": null,
+    "requested_probe": {
+      "claims_approval": false,
+      "commands": [
+        "Do not start this until a user-approved probe budget exists.",
+        "One CUDA forward of the existing Stage2 policy, batch 32, no optimizer step.",
+        "Record torch.cuda.max_memory_allocated and wall time, then exit."
+      ],
+      "gpu_model": "USER_MUST_NAME",
+      "minutes": 20
+    },
+    "status": "PENDING_USER_APPROVED_PROBE",
+    "step_seconds": null
+  },
+  "hardware": {
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "host_class": "cloud_vm_not_a_mac",
+    "logical_cpus": 4,
+    "memory": {
+      "MemAvailable": {
+        "kb": 4788580,
+        "unit": "kB"
+      },
+      "MemTotal": {
+        "kb": 16387280,
+        "unit": "kB"
+      },
+      "SwapTotal": {
+        "kb": 0,
+        "unit": "kB"
+      }
+    },
+    "numpy": "1.26.4",
+    "platform": "Linux-6.12.94+-x86_64-with-glibc2.39",
+    "process_limits": {
+      "cuda_visible_devices": "",
+      "mkl_num_threads": 1,
+      "omp_num_threads": 1,
+      "processes": 1,
+      "torch_num_threads": 1
+    },
+    "python": "3.12.3",
+    "torch": {
+      "cuda_available": false,
+      "cuda_build": null,
+      "cuda_used": false,
+      "installed": true,
+      "version": "2.15.0+cpu"
+    }
+  },
+  "judge_sha256": "b70702fdcd28333f91087f1a3dc3ede1ca59737404622c64dc6dbf7e9206e544",
+  "measured_at_utc": "2026-10-30T17:51:27Z",
+  "seed": 7,
+  "task_id": "R05"
+}

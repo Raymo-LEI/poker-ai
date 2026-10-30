@@ -1,0 +1,88 @@
+{
+  "action_schemas": {
+    "a5": {
+      "schema_id": "botzone_a5_v2",
+      "sha256": "683572125ca42eb2325aca2d242d5c74b4c6b08ae5335bcd8c2b630ad160016d"
+    },
+    "a6": {
+      "schema_id": "botzone_a6_v2",
+      "sha256": "854b7e5c189dcdb0cf287bb6d5f0c5e6ef36e768da45e4430ad8c48e7d114078"
+    },
+    "retained_v1": {
+      "role": "frozen_contrast_not_an_experiment_track",
+      "schema_id": "botzone_5action_v1",
+      "sha256": "084d8116b4bb03a89c9daf889cacb9167badd9a78bded1c0bc8fc7087d5c25dd"
+    }
+  },
+  "claims_user_approval": false,
+  "concurrency": {
+    "probe_processes": 1,
+    "status": "MEASURED_SINGLE_PROCESS",
+    "threads_per_process": 1,
+    "training_processes_authorized": 0
+  },
+  "final_test_access": {
+    "after_peeking_finals_and_changing_candidate": "build_new_final_set",
+    "already_viewed_online_replays": "diagnostic_only_never_final_blind",
+    "final_set_not_used_for_model_selection": true,
+    "status": "FROZEN_IN_R01"
+  },
+  "format": "route1_r05_experiment_registry_v1",
+  "primary_opponents": {
+    "families": [
+      "Equity",
+      "TAG_Pro",
+      "Trapper_CR",
+      "FrozenHistory"
+    ],
+    "frozen_history_internal_weights": {
+      "reason": "R01 requires concrete history weights before the final look. They are not invented here.",
+      "status": "REGISTERED_PLACEHOLDER_NOT_LOCKED"
+    },
+    "status": "FROZEN_IN_R01_EXCEPT_FROZEN_HISTORY_WEIGHTS",
+    "weights": {
+      "Equity": 0.25,
+      "FrozenHistory": 0.25,
+      "TAG_Pro": 0.25,
+      "Trapper_CR": 0.25
+    }
+  },
+  "sample_sizes": {
+    "dev_paired_segments_per_opponent": 20,
+    "final_hands": 20000,
+    "final_paired_segments_per_strategy_opponent_seed": 200,
+    "status": "REGISTERED_DEFAULT_NOT_SHRUNK",
+    "variance_recompute": "PENDING_UNTIL_MEASURED_EVAL_RATE"
+  },
+  "seeds": {
+    "dev_eval_seed": 404,
+    "evaluation_master_seed": 20261031,
+    "final_training_seeds": [
+      101,
+      202,
+      303
+    ],
+    "pro_gauntlet_seed_not_for_final": 20261030,
+    "source": "evaluation_contract.frozen_seeds",
+    "status": "FROZEN_IN_R01",
+    "technical_smoke_seed": 7
+  },
+  "selection": {
+    "max_model_selection_count": {
+      "dev_looks_per_training_seed": 1,
+      "final_looks": 0,
+      "source": "user_must_approve",
+      "status": "PROPOSAL_NOT_FROZEN"
+    }
+  },
+  "status": "PROPOSED_WITH_R01_FREEZES",
+  "thresholds": {
+    "cluster": "paired_match_segment",
+    "multiplicity": "Bonferroni n=5 familywise alpha 0.05",
+    "noninferiority_mbb_per_hand_lower_bound_gt": -20,
+    "primary_lower_bound_gt": 0,
+    "primary_point_estimate_min_mbb_per_hand": 20,
+    "source": "evaluation_contract.default_final_strength_gate_proposal",
+    "status": "FROZEN_DEFAULT_PROPOSAL_pre_training"
+  }
+}

@@ -31,23 +31,38 @@ def test_kuhn_report_separates_approximation_from_hold_em():
     assert restore["losses_finite"] is True
 
 
-def test_a6_manifest_keeps_quarter_pot_and_launch_refuses():
+def _launch(name: str, execute: bool) -> subprocess.CompletedProcess:
+    command = [sys.executable, str(_ROOT / "launch_pilot.py"), "--manifest", str(_ROOT / "manifests" / name)]
+    if execute:
+        command.append("--execute")
+    return subprocess.run(command, cwd=_REPO, capture_output=True, text=True)
+
+
+def test_a5_and_a6_dry_run_and_cpu_execute_match_schema_width():
     manifest = json.loads((_ROOT / "manifests" / "a6.json").read_text(encoding="utf-8"))
     assert manifest["quarter_pot_required"] is True
     assert "quarter_pot" in manifest["action_names"]
     assert manifest["num_actions"] == 6
     assert manifest["max_gpu_hours"] <= 0.25
     assert manifest["total_gpu_hours_cap"] == 1000
-    completed = subprocess.run(
-        [sys.executable, str(_ROOT / "launch_pilot.py"), "--manifest", str(_ROOT / "manifests" / "a6.json"), "--execute"],
-        cwd=_REPO,
-        capture_output=True,
-        text=True,
-    )
-    assert completed.returncode == 2
-    payload = json.loads(completed.stdout)
-    assert payload["started"] is False
-    assert payload["gpu_hours_used"] == 0
+    for name, width, quarter in (("a5.json", 5, False), ("a6.json", 6, True)):
+        dry = _launch(name, execute=False)
+        assert dry.returncode == 0, dry.stderr
+        dry_payload = json.loads(dry.stdout)
+        assert dry_payload["status"] == "DRY_RUN_OK"
+        assert dry_payload["head_width"] == width
+        assert dry_payload["quarter_pot"] is quarter
+        assert dry_payload["gpu_hours_used"] == 0
+        executed = _launch(name, execute=True)
+        assert executed.returncode == 0, executed.stderr
+        payload = json.loads(executed.stdout)
+        assert payload["cpu_execute_ok"] is True
+        assert payload["head_width"] == width
+        assert payload["quarter_pot_in_head"] is quarter
+        assert payload["started_gpu"] is False
+        assert payload["gpu_hours_used"] == 0
+        assert payload["rejected_botzone_5action_v1"] is True
+        assert payload["status"] == "PENDING_AUTODL_PARENT"
     selection = json.loads((_ROOT / "candidate_spec_selection.json").read_text(encoding="utf-8"))
     assert selection["selected_candidate"] is None
     assert selection["quarter_pot_retained"] is True

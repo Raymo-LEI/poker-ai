@@ -173,9 +173,8 @@ def _manifest(schema, out_name: str) -> dict:
         "device": "cuda",
         "status": "PENDING_AUTODL_PARENT",
         "blocked_reason": (
-            "The production regret head width is "
-            f"{NUM_ACTIONS}, which is not {schema.schema_id}. "
-            "Do not relabel a five-wide run as this pilot."
+            "CPU schema head matches this manifest. GPU pilot remains for the parent, "
+            "one job at a time, at most 0.25h. Quarter-pot stays on A6."
         ),
         "command": (
             "python3 eval/r06/launch_pilot.py --manifest "

@@ -22,7 +22,7 @@
   "iterations": 1,
   "device": "cuda",
   "status": "PENDING_AUTODL_PARENT",
-  "blocked_reason": "The production regret head width is 5, which is not botzone_a6_v2. Do not relabel a five-wide run as this pilot.",
+  "blocked_reason": "CPU schema head is width 6 and keeps quarter_pot. GPU pilot is still for the parent, one job at a time, at most 0.25h.",
   "command": "python3 eval/r06/launch_pilot.py --manifest eval/r06/manifests/a6.json --execute",
   "strength_claim": false
 }

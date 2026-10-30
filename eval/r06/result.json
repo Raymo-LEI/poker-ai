@@ -31,10 +31,15 @@
       "evidence": "eval/r06/manifests/a6.json quarter_pot_required true, num_actions 6"
     },
     {
+      "id": "schema_head_cpu_execute",
+      "pass": true,
+      "evidence": "launch_pilot.py dry-run and --execute exit 0 for A5 width 5 and A6 width 6; v1 checkpoint rejected"
+    },
+    {
       "id": "gpu_pilot",
       "pass": false,
       "status": "PENDING_AUTODL_PARENT",
-      "evidence": "launch_pilot.py --execute exits 2; production head is botzone_5action_v1; gpu_hours_used 0"
+      "evidence": "CUDA was not started on this VM. Parent runs the two launch_pilot.py --execute commands serially. gpu_hours_used 0"
     },
     {
       "id": "no_strength_claim",
@@ -55,7 +60,7 @@
   "next_task": "R07",
   "limitations": [
     "GPU pilots were not run. The cloud VM did not use ssh seetacloud-poker.",
-    "The production regret head is still width 5 and botzone_5action_v1. Starting it would not be an A6 experiment, so the launcher refuses.",
+    "The pilot head is schema-bound. The 4090 run is still for the parent; this VM did not SSH or debit GPU time.",
     "Kuhn results are not a Hold'em convergence proof."
   ]
 }

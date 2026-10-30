@@ -1,0 +1,15 @@
+{
+  "status": "PENDING_AUTODL_PARENT",
+  "cpu_execute_ok": true,
+  "started_gpu": false,
+  "gpu_hours_used": 0,
+  "schema_id": "botzone_a6_v2",
+  "head_width": 6,
+  "quarter_pot_in_head": true,
+  "loss_finite": true,
+  "rejected_other_schema": true,
+  "rejected_botzone_5action_v1": true,
+  "strength_claim": false,
+  "manifest": "runs/r06_a6",
+  "autodl_command": "python3 eval/r06/launch_pilot.py --manifest eval/r06/manifests/a6.json --execute"
+}

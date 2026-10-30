@@ -1,7 +1,7 @@
 {
   "task_id": "R04",
   "status": "PASS",
-  "code_commit": null,
+  "code_commit": "3397628c75110f1877b5a952edcc4828bb07c259",
   "outputs": [
     "eval/r04/action_schema_v2.json",
     "eval/r04/migration_compat.md",

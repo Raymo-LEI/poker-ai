@@ -1,0 +1,14 @@
+{
+  "cpu_gate_ok": true,
+  "head_width": 6,
+  "quarter_pot": true,
+  "rejected_botzone_5action_v1": true,
+  "gpu_hours_used": 0,
+  "strength_claim": false,
+  "metrics_are_training_curves": false,
+  "status": "PENDING_AUTODL_PARENT",
+  "started_gpu": false,
+  "seed": 101,
+  "schema_id": "botzone_a6_v2",
+  "command": "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed101.json --execute"
+}

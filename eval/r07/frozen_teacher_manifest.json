@@ -1,0 +1,37 @@
+{
+  "format": "route1_r07_frozen_teacher_plan_v1",
+  "a6_primary": {
+    "action_schema_id": "botzone_a6_v2",
+    "action_schema_sha256": "854b7e5c189dcdb0cf287bb6d5f0c5e6ef36e768da45e4430ad8c48e7d114078",
+    "num_actions": 6
+  },
+  "a5_control": {
+    "action_schema_id": "botzone_a5_v2",
+    "action_schema_sha256": "683572125ca42eb2325aca2d242d5c74b4c6b08ae5335bcd8c2b630ad160016d",
+    "num_actions": 5
+  },
+  "seeds": [
+    101,
+    202,
+    303
+  ],
+  "milestones": [
+    50,
+    100,
+    200,
+    400,
+    800
+  ],
+  "quarter_pot_retained": true,
+  "production_width5_trainer": "FORBIDDEN",
+  "hunl_iterations_run": 0,
+  "jobs": [
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed101.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed202.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a6_seed303.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a5_seed101.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a5_seed202.json --execute",
+    "python3 eval/r07/launch_teacher.py --manifest eval/r07/manifests/a5_seed303.json --execute"
+  ],
+  "parent_must_run_autodl": true
+}

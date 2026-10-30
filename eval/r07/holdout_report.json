@@ -1,0 +1,8 @@
+{
+  "status": "NOT_RUN",
+  "reason": "Independent holdout waits for a finished Teacher. CI is insufficient.",
+  "dev_eval_seed": 404,
+  "final_set_used": false,
+  "lbr_abr_is_full_exploitability": false,
+  "auto_extend_training": false
+}

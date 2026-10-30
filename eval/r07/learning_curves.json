@@ -1,0 +1,26 @@
+{
+  "status": "NOT_MEASURED",
+  "reason": "No formal Teacher iteration has been run on this host. Curves are not filled in.",
+  "milestones": [
+    50,
+    100,
+    200,
+    400,
+    800
+  ],
+  "seeds": [
+    101,
+    202,
+    303
+  ],
+  "tracks": [
+    "botzone_a6_v2",
+    "botzone_a5_v2"
+  ],
+  "loss_iteration_weight_power": 1,
+  "strategy_mixture_weight": "iteration * own_reach",
+  "t_squared_loss_used_as_mixture": false,
+  "burn_in_frozen": "iterations 1..49 excluded from scoring before any formal look",
+  "strength_claim": false,
+  "values": null
+}

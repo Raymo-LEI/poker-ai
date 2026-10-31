@@ -1,7 +1,7 @@
-"""Offline GTO Wizard benchmark scaffold.
+"""GTO Wizard benchmark helpers.
 
-Fixture comparison only. This package does not train, does not read strategy
-weights, and does not submit anything to a leaderboard.
+Importing this package does not train, read weights, or submit a leaderboard
+row. ``eval.gto_wizard.live`` is the opt-in researcher-API runner.
 """
 
 from .compare import compare_distributions

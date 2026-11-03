@@ -96,6 +96,8 @@ def main():
         note = "ok " + os.path.basename(path)
         if agent.deployment_guard["enabled"]:
             note += " guard=v10 " + json.dumps(agent.last_guard, separators=(",", ":"))
+        if getattr(agent, "last_wizard", ""):
+            note += " " + agent.last_wizard
     except Exception as exc:
         note = "fallback %s: %s" % (type(exc).__name__, exc)
         print(note, file=sys.stderr)

@@ -1,0 +1,30 @@
+{
+  "choice": "wizard",
+  "net": {
+    "equity": 1872.3,
+    "TAG_Pro": -292.0,
+    "Trapper_CR": -341.4
+  },
+  "wizard": {
+    "equity": 1702.5,
+    "tag": 372.9,
+    "trapper": 455.9,
+    "h2h_v9": 190.9,
+    "h2h_c200": 563.6,
+    "p99_ms": 19.38,
+    "mean_ms": 5.77,
+    "style_min": 372.9
+  },
+  "pack": {
+    "version": 11,
+    "release": "V11_R11_REBEL_20261104",
+    "name": "rebel",
+    "kind": "wizard",
+    "weights": "V11_MODEL.npz",
+    "source": "V11_SOURCE.zip",
+    "model_sha256": "bb34f22ab911681d8a2f7945e0d1d16179515558e551bd0f6684a69106661f55",
+    "source_sha256": "90fb7888d574db814d93f6a65db2bb9c47d8886928edef9ff2c1f4e518d89a01",
+    "model_bytes": 6070733,
+    "source_bytes": 56256
+  }
+}

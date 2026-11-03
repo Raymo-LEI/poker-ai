@@ -1,0 +1,191 @@
+{
+  "C200": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 677.3,
+      "win_rate": 0.52,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": -180.6,
+      "win_rate": 0.43,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": -203.8,
+      "win_rate": 0.45,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 160.2,
+      "win_rate": 0.5,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 960.3,
+      "win_rate": 0.37,
+      "matches": 200
+    }
+  },
+  "V8_R8": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 692.6,
+      "win_rate": 0.59,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": 41.5,
+      "win_rate": 0.4,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": -13.1,
+      "win_rate": 0.38,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 509.1,
+      "win_rate": 0.55,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 681.8,
+      "win_rate": 0.32,
+      "matches": 200
+    }
+  },
+  "V9_R9_GEN2": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 719.8,
+      "win_rate": 0.56,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": -35.9,
+      "win_rate": 0.38,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": -77.7,
+      "win_rate": 0.37,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 522.2,
+      "win_rate": 0.59,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 636.9,
+      "win_rate": 0.34,
+      "matches": 200
+    }
+  },
+  "V9.5_SURGICAL": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 729.8,
+      "win_rate": 0.57,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": -79.5,
+      "win_rate": 0.34,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": -99.3,
+      "win_rate": 0.34,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 481.6,
+      "win_rate": 0.56,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 636.8,
+      "win_rate": 0.34,
+      "matches": 200
+    }
+  },
+  "V11_REBEL": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 798.5,
+      "win_rate": 0.72,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": 31.9,
+      "win_rate": 0.41,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": 69.7,
+      "win_rate": 0.42,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 772.0,
+      "win_rate": 0.61,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 868.5,
+      "win_rate": 0.38,
+      "matches": 200
+    }
+  },
+  "V12_LADDER_SLAYER": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 951.4,
+      "win_rate": 0.72,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": 207.8,
+      "win_rate": 0.55,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": 273.5,
+      "win_rate": 0.58,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 981.5,
+      "win_rate": 0.73,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 852.7,
+      "win_rate": 0.32,
+      "matches": 200
+    }
+  },
+  "V10_WIZARD": {
+    "Bot17_Probe3Bet": {
+      "mbb_per_hand": 286.0,
+      "win_rate": 0.53,
+      "matches": 200
+    },
+    "TAG_Pro": {
+      "mbb_per_hand": 98.8,
+      "win_rate": 0.56,
+      "matches": 200
+    },
+    "Trapper_CR": {
+      "mbb_per_hand": 157.8,
+      "win_rate": 0.61,
+      "matches": 200
+    },
+    "equity": {
+      "mbb_per_hand": 434.2,
+      "win_rate": 0.64,
+      "matches": 200
+    },
+    "NearShove_19949": {
+      "mbb_per_hand": 1206.6,
+      "win_rate": 0.7,
+      "matches": 200
+    }
+  }
+}

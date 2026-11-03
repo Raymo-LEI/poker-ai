@@ -1,0 +1,13 @@
+{
+  "format": "route1_r03_teacher_window_v1",
+  "after_exclusive": 149,
+  "through": 350,
+  "stride": 1,
+  "sampling_power": 1.0,
+  "note": "Inclusive teacher iterations 150..350. Zero own-reach is UNREACHABLE/OOD. Do not replace a missing profile or a zero-reach infoset with an unweighted average.",
+  "teacher_snapshots": "MISSING",
+  "teacher_checkpoint_sha256_prefix": "3b32c51e",
+  "teacher_location": "AutoDL /root/autodl-tmp/distill_offtree_w150_350_golden200k_20261030/policy_best.pt (not attached)",
+  "frozen_student": "MISSING",
+  "unweighted_fill": false
+}

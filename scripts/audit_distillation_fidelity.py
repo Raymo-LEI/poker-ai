@@ -8,6 +8,7 @@ import torch
 from alphanl.cfr.distillation import load_student,prepare_archive
 from alphanl.cfr.evaluation import RuleActor,play_hand
 from alphanl.cfr.fidelity import ExactTeacher,OBS_KEYS,RULES,fidelity_report,postprocess
+from alphanl.cfr.teacher_window import archive_kwargs,assert_window_matches,load_teacher_window
 from eval_distilled_gauntlet import StudentActor
 
 
@@ -19,13 +20,17 @@ def main():
     p.add_argument('--out-dir',type=Path,required=True)
     p.add_argument('--pairs',type=int,default=200)
     p.add_argument('--device',choices=('cpu','cuda'),default='cpu')
+    p.add_argument('--window-manifest',type=Path,
+                   default=Path(__file__).resolve().parents[1]/'eval/r03/teacher_window_manifest.json')
     a=p.parse_args();a.out_dir.mkdir(parents=True,exist_ok=False)
     torch.set_num_threads(1)
     baseline=json.loads(a.baseline_report.read_text())
     if hashlib.sha256(a.reference.read_bytes()).hexdigest()!=baseline['reference_sha256']:
         raise ValueError('baseline student fingerprint changed')
     teacher_report=json.loads(Path(baseline['teacher_report']).read_text())
-    config,manifest=prepare_archive(a.strategies,after=149,through=350)
+    window=load_teacher_window(a.window_manifest)
+    config,manifest=prepare_archive(a.strategies,**archive_kwargs(window))
+    assert_window_matches(manifest,window)
     model,_=load_student(a.reference,device=a.device)
     rows,meta=[],{k:[] for k in ('parent','action','hand_id','street','pot_bb','hero_seat','opponent_id','origin','spr')}
     next_hand=0

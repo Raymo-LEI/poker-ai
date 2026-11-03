@@ -24,7 +24,8 @@ from experiment_metadata import read_experiment
 from monitor_workbench import stage2_report_row, Workbench, extra_paths, preview
 ASSETS = REPO / "tools" / "training_monitor"
 LOGS = ("metrics.csv", "performance.csv", "metrics.jsonl", "eval.jsonl",
-        "diagnostics.jsonl", "checkpoint_performance.jsonl", "benchmark.json", "report.json")
+        "diagnostics.jsonl", "checkpoint_performance.jsonl", "benchmark.json", "report.json",
+        "learning_curve_live.json")
 MAX_BYTES = 8 * 1024 * 1024
 MAX_ROWS = 5000
 MAX_HISTORY_REPORTS = 200
@@ -375,8 +376,25 @@ class Store:
             for row in benchmark.get("iterations", [])[-MAX_ROWS:]:
                 if isinstance(row, dict):
                     merge(row)
+            curve_path = paths["learning_curve_live.json"]
+            if curve_path is not None:
+                if curve_path.stat().st_size > MAX_BYTES:
+                    warnings.append("learning_curve_live.json exceeds 8 MiB; skipped.")
+                else:
+                    try:
+                        curve = json.loads(curve_path.read_text(encoding="utf-8"))
+                        if not isinstance(curve, list):
+                            raise ValueError("expected a list")
+                        for row in curve[-MAX_ROWS:]:
+                            if isinstance(row, dict):
+                                row = dict(row)
+                                if "wall_seconds" in row and "iteration_s" not in row:
+                                    row["iteration_s"] = row["wall_seconds"]
+                                merge(row)
+                    except (ValueError, OSError, RecursionError):
+                        warnings.append("learning_curve_live.json is temporarily unreadable.")
             for name in LOGS:
-                if name in ("benchmark.json", "report.json") or paths[name] is None:
+                if name in ("benchmark.json", "report.json", "learning_curve_live.json") or paths[name] is None:
                     continue
                 for row in read_rows(paths[name], warnings):
                     merge(row, checkpoint_probe=name == "diagnostics.jsonl")
@@ -415,7 +433,8 @@ class Store:
                     "kind": "Stage 2 PPO" if config.get("stage") == "stage2" or any(r.get("stage2") == 1 for r in rows) else "PPO" if step_key == "update" else "SD-CFR",
                     "stage": "stage2" if config.get("stage") == "stage2" or any(r.get("stage2") == 1 for r in rows) else "stage1", "source": self.source_label,
                     "evaluation_only": bool(paths["report.json"] and not paths["metrics.csv"]
-                                            and not paths["metrics.jsonl"] and not paths["benchmark.json"]),
+                                            and not paths["metrics.jsonl"] and not paths["benchmark.json"]
+                                            and not curve_path),
                     "step_key": step_key, "rows": rows, "latest": latest,
                     "eval_latest": eval_latest, "hud_latest": hud_latest,
                     "stage2_eval_latest": next((r for r in reversed(rows) if "stage2/eval/update" in r), {}),

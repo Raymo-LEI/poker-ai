@@ -26,6 +26,11 @@ python3 scripts/monitor_remote.py --ssh-host your-ssh-alias --remote-port 6008 -
 访问 `http://127.0.0.1:6009`；内部 SSH 转发端口默认 6012。
 使用已有 `~/.ssh/config` 管理主机、端口和身份文件。默认别名为 `seetacloud-poker`，
 可通过 `--ssh-host` 替换；仓库不包含 SSH 密钥或个人启动项。
+Use `--source-label '5090 server'` to identify a replacement host. Add every nested
+run parent explicitly with `--runs-dir`; directory discovery is not recursive.
+R07 `learning_curve_live.json` arrays are supported alongside the existing logs.
+Open `http://127.0.0.1:6009/?scope=all` to include runs without experiment labels;
+this does not mark them as formal experiments.
 macOS 可双击 `连接服务器监控.command` 使用默认别名。此入口运行当前 checkout 的代码，
 不会读取某个固定用户的 Application Support 副本。若端口已被已有服务占用会直接报错，
 请先关闭旧监控或通过 `--port` / `--tunnel-port` 选择其他端口。

@@ -227,6 +227,8 @@ function render(data) {
   $("eval-select").value = view.selection;
   const isPPO = ["PPO", "Stage 2 PPO"].includes(data.kind);
   const shared = data.config?.separate_player_models === false || finite(latest.shared_train_steps);
+  const genericLoss = finite(latest.loss) && !finite(latest["train/policy_loss"]) && !finite(latest["train/loss_p0"]) && !finite(latest.shared_loss);
+  const genericBuffer = finite(latest.buffer_size) && !finite(latest.p0_buffer_size) && !finite(latest.p1_buffer_size);
   const rows = data.rows.slice(-Number($("window").value));
   $("run-name").textContent = data.experiment?.name || data.name;
   $("run-experiment-kind").textContent = data.experiment?.label || "未标记";
@@ -248,12 +250,14 @@ function render(data) {
   $("loss-title").textContent = isPPO ? "策略与价值损失" : "Regret 回归损失";
   $("loss-description").textContent = isPPO ? "PPO policy loss / value loss" : shared ? `迭代加权 ${data.config?.loss === "huber" ? "Smooth L1" : "MSE"} · 共享位置条件网络 · Target / ${data.config?.regret_target_scale || 100} BB` : "迭代加权 MSE · 两个独立玩家";
   if (!isPPO && data.config?.iteration_weight_power) $("loss-description").textContent += ` · ${data.config.normalize_iteration_weights ? "(t / T)" : "t"}^${data.config.iteration_weight_power}`;
-  chart("loss-chart", rows, isPPO ? [{key: "train/policy_loss", label: "Policy loss"}, {key: "train/value_loss", label: "Value loss"}] : shared ? [{key: "shared_loss", label: "共享 Loss"}] : [{key: "train/loss_p0", label: "P0 loss"}, {key: "train/loss_p1", label: "P1 loss"}]);
+  if (genericLoss) $("loss-description").textContent = "Logged training loss; weighting and seat breakdown are not recorded.";
+  chart("loss-chart", rows, genericLoss ? [{key: "loss", label: "Training loss"}, {key: "strategy_loss", label: "Strategy loss"}] : isPPO ? [{key: "train/policy_loss", label: "Policy loss"}, {key: "train/value_loss", label: "Value loss"}] : shared ? [{key: "shared_loss", label: "共享 Loss"}] : [{key: "train/loss_p0", label: "P0 loss"}, {key: "train/loss_p1", label: "P1 loss"}]);
   $("buffer-title").textContent = isPPO ? "累计训练步数" : "样本与训练进度";
   $("buffer-description").textContent = isPPO ? "Timesteps · 实际采集步数" : "Reservoir 中保留的 regret 样本";
   $("buffer-unit").textContent = isPPO ? "TIMESTEPS" : "SAMPLES";
   $("buffer-foot").textContent = isPPO ? "训练回报与独立对战胜率分别展示。" : shared ? "统一 Reservoir 按座位显示保留量；训练每批精确抽取 50% BB / 50% SB。" : "标准 HUNL：P0 = BB，P1 = SB / Button；外采样不保证双方样本数相等。";
-  chart("buffer-chart", rows, isPPO ? [{key: "timesteps", label: "Timesteps"}] : [{key: "p0_buffer_size", label: "P0 buffer"}, {key: "p1_buffer_size", label: "P1 buffer"}]);
+  if (genericBuffer) $("buffer-foot").textContent = "Logged buffer size; no seat breakdown is recorded.";
+  chart("buffer-chart", rows, genericBuffer ? [{key: "buffer_size", label: "Buffer"}, {key: "strategy_buffer_size", label: "Strategy buffer"}] : isPPO ? [{key: "timesteps", label: "Timesteps"}] : [{key: "p0_buffer_size", label: "P0 buffer"}, {key: "p1_buffer_size", label: "P1 buffer"}]);
   mini("optimization-extra", isPPO ? [
     ["策略熵", fmt(latest["train/entropy"], 4), "nats", "PPO entropy"],
     ["Approx. KL", fmt(latest["train/approx_kl"], 5), "", "策略更新幅度"],
@@ -500,6 +504,8 @@ document.querySelectorAll("[data-theme-option]").forEach(button => button.addEve
   if (!$("wb-comparison").classList.contains("hidden")) $("wb-compare-axis").dispatchEvent(new Event("change"));
 }));
 $("export").disabled = true;
+const requestedScope = new URLSearchParams(window.location.search).get("scope");
+if (["formal", "all"].includes(requestedScope)) $("run-scope").value = requestedScope;
 window.Overwatch = {visibleRuns, getScope: experimentScope, chart, fmt, bytes, date, age, el, mini, getJSON, evaluationLabel, getCurrent: () => current,
   selectRun: ident => { $("run-select").value = ident; return refresh(true); }};
 refresh();

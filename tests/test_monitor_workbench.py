@@ -25,6 +25,14 @@ def run_store(tmp_path):
     return run, monitor.Store([tmp_path])
 
 
+def test_catalog_preserves_unrecognized_list_report_without_guessing_eval_step(tmp_path):
+    run, store = run_store(tmp_path)
+    write(run, "report.json", {"results": [{"mbb_per_hand": 17}], "hero_iteration": 2})
+    item = store.catalog()["experiments"][0]
+    assert item["last_step"] == 2
+    assert item["eval_step"] is None
+
+
 def test_effective_config_status_and_resource_freshness_have_separate_sources(tmp_path):
     run, store = run_store(tmp_path)
     write(run, "config.json", {"buffer_capacity": 4, "train_steps": 100})

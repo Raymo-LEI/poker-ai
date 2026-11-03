@@ -95,6 +95,7 @@ def cat(values, dim=0):
         # einsum product that avoids NumPy 1.19 GEMM crashes under a 256MB cap.
         forward = forward.replace('return np.einsum("...mk,...kn->...mn", left, right, optimize=False)', 'return np.matmul(left, right)')
     sources["forward"] = forward + '\n' + feature_function
+    sources["wizard"] = (base / "stage2/wizard.py").read_text()
     if botzone:
         # Botzone python3 is 3.6: postponed annotations do not exist there.
         sources = {name: _FUTURE_ANNOTATIONS.sub("", text) for name, text in sources.items()}

@@ -65,6 +65,10 @@ class Agent:
                 and 0 < probs[4] < .05):
             probs[1] += probs[4]; probs[4] = 0.
         probs, self.last_guard = apply_guard(snapshot, probs, self.deployment_guard, estimated_equity, amounts)
+        from .wizard import fuse as _wizard_fuse
+        probs = _wizard_fuse(self, snapshot, context, probs, amounts)
+        if getattr(self, "force_argmax", False):
+            return int(np.argmax(probs))
         rng = random if rng is None else rng
         draw, cumulative = rng.random(), 0.
         for index, prob in enumerate(probs):

@@ -1,3 +1,5 @@
+**中文** · [English](README.en.md)
+
 # poker-ai
 
 双人无限注德州扑克（heads-up no-limit Texas Hold'em）的研究与工程仓库。当前代码覆盖标准 200BB 的 SD-CFR、Transformer PPO、50 手残差 Stage 2，以及接到 Botzone 裁判上的规则机器人、NumPy 推理包和 Route 1 动作契约。
@@ -177,6 +179,7 @@ Kuhn 是表格型 external-sampling CFR 的玩具博弈，用来核对采样和�
 - `eval/`：Slumbot 客户端、GTO Wizard 脚手架，以及 R02–R06、R08 的结果和清单。
 - `botzone_bots/`、`tools/`：可上传的入口和打包工具。
 - `docs/`：规则、算法、训练和部署说明。[调研笔记](docs/reference_survey.md)记录早期基线。
+- `README.en.md`：这份说明的英文版。页首链接可以切过去。
 - `monitor/`：控制台的独立说明。前端源码在 `tools/training_monitor/`。
 
 ## 许可与第三方代码

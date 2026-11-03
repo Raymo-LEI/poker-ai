@@ -1,0 +1,16 @@
+{
+  "task_id": "R08",
+  "status": "NOT_RUN",
+  "teacher_status": "PENDING_TEACHER",
+  "teacher_gate": "NOT_PASSED",
+  "selected_teacher": null,
+  "distill_authorized": false,
+  "strength_claim": false,
+  "metrics": "NOT_RUN",
+  "execute_train": "FORBIDDEN",
+  "weights_read": false,
+  "reads_autodl_outputs": false,
+  "modifies_r07": false,
+  "botzone_used": false,
+  "live_gto_wizard": false
+}

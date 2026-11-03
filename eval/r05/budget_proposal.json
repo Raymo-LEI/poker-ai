@@ -1,0 +1,100 @@
+{
+  "checkpoint_rollback_bytes": {
+    "assumption": "one live export plus one previous copy plus one rollback copy",
+    "bytes": 18180879,
+    "not_a_future_training_checkpoint": true,
+    "source": "assumption:3x_measured_v6_npz"
+  },
+  "claims_user_approval": false,
+  "format": "route1_r05_budget_proposal_v1",
+  "measured_seconds_per_decision": {
+    "a5": 0.0006230963100516099,
+    "a6": 0.0005844967212121419,
+    "source": "derived_from_cpu_probe"
+  },
+  "phases": [
+    {
+      "assumption": "1000 decision states, same order of magnitude as the R04 CPU smoke, priced at the slower of the two measured schema rates",
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": 0.6230963100516099,
+      "decisions_assumed": 1000,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "a5_pilot_kernel_replay",
+      "seconds_per_decision_used": 0.0006230963100516099,
+      "source": "derived_from_cpu_probe"
+    },
+    {
+      "assumption": "same 1000-state CPU replay with the six-action schema",
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": 0.6230963100516099,
+      "decisions_assumed": 1000,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "a6_pilot_kernel_replay",
+      "seconds_per_decision_used": 0.0006230963100516099,
+      "source": "derived_from_cpu_probe"
+    },
+    {
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": null,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "formal_teacher",
+      "reason": "Teacher snapshots are absent and no GPU probe is authorized.",
+      "source": "requires_gpu_probe"
+    },
+    {
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": null,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "distill",
+      "source": "requires_gpu_probe"
+    },
+    {
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": null,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "ppo",
+      "source": "requires_gpu_probe"
+    },
+    {
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": null,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "river_turn_solve",
+      "source": "requires_gpu_probe"
+    },
+    {
+      "claims_approval": false,
+      "cpu_wall_seconds_estimate": null,
+      "gpu_hours_cap": null,
+      "gpu_status": "PENDING_USER_APPROVED_PROBE",
+      "id": "final_acceptance",
+      "note": "R01 sample size is kept. Variance recomputation waits for a measured eval rate.",
+      "registered_sample": "200 paired segments / strategy / opponent / training seed = 20000 hands",
+      "sample_shrunk": false,
+      "source": "user_must_approve"
+    }
+  ],
+  "process_limit": {
+    "cuda_visible_devices": "",
+    "mkl_num_threads": 1,
+    "omp_num_threads": 1,
+    "processes": 1,
+    "torch_num_threads": 1
+  },
+  "requested_gpu_probe_commands": [
+    "Do not start this until a user-approved probe budget exists.",
+    "One CUDA forward of the existing Stage2 policy, batch 32, no optimizer step.",
+    "Record torch.cuda.max_memory_allocated and wall time, then exit."
+  ],
+  "requested_gpu_probe_minutes": 20,
+  "status": "PROPOSAL_NOT_APPROVED",
+  "total_gpu_hours_cap": null,
+  "total_gpu_hours_cap_status": "PENDING_USER_APPROVED_PROBE",
+  "training_gpu_budget": "UNREGISTERED"
+}

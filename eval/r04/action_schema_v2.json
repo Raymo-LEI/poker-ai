@@ -1,0 +1,156 @@
+{
+  "a5": {
+    "actions": [
+      {
+        "action_id": 0,
+        "kind": "fold",
+        "name": "fold"
+      },
+      {
+        "action_id": 1,
+        "kind": "check_call",
+        "name": "check_call"
+      },
+      {
+        "action_id": 2,
+        "fraction": {
+          "denom": 2,
+          "numer": 1
+        },
+        "kind": "pot_fraction",
+        "name": "half_pot"
+      },
+      {
+        "action_id": 3,
+        "fraction": {
+          "denom": 1,
+          "numer": 1
+        },
+        "kind": "pot_fraction",
+        "name": "pot"
+      },
+      {
+        "action_id": 4,
+        "kind": "all_in",
+        "name": "all_in"
+      }
+    ],
+    "chip_response": {
+      "all_in": -2,
+      "check_call": 0,
+      "dedupe": "If two ids emit the same chip response, the lower id stays executable.",
+      "fold": -1,
+      "pot_fraction": "Unopened: round_half_up(numer/denom * pot). Facing a bet: to_call + round_half_up(numer/denom * pot). Then raise the extra to the judge minimum positive bet. A result greater than or equal to the remaining stack is not a distinct size; only the all-in sentinel spends the rest.",
+      "rounding": "round_half_up via (pot * numer + denom // 2) // denom"
+    },
+    "feature_note": "same public kernel view for A5 and A6",
+    "format": "route1_action_schema_v2",
+    "num_actions": 5,
+    "rules_id": "botzone_texasholdem2p_official_referee_v1",
+    "schema_id": "botzone_a5_v2",
+    "sha256": "683572125ca42eb2325aca2d242d5c74b4c6b08ae5335bcd8c2b630ad160016d",
+    "train_budget_steps": 0
+  },
+  "a6": {
+    "actions": [
+      {
+        "action_id": 0,
+        "kind": "fold",
+        "name": "fold"
+      },
+      {
+        "action_id": 1,
+        "kind": "check_call",
+        "name": "check_call"
+      },
+      {
+        "action_id": 2,
+        "fraction": {
+          "denom": 2,
+          "numer": 1
+        },
+        "kind": "pot_fraction",
+        "name": "half_pot"
+      },
+      {
+        "action_id": 3,
+        "fraction": {
+          "denom": 1,
+          "numer": 1
+        },
+        "kind": "pot_fraction",
+        "name": "pot"
+      },
+      {
+        "action_id": 4,
+        "kind": "all_in",
+        "name": "all_in"
+      },
+      {
+        "action_id": 5,
+        "fraction": {
+          "denom": 4,
+          "numer": 1
+        },
+        "kind": "pot_fraction",
+        "name": "quarter_pot"
+      }
+    ],
+    "chip_response": {
+      "all_in": -2,
+      "check_call": 0,
+      "dedupe": "If two ids emit the same chip response, the lower id stays executable.",
+      "fold": -1,
+      "pot_fraction": "Unopened: round_half_up(numer/denom * pot). Facing a bet: to_call + round_half_up(numer/denom * pot). Then raise the extra to the judge minimum positive bet. A result greater than or equal to the remaining stack is not a distinct size; only the all-in sentinel spends the rest.",
+      "rounding": "round_half_up via (pot * numer + denom // 2) // denom"
+    },
+    "feature_note": "same public kernel view for A5 and A6",
+    "format": "route1_action_schema_v2",
+    "num_actions": 6,
+    "rules_id": "botzone_texasholdem2p_official_referee_v1",
+    "schema_id": "botzone_a6_v2",
+    "sha256": "854b7e5c189dcdb0cf287bb6d5f0c5e6ef36e768da45e4430ad8c48e7d114078",
+    "train_budget_steps": 0
+  },
+  "format": "route1_action_schema_v2_bundle",
+  "note": "A5 and A6 share rules, features, trunk size, data method, and a zero training budget. Only the action set differs. botzone_5action_v1 stays the frozen V6 contrast and is rejected by the A5/A6 loader.",
+  "retained_v1": {
+    "actions": [
+      {
+        "action_id": 0,
+        "kind": "fold",
+        "name": "fold"
+      },
+      {
+        "action_id": 1,
+        "kind": "check_call",
+        "name": "check_call"
+      },
+      {
+        "action_id": 2,
+        "formula": "safe_extra = max(1, 2 * round_raise - own_round_bet)",
+        "kind": "min_legal_positive",
+        "name": "raise_min"
+      },
+      {
+        "action_id": 3,
+        "formula": "max(safe_extra * 2, pot)",
+        "kind": "max_twice_min_or_pot",
+        "name": "raise_large"
+      },
+      {
+        "action_id": 4,
+        "kind": "all_in",
+        "name": "all_in"
+      }
+    ],
+    "format": "route1_action_schema_v1_retained",
+    "implementation": "alphanl.botzone.actions.action_responses",
+    "num_actions": 5,
+    "role": "frozen_v6_contrast",
+    "rules_id": "botzone_texasholdem2p_official_referee_v1",
+    "schema_id": "botzone_5action_v1",
+    "sha256": "084d8116b4bb03a89c9daf889cacb9167badd9a78bded1c0bc8fc7087d5c25dd"
+  },
+  "rules_id": "botzone_texasholdem2p_official_referee_v1"
+}

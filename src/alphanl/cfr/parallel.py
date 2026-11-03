@@ -27,14 +27,16 @@ from .actions import CFRActionGuard
 
 
 class _Slot:
-    def __init__(self, rows, length, *, name=None):
+    def __init__(self, rows, length, *, name=None, num_actions=5):
+        width = int(num_actions)
         specs = {"token_ids": ("int64", (rows, length)),
                  "type_ids": ("int64", (rows, length)),
                  "numeric": ("float32", (rows, length, 4)),
                  "pad_mask": ("bool", (rows, length)),
-                 "legal_mask": ("float32", (rows, 5)),
-                 "regrets": ("float32", (rows, 5)),
-                 "probs": ("float64", (rows, 5))}
+                 "legal_mask": ("float32", (rows, width)),
+                 "regrets": ("float32", (rows, width)),
+                 "probs": ("float64", (rows, width)),
+                 "sample_weight": ("float32", (rows,))}
         offsets, total = {}, 0
         for key, (dtype, shape) in specs.items():
             total = (total + 7) // 8 * 8
@@ -44,12 +46,16 @@ class _Slot:
         self.arrays = {key: np.ndarray(shape, dtype=dtype, buffer=self.shm.buf, offset=offsets[key])
                        for key, (dtype, shape) in specs.items()}
 
-    def write(self, batch, regrets=None):
+    def write(self, batch, regrets=None, strategy=None, sample_weight=None):
         count = len(batch["token_ids"])
         for key, value in batch.items():
             self.arrays[key][:count] = value.detach().numpy()
         if regrets is not None:
             self.arrays["regrets"][:count] = regrets.detach().numpy()
+        if strategy is not None:
+            self.arrays["probs"][:count] = strategy.detach().numpy()
+        if sample_weight is not None:
+            self.arrays["sample_weight"][:count] = sample_weight.detach().numpy()
         return count
 
     def batch(self, count):
@@ -94,30 +100,42 @@ class _SampleSink:
     def __init__(self, channel, player, limit):
         self.channel, self.player, self.limit = channel, player, limit
         self.batches, self.regrets = [], []
+        self.strategies, self.weights = [], []
         self.iteration = None
 
     def add(self, batch, regrets, iteration):
         self.batches.append(batch)
         self.regrets.append(regrets)
         self.iteration = iteration
-        if len(self.batches) >= self.limit:
+
+    def add_strategy(self, batch, strategy, iteration, weight):
+        del batch, iteration
+        self.strategies.append(strategy.detach())
+        self.weights.append(torch.full((int(strategy.shape[0]),), float(weight), dtype=torch.float32))
+        if len(self.batches) >= self.limit and len(self.strategies) == len(self.batches):
             self.flush()
 
     def flush(self):
         if not self.batches:
             return
-        count = self.channel.slot.write(cat_batches(self.batches), torch.cat(self.regrets))
+        strategy = torch.cat(self.strategies) if self.strategies else None
+        weight = torch.cat(self.weights) if self.weights else None
+        count = self.channel.slot.write(
+            cat_batches(self.batches), torch.cat(self.regrets), strategy=strategy, sample_weight=weight)
         self.channel.exchange("samples", self.player, count)
         self.batches.clear()
         self.regrets.clear()
+        self.strategies.clear()
+        self.weights.clear()
 
 
 def _cpu_worker(worker_id, name, rows, length, tree_batch, max_nodes,
-                sample_batch, requests, connection, root_factory):
+                sample_batch, requests, connection, root_factory, num_actions=5):
     # This process never receives a model or constructs a CUDA tensor.
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
-    slot = _Slot(rows, length, name=name)
+    slot = _Slot(rows, length, name=name, num_actions=num_actions)
     try:
         while True:
             job = connection.recv()
@@ -190,15 +208,16 @@ class ParallelCollector:
         old = {key: os.environ.get(key) for key in keys}
         try:
             os.environ.update({key: "1" for key in keys})
+            width = int(getattr(self.config, "head_width", 5) or 5)
             for worker in range(self.config.traversal_workers):
-                slot = _Slot(rows, self.config.model.max_seq_len)
+                slot = _Slot(rows, self.config.model.max_seq_len, num_actions=width)
                 self.slots.append(slot)
                 parent, child = context.Pipe()
                 self.connections.append(parent)
                 process = context.Process(target=_cpu_worker, args=(
                     worker, slot.shm.name, rows, self.config.model.max_seq_len,
                     self.config.traversal_batch_size, self.config.max_traversal_nodes,
-                    self.config.worker_sample_batch, self.requests, child, self.root_factory))
+                    self.config.worker_sample_batch, self.requests, child, self.root_factory, width))
                 process.start()
                 child.close()
                 self.processes.append(process)
@@ -280,6 +299,9 @@ class ParallelCollector:
                         began = time.perf_counter()
                         slot, count = self.slots[worker], request["count"]
                         buffer.add(slot.batch(count), torch.from_numpy(slot.arrays["regrets"][:count]), iteration)
+                        sink = getattr(buffer, "strategy_sink", None)
+                        if sink is not None:
+                            sink.add_from_slot(slot, count, iteration)
                         timing["buffer_insert_s"] += time.perf_counter() - began
                         self.connections[worker].send((version, request["id"]))
                     elif kind == "infer":

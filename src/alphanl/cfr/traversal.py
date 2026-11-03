@@ -145,7 +145,7 @@ class ExternalSamplingTraverser:
         self.last_timing = {}
 
     def _walk(self, state: GameState, traverser: int, iteration: int,
-              buffer, stats: TraversalStats, scripted_opponent=None):
+              buffer, stats: TraversalStats, scripted_opponent=None, traverser_reach: float = 1.0):
         stats.nodes += 1
         if self.max_nodes is not None and stats.nodes > self.max_nodes:
             raise RuntimeError("traversal node budget exceeded; no truncated utility is used")
@@ -165,7 +165,8 @@ class ExternalSamplingTraverser:
                 raise ValueError("scripted opponent selected an illegal action")
             stats.scripted_opponent_actions += 1
             stats.scripted_off_guard_actions += int(action not in legal)
-            return (yield from self._walk(state.child(action), traverser, iteration, buffer, stats, scripted_opponent))
+            return (yield from self._walk(
+                state.child(action), traverser, iteration, buffer, stats, scripted_opponent, traverser_reach))
         began = time.perf_counter()
         batch = state.observation()
         self.last_timing["observation_s"] += time.perf_counter() - began
@@ -175,17 +176,27 @@ class ExternalSamplingTraverser:
         strategy = yield _Query(player, batch)
         if player != traverser:
             action = int(self.rng.choice(len(strategy), p=strategy))
-            return (yield from self._walk(state.child(action), traverser, iteration, buffer, stats, scripted_opponent))
+            return (yield from self._walk(
+                state.child(action), traverser, iteration, buffer, stats, scripted_opponent, traverser_reach))
         action_values = np.zeros(len(strategy), dtype=np.float64)
         for action in legal:
             action_values[action] = yield from self._walk(
-                state.child(action), traverser, iteration, buffer, stats, scripted_opponent
+                state.child(action), traverser, iteration, buffer, stats, scripted_opponent,
+                traverser_reach * float(strategy[action]),
             )
         value = float(np.dot(strategy, action_values))
         regret = np.zeros(len(strategy), dtype=np.float32)
         regret[list(legal)] = action_values[list(legal)] - value
         began = time.perf_counter()
         buffer.add(batch, torch.from_numpy(regret).unsqueeze(0), iteration)
+        remember = getattr(buffer, "add_strategy", None)
+        if remember is not None:
+            remember(
+                batch,
+                torch.from_numpy(np.asarray(strategy, dtype=np.float32)).unsqueeze(0),
+                iteration,
+                float(iteration) * float(traverser_reach),
+            )
         self.last_timing["buffer_insert_s"] += time.perf_counter() - began
         stats.regret_samples += 1
         stats.scripted_regret_samples += int(scripted_opponent is not None)

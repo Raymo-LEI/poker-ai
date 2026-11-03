@@ -92,6 +92,36 @@ def posterior_mixture(component_probs, own_reach, iteration_weights):
     return (weights[:,:,None]*component_probs.double()).sum(0)/total[:,None]
 
 
+def own_reach_mixture(component_probs, own_reach, iteration_weights):
+    """Own-reach mixture. A zero-reach infoset stays unlabeled.
+
+    Rows with no own-reach mass are ``UNREACHABLE/OOD``. Their target is left
+    at zero. They are not replaced by an unweighted mean of the profiles.
+    """
+    weights = own_reach.double() * iteration_weights.double()[:, None]
+    total = weights.sum(0)
+    unreachable = total <= 0
+    targets = torch.zeros(component_probs.shape[1:], dtype=torch.float64)
+    if (~unreachable).any():
+        live = ~unreachable
+        targets[live] = (
+            weights[:, live, None] * component_probs[:, live].double()
+        ).sum(0) / total[live, None]
+    if unreachable.all():
+        status = 'UNREACHABLE/OOD'
+    elif unreachable.any():
+        status = 'PARTIAL'
+    else:
+        status = 'OK'
+    return {
+        'status': status,
+        'target_probs': targets,
+        'reachable': ~unreachable,
+        'own_reach_mass': total,
+        'unweighted_fill': False,
+    }
+
+
 @torch.inference_mode()
 def collect_pool_states(teacher, *, hands, seed, hand_offset=0, student=None,
                         max_decisions=200000, progress=None):

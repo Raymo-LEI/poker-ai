@@ -24,6 +24,47 @@ def make_run(tmp_path, metrics="iteration,p0_loss,p1_loss\n1,12,34\n"):
     return run, store
 
 
+def test_r07_curve_discovery_cache_and_read_only(tmp_path):
+    run = tmp_path / "r07_a5_seed101_avg"
+    run.mkdir()
+    path = run / "learning_curve_live.json"
+    path.write_text(json.dumps([{"iteration": 1, "loss": .2, "wall_seconds": 85.5,
+                                 "buffer_size": 60218, "strategy_loss": 1.5}]))
+    before = path.read_bytes(), path.stat().st_mtime_ns
+    store = monitor.Store([tmp_path])
+    ident = "0/r07_a5_seed101_avg"
+    data = store.load(ident)
+    assert data["latest"]["step"] == 1
+    assert data["latest"]["iteration_s"] == 85.5
+    assert data["latest"]["loss"] == .2
+    assert "train/loss_p0" not in data["latest"]
+    assert not data["experiment"]["is_formal"]
+    assert data["workbench"]["runtime"]["training_step"] == 1
+    preview = store.catalog()["experiments"][0]
+    assert preview["last_step"] == 1 and preview["category"] == "training"
+    assert before == (path.read_bytes(), path.stat().st_mtime_ns)
+    path.write_text('[{"iteration":2,"loss":0.1}]')
+    assert store.load(ident)["latest"]["step"] == 2
+    path.write_text('[{"iteration":')
+    data = store.load(ident)
+    assert data["rows"] == [] and data["warnings"]
+
+
+def test_r07_curve_bounds_and_existing_metrics_take_precedence(tmp_path, monkeypatch):
+    run, store = make_run(tmp_path, "iteration,p0_loss\n3,7\n")
+    path = run / "learning_curve_live.json"
+    path.write_text(json.dumps([{"iteration": i, "p0_loss": 1} for i in range(4)]))
+    monkeypatch.setattr(monitor, "MAX_ROWS", 2)
+    data = store.load("0/experiment")
+    assert [row["step"] for row in data["rows"]] == [2, 3]
+    assert data["latest"]["train/loss_p0"] == 7
+    monkeypatch.setattr(monitor, "MAX_BYTES", 80)
+    path.write_text(" " * 81)
+    data = store.load("0/experiment")
+    assert data["latest"]["train/loss_p0"] == 7
+    assert any("8 MiB" in warning for warning in data["warnings"])
+
+
 def test_fixed_fit_probe_is_not_overwritten_by_checkpoint_probe(tmp_path):
     run, store = make_run(tmp_path, "iteration,p0_probe_r2,p0_probe_loss_ratio,p0_probe_samples\n100,0.72,0.91,1024\n")
     (run / "diagnostics.jsonl").write_text(

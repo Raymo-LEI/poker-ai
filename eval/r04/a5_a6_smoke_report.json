@@ -1,0 +1,18 @@
+{
+  "checked_responses": 8100,
+  "conservation_failures": 0,
+  "duplicate_executable": 0,
+  "examples": [],
+  "hands_started": 243,
+  "illegal_or_overstack": 0,
+  "quarter_collapsed": 386,
+  "quarter_masked": 390,
+  "quarter_new": 224,
+  "quarterpot_effective_new_coverage": 0.224,
+  "seed": 20261031,
+  "shared_mass_mean_abs_diff": 0.010195530726256986,
+  "shared_mass_pairs": 3938,
+  "shared_response_mismatches": 0,
+  "small_bet_skill_claimed": false,
+  "states": 1000
+}

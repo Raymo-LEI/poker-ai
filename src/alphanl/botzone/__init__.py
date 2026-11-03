@@ -2,8 +2,10 @@
 
 M1 is betting legality. M2 deals, rotates the button, and awards the pot.
 M3 packs the five policy ids through that legality. M7 is the weak rule
-opponent on those ids. The training adapter that speaks ``SelfPlayEnv``
-lives in ``alphanl.transformer.botzone_table`` and does not change these rules.
+opponent on those ids. The branchable training kernel in ``kernel`` steps
+the unmodified official referee. The training adapter that speaks
+``SelfPlayEnv`` lives in ``alphanl.transformer.botzone_table`` and does not
+change these rules.
 """
 
 from .actions import (
@@ -31,6 +33,12 @@ from .legal import (
     safe_extra,
     to_call,
 )
+from .kernel import (
+    POLICY_FEATURE_NAMES,
+    BranchableKernel,
+    KernelStep,
+    LegacyFiveActionBridge,
+)
 from .rule_bot import BotzoneRuleBot
 from .table import BotzoneTable
 
@@ -47,7 +55,11 @@ __all__ = [
     "STARTING_STACK",
     "BotzoneRuleBot",
     "BotzoneTable",
+    "BranchableKernel",
     "HandState",
+    "KernelStep",
+    "LegacyFiveActionBridge",
+    "POLICY_FEATURE_NAMES",
     "action_responses",
     "apply",
     "legal_action_ids",

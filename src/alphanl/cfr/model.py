@@ -146,3 +146,99 @@ class RegretNetwork(nn.Module):
 
     def strategy(self, batch: TensorBatch) -> torch.Tensor:
         return regret_matching(self(batch), batch["legal_mask"], fallback=self.fallback)
+
+
+class SchemaRegretNetwork(nn.Module):
+    """Regret head whose width is the ActionSpec table, not a fixed five.
+
+    The production ``RegretNetwork`` stays on ``botzone_5action_v1``. This
+    class is the A5/A6 pilot head. A checkpoint from another schema, including
+    a five-wide head, is rejected instead of reshaped.
+    """
+
+    def __init__(
+        self,
+        schema,
+        *,
+        d_model: int = 16,
+        nhead: int = 2,
+        num_layers: int = 1,
+        dim_feedforward: int = 32,
+        max_seq_len: int = 8,
+        dropout: float = 0.0,
+        fallback: str = "uniform",
+    ) -> None:
+        super().__init__()
+        from alphanl.botzone.action_spec import artifact_stamp
+
+        if fallback not in ("uniform", "argmax", "softmax"):
+            raise ValueError("fallback must be uniform, argmax or softmax")
+        self.schema_stamp = artifact_stamp(schema)
+        self.num_actions = int(schema.num_actions)
+        self.fallback = fallback
+        self.backbone = PokerTransformer(
+            num_actions=self.num_actions,
+            d_model=d_model,
+            nhead=nhead,
+            num_layers=num_layers,
+            dim_feedforward=dim_feedforward,
+            max_seq_len=max_seq_len,
+            dropout=dropout,
+        )
+        for head in (self.backbone.policy_head, self.backbone.value_head):
+            head.requires_grad_(False)
+        reference = self.backbone.policy_head.weight
+        self.regret_head = nn.Linear(
+            d_model,
+            self.num_actions,
+            device=reference.device,
+            dtype=reference.dtype,
+        )
+        nn.init.zeros_(self.regret_head.weight)
+        nn.init.zeros_(self.regret_head.bias)
+
+    def forward(self, batch: TensorBatch) -> torch.Tensor:
+        from alphanl.botzone.action_spec import SchemaMismatch
+
+        legal = batch["legal_mask"]
+        if legal.shape[-1] != self.num_actions:
+            raise SchemaMismatch(
+                f"legal mask width {legal.shape[-1]} != schema width {self.num_actions}"
+            )
+        cls = self.backbone.encode_tokens(
+            batch["token_ids"],
+            batch["type_ids"],
+            batch["numeric"],
+            batch["pad_mask"],
+        )
+        features = self.backbone.trunk(cls)
+        with torch.autocast(device_type=features.device.type, enabled=False):
+            return self.regret_head(features.float())
+
+    def strategy(self, batch: TensorBatch) -> torch.Tensor:
+        return regret_matching(self(batch), batch["legal_mask"], fallback=self.fallback)
+
+    def checkpoint_payload(self) -> dict:
+        return {**self.schema_stamp, "state_dict": self.state_dict()}
+
+    def load_matching_checkpoint(self, blob: Mapping) -> None:
+        from alphanl.botzone.action_spec import EXPERIMENT_SCHEMAS, SchemaMismatch, require_schema
+
+        schema_id = blob.get("action_schema_id")
+        if schema_id not in EXPERIMENT_SCHEMAS:
+            raise SchemaMismatch(
+                f"fail closed: checkpoint schema {schema_id!r} is not an A5/A6 head"
+            )
+        require_schema(blob, EXPERIMENT_SCHEMAS[str(schema_id)])
+        if EXPERIMENT_SCHEMAS[str(schema_id)].num_actions != self.num_actions:
+            raise SchemaMismatch("fail closed: refusing to reshape the regret head")
+        state = blob.get("state_dict")
+        if not isinstance(state, Mapping) or "regret_head.weight" not in state:
+            raise SchemaMismatch("fail closed: checkpoint has no regret head")
+        weight = state["regret_head.weight"]
+        if tuple(weight.shape) != tuple(self.regret_head.weight.shape):
+            raise SchemaMismatch(
+                f"fail closed: regret head shape {tuple(weight.shape)} "
+                f"!= {tuple(self.regret_head.weight.shape)}; not reshaping"
+            )
+        self.load_state_dict(state, strict=True)

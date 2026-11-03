@@ -1,0 +1,16 @@
+{
+  "format": "route1_r08_export_from_teacher_v1",
+  "status": "PENDING_TEACHER",
+  "teacher_gate": "NOT_PASSED",
+  "teacher_out_dir": "",
+  "teacher_manifest_hint": "eval/r07/manifests/a6_seed303.json",
+  "action_schema_id": "botzone_a6_v2",
+  "num_actions": 6,
+  "quarter_pot_required": true,
+  "action_names": ["fold", "check_call", "half_pot", "pot", "all_in", "quarter_pot"],
+  "seed": 303,
+  "weights_included": false,
+  "distill_authorized": false,
+  "strength_claim": false,
+  "notes": "Placeholder only. Leave teacher_out_dir empty until a frozen local copy exists. This file does not point at an AutoDL run."
+}

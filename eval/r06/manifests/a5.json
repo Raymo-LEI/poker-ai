@@ -1,0 +1,27 @@
+{
+  "format": "route1_r06_teacher_pilot_manifest_v1",
+  "track": "botzone_a5_v2",
+  "action_schema_id": "botzone_a5_v2",
+  "action_schema_sha256": "683572125ca42eb2325aca2d242d5c74b4c6b08ae5335bcd8c2b630ad160016d",
+  "num_actions": 5,
+  "action_names": [
+    "fold",
+    "check_call",
+    "half_pot",
+    "pot",
+    "all_in"
+  ],
+  "quarter_pot_required": false,
+  "isolated_output_dir": "runs/r06_a5",
+  "seed": 101,
+  "max_gpu_hours": 0.25,
+  "total_gpu_hours_cap": 1000,
+  "gpu_hours_used_before_launch": 0,
+  "max_concurrent_training_jobs": 1,
+  "iterations": 1,
+  "device": "cuda",
+  "status": "PENDING_AUTODL_PARENT",
+  "blocked_reason": "CPU schema head is bound. GPU pilot is still for the parent, one job at a time, at most 0.25h.",
+  "command": "python3 eval/r06/launch_pilot.py --manifest eval/r06/manifests/a5.json --execute",
+  "strength_claim": false
+}

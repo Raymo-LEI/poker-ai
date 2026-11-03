@@ -227,10 +227,20 @@ def preview(root, info):
     json_metrics = safe_path(root, "metrics.jsonl")
     if json_metrics:
         latest = (tail_json(json_metrics, max_bytes=64 * 1024, max_rows=500) or [latest])[-1]
+    curve = safe_path(root, "learning_curve_live.json")
+    if not latest and curve and curve.stat().st_size <= MAX_JSON:
+        try:
+            points = json.loads(curve.read_text(encoding="utf-8"))
+            if isinstance(points, list):
+                latest = next((clean(row) for row in reversed(points) if isinstance(row, dict)
+                               and numeric(row.get("iteration")) is not None), {})
+        except (OSError, ValueError, RecursionError):
+            pass
     report = object_file(safe_path(root, "report.json"))
     eval_steps = []
+    report_results = report.get("results")
     if any(isinstance(v, dict) and (numeric(v.get("mbb_per_hand")) is not None or numeric(v.get("win_fraction")) is not None)
-           for v in (report.get("results") or {}).values()):
+           for v in (report_results.values() if isinstance(report_results, dict) else ())):
         if numeric(report.get("hero_iteration")) is not None:
             eval_steps.append(numeric(report["hero_iteration"]))
     if numeric((report.get("summary") or {}).get("mbb_per_hand")) is not None:
@@ -243,7 +253,7 @@ def preview(root, info):
             step = next((numeric(row[k]) for k in ("iteration", "update", "step") if numeric(row.get(k)) is not None), None)
             if step is not None:
                 eval_steps.append(step)
-    return {**info, "category": category(info["name"], config, bool(metrics or json_metrics), bool(report)),
+    return {**info, "category": category(info["name"], config, bool(metrics or json_metrics or curve), bool(report)),
             "stage": config.get("stage", "stage2" if latest.get("stage2") == 1 else "stage1"),
             "last_step": numeric(latest.get("iteration", latest.get("update"))),
             "eval_step": max(eval_steps) if eval_steps else None,
@@ -522,8 +532,9 @@ class Workbench:
         deltas = object_file(safe_path(root, "evaluations/paired_delta.json"))
         study_report = object_file(safe_path(root, "evaluation_report.json"))
         branch = object_file(safe_path(root, "ops/branch.json"))
-        training_rows = [r for r in data["rows"] if any(k in r for k in ("shared_loss", "train/loss_p0", "train/policy_loss"))]
-        result = {"version": 2, "category": category(root.name, config, bool(safe_path(root, "metrics.csv") or safe_path(root, "metrics.jsonl")), data.get("evaluation_only", False)),
+        training_rows = [r for r in data["rows"] if any(k in r for k in ("shared_loss", "train/loss_p0", "train/policy_loss", "loss"))]
+        has_metrics = any(safe_path(root, name) for name in ("metrics.csv", "metrics.jsonl", "learning_curve_live.json"))
+        result = {"version": 2, "category": category(root.name, config, has_metrics, data.get("evaluation_only", False)),
             "effective": config_summary(config, manifest),
             "stage2": stage2_summary(root, data, config),
             "runtime": {"reported_phase": phase, "phase_label": PHASES.get(phase, str(phase)),

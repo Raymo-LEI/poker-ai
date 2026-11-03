@@ -23,7 +23,7 @@ from monitor_training import ThreadingHTTPServer, make_handler
 
 
 class RemoteStore:
-    source_label = "4090 服务器"
+    source_label = "远程服务器"
     unavailable_message = "服务器连接中断，正在自动重连。页面仍可使用，已显示的数据会保留。"
 
     def __init__(self, port=6012):
@@ -154,10 +154,12 @@ def main():
     parser.add_argument("--tunnel-port", type=int, default=6012)
     parser.add_argument("--remote-port", type=int, default=6008)
     parser.add_argument("--ssh-host", default="seetacloud-poker")
+    parser.add_argument("--source-label", default="远程服务器", help="visible label for the monitored host")
     parser.add_argument("--open-browser", action="store_true", help="open the local dashboard after binding")
     args = parser.parse_args()
     # Bind the stable page before connecting SSH. Never take another listener's port.
     store = RemoteStore(args.tunnel_port)
+    store.source_label = args.source_label
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(store))
     tunnel = Tunnel(args.ssh_host, args.tunnel_port, args.remote_port)
     store.tunnel = tunnel

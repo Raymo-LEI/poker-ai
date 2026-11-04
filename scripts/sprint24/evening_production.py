@@ -76,9 +76,10 @@ def make_timing_package(checkpoint,nets,out):
     return dict(source=str(source.resolve()),model=str(model.resolve()))
 
 
-def latency_gate(release,out,samples=256,cold=12):
+def latency_gate(release,out,samples=256,cold=12,enforce=True):
     cmd=[sys.executable,str(REPO/'scripts/sprint24/evening_latency.py'),'--zip',release['source'],'--model',release['model'],
          '--out',str(out),'--samples',str(samples),'--cold',str(cold)]
+    if not enforce:cmd.append('--observe')
     # Pinning happens only in this subprocess; the 24-worker parent keeps its affinity.
     subprocess.run(cmd,check=True,timeout=180,stdout=subprocess.DEVNULL)
     return json.loads(Path(out).read_text())

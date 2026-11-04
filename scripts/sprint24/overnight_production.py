@@ -33,6 +33,17 @@ GUARD_TUNE_SEED=1951000000
 GUARD_CONFIRM_SEED=1961000000
 
 
+def deadline_budget(hours,deadline,now=None):
+    """Keep a late start within the reserved window; 9h remains the maximum."""
+    if not deadline:return float(hours),HARD_SECONDS
+    end=datetime.datetime.fromisoformat(deadline.replace('Z','+00:00'))
+    if end.tzinfo is None:raise ValueError('--deadline requires an explicit timezone')
+    now=now or datetime.datetime.now(datetime.timezone.utc)
+    hard=min(HARD_SECONDS,(end-now).total_seconds())
+    if hard<=1800:raise ValueError('deadline leaves no target budget after the 30-minute completion reserve')
+    return min(float(hours),(hard-1800)/3600.),hard
+
+
 def score_cells(row,strict=True):
     """Equal phase weight; within a phase all opponents get equal weight."""
     import numpy as np
@@ -166,7 +177,8 @@ def run(a):
     if not a.smoke and out.resolve().is_relative_to(REPO):raise ValueError('production output must be outside locked checkout')
     out.mkdir(parents=True,exist_ok=False)
     identity=dict(commit=commit,champion=str(champion),champion_sha256=champion_sha,handoff=handoff,
-        workers=workers,gpu=gpu,arch=arch.__dict__,online=ONLINE,offline=OFFLINE,tree=TREE,smoke=a.smoke,hard_seconds=HARD_SECONDS)
+        workers=workers,gpu=gpu,arch=arch.__dict__,online=ONLINE,offline=OFFLINE,tree=TREE,smoke=a.smoke,
+        hard_seconds=deadline_budget(a.hours,a.deadline)[1],absolute_deadline=a.deadline,target_hours=a.hours)
     cfv.atomic_json(out/'run_identity.json',identity)
     def stage(name,**fields):
         source_lock()
@@ -247,7 +259,8 @@ def run(a):
                   for role,cp in checkpoints.items() for mode in ('slim','legacy_full')}
         ablation={}
         for name,release in variants.items():
-            latency_gate(release,out/(name+'_latency.json'),64 if a.smoke else 256,4 if a.smoke else 12)
+            latency_gate(release,out/(name+'_latency.json'),64 if a.smoke else 256,4 if a.smoke else 12,
+                         enforce=not name.endswith('_legacy_full'))
         ablation=evaluate(variants,out/'guard_200_match_comparison',workers,0,1 if a.smoke else 20,2 if a.smoke else 50,seed_base=GUARD_TUNE_SEED)
         comparisons=compare_guards(ablation,ROLES)
         selected={role:variants[role+'_slim'] for role in checkpoints}
@@ -325,18 +338,22 @@ def main():
     p.add_argument('--hours',type=float,default=8.5);p.add_argument('--workers',type=int)
     p.add_argument('--champion',type=Path);p.add_argument('--expected-champion-sha256',default=EXPECTED_CHAMPION_SHA256)
     p.add_argument('--expected-commit');p.add_argument('--out',type=Path);p.add_argument('--deliver',type=Path)
+    p.add_argument('--deadline',help='Optional absolute ISO-8601 cutoff, e.g. 2026-11-05T10:00:00+09:00; never extends the 9h watchdog')
     p.add_argument('--evening-root',type=Path,default=Path('/root/autodl-tmp/sprint24/evening_production'))
     p.add_argument('--fresh',action='store_true');p.add_argument('--smoke',action='store_true');p.add_argument('--allow-dirty',action='store_true')
     p.add_argument('--_run',action='store_true',help=argparse.SUPPRESS)
     a=p.parse_args()
     if not 0<a.hours<=8.5:p.error('--hours must be >0 and <=8.5 (9h watchdog is fixed)')
+    try:a.hours,hard_seconds=deadline_budget(a.hours,a.deadline)
+    except ValueError as exc:p.error(str(exc))
     if a._run:return run(a)
     argv=list(sys.argv[1:])
+    if a.deadline:argv+=['--hours',str(a.hours)]
     if a.out is None:
         stamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         a.out=Path('/root/autodl-tmp/sprint24/overnight_production')/(stamp+'_'+git('rev-parse','HEAD')[:8])
         argv+=['--out',str(a.out)]
-    hard_deadline=time.monotonic()+HARD_SECONDS
+    hard_deadline=time.monotonic()+hard_seconds
     child=subprocess.Popen([sys.executable,str(Path(__file__).resolve()),*argv,'--_run'],start_new_session=True)
     def stop(signum,frame):raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,stop)
@@ -347,7 +364,7 @@ def main():
     except (subprocess.TimeoutExpired,KeyboardInterrupt):
         group_stop(child,grace=min(5,max(0,hard_deadline-time.monotonic())))
         from alphanl.stage2 import cfv
-        cfv.atomic_json(a.out/'WATCHDOG_FAILED.json',dict(status='FAILED',reason='9.0-hour hard deadline or interruption',hard_seconds=HARD_SECONDS))
-        raise SystemExit('OVERNIGHT_WATCHDOG_STOPPED: 9.0-hour hard deadline or interruption')
+        cfv.atomic_json(a.out/'WATCHDOG_FAILED.json',dict(status='FAILED',reason='absolute cutoff, maximum 9-hour watchdog, or interruption',hard_seconds=hard_seconds,absolute_deadline=a.deadline))
+        raise SystemExit('OVERNIGHT_WATCHDOG_STOPPED: absolute cutoff, maximum 9-hour watchdog, or interruption')
 
 if __name__=='__main__':raise SystemExit(main())

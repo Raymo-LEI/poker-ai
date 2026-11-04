@@ -156,3 +156,16 @@ def test_rollout_uses_authoritative_legal_domain_without_native_shove_mask():
     for item in items:
         expected=np.zeros(5);expected[list(item['snapshot'].legal_action_ids)]=1
         np.testing.assert_array_equal(item['row']['legal_mask'][0],expected)
+
+
+def test_late_start_absolute_cutoff_never_extends_nine_hours():
+    import datetime
+    from overnight_production import deadline_budget
+    utc=datetime.timezone.utc
+    now=datetime.datetime(2026,11,4,16,45,tzinfo=utc)  # 01:45 JST
+    target,hard=deadline_budget(8.5,'2026-11-05T10:00:00+09:00',now)
+    assert hard==8.25*3600 and target==7.75
+    assert deadline_budget(8.5,None,now)==(8.5,9*3600)
+    assert deadline_budget(8.5,'2026-11-06T10:00:00+09:00',now)==(8.5,9*3600)
+    with pytest.raises(ValueError):deadline_budget(8.5,'2026-11-05T10:00:00',now)
+    with pytest.raises(ValueError):deadline_budget(8.5,'2026-11-05T01:00:00+09:00',now)

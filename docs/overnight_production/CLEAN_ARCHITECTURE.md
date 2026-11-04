@@ -23,6 +23,9 @@ The old R7 full guard exists solely as an explicitly tagged internal
 an ablation and become the deployment mode. The old comparator and new Slim
 mode share the same checkpoint, legal-only observation, RNR ranges, search
 budget and terminal utility, isolating the final guard intervention.
+Legacy timing is measured and reported in observe-only mode; an old comparator
+missing the deployment timing limit cannot suppress the required comparison.
+All Slim pilots and formal/final-evaluation gates remain strictly enforced.
 
 Each role is evaluated in **200 complete 50-hand matches per mode**: five
 opponents, 20 common deck pairs each, two swapped seats. There are 100
@@ -124,3 +127,9 @@ workers, and strict mean<40ms/p99<120ms/cold<0.5s gates remain unchanged.
 
 The active server's earlier evening branch has its own mean<65ms patch; this
 overnight source does **not** inherit that relaxed gate or mutate that run.
+
+For a late handoff, `--deadline 2026-11-05T10:00:00+09:00` clamps the watchdog
+to that absolute cutoff (never more than nine hours) and automatically reduces
+the target hours to leave the original 30-minute completion reserve. Data
+counts recalibrate; epochs, holdouts and quality/performance gates do not shrink.
+An expired cutoff or less than 30 minutes available fails before starting work.

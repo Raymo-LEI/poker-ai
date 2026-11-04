@@ -1088,11 +1088,12 @@
     "src/alphanl/stage2/evening_strategy.py": "e814a58465f77d8f49d9cfee5e93893dab8bf77a670fa4cf87f08882e5b10d5a",
     "src/alphanl/stage2/deployment_guard.py": "1a3fa8f0f795dad0ba4f3d4e5e0a9f4680f0af321619f6cd153732ba50aa5a6e",
     "src/alphanl/stage2/portable_runtime.py": "cf5b5bab5c82b4a04e7181fbb8d6332b5179037c0b17dbdc35474c483d52c179",
-    "scripts/sprint24/overnight_production.py": "8fec6dc872e3ae2e007c702634d97a887bac60964ac3d464fb3c64d8c122f3eb",
+    "scripts/sprint24/overnight_production.py": "2a6fe30bf3380ace9f3685a57ac297ad3fa26abbdaa52d58411cfe6f117fe952",
     "scripts/sprint24/evening_production_eval.py": "4bc77850435a5c351d6b2bba4a38c4d1e0d1204a67001aeb2946d36366223cf0",
     "scripts/sprint24/pack_wizard.py": "10c569c9823584e8e8fb588e210ad3353ba49829078751d9272df6871f26d0f2",
-    "tests/test_clean_search_architecture.py": "255868eb1da259c77f4e21984af2b8e0c165726722aedbff2e26aacd79f1dc30",
-    "scripts/sprint24/overnight_data.py": "510aff019e1cf5ec04c2ba3ccc7cdc07cb65d26c248ec13ab145f2f0acfbf450"
+    "tests/test_clean_search_architecture.py": "800ceb188cc974c3c9875b69b093dee2282423c65816bedccad44de7556ceca0",
+    "scripts/sprint24/overnight_data.py": "510aff019e1cf5ec04c2ba3ccc7cdc07cb65d26c248ec13ab145f2f0acfbf450",
+    "scripts/sprint24/evening_production.py": "1b3547df20de37d5d8c79892cecc22397bd30b701b73c0354614ba0388a048d9"
   },
   "limits": [
     "Normal future-score model is approximate; terminal W/T/L expectation is exact under that declared model.",
@@ -1104,5 +1105,19 @@
     "passed": 142,
     "failures": 0,
     "seconds": 28.806
+  },
+  "committed_source_smoke": {
+    "commit": "4d292f5f79eba438f60433070fe6de4e58d50e2d",
+    "status": "COMPLETE",
+    "seconds": 140.60774504207075,
+    "preflop_tv": {
+      "g3": 0.0,
+      "g4": 0.0,
+      "g5": 0.0
+    }
+  },
+  "deadline_followup": {
+    "passed": 35,
+    "seconds": 21.1
   }
 }

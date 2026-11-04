@@ -99,7 +99,7 @@ def cat(values, dim=0):
     sources["forward"] = forward + '\n' + feature_function
     for module in ("search_math", "search_game", "search_belief", "search_values"):
         sources[module] = (base / ("stage2/" + module + ".py")).read_text()
-    for module in ("cfv", "deep_solver_v2", "evening_strategy", "wizard"):
+    for module in ("cfv", "solver_prior", "deep_solver_v2", "evening_strategy", "wizard"):
         sources[module] = (base / ("stage2/" + module + ".py")).read_text()
     if botzone:
         # Botzone python3 is 3.6: postponed annotations do not exist there.

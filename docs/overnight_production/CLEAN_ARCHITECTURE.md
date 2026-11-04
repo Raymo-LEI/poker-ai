@@ -128,8 +128,13 @@ workers, and strict mean<40ms/p99<120ms/cold<0.5s gates remain unchanged.
 The active server's earlier evening branch has its own mean<65ms patch; this
 overnight source does **not** inherit that relaxed gate or mutate that run.
 
-For a late handoff, `--deadline 2026-11-05T10:00:00+09:00` clamps the watchdog
-to that absolute cutoff (never more than nine hours) and automatically reduces
-the target hours to leave the original 30-minute completion reserve. Data
-counts recalibrate; epochs, holdouts and quality/performance gates do not shrink.
-An expired cutoff or less than 30 minutes available fails before starting work.
+The production handoff has **no absolute 10:00 cutoff**. Launch with `--hours 8.5`
+and omit `--deadline`: the complete 8.5-hour target and 9-hour process-group
+watchdog start from the actual launch time. An optional absolute deadline remains
+available for callers who explicitly need one.
+
+The merged public terminal-reconciliation ledger is retained. For this overnight
+contract, `context_prior=False` prevents the separate HUD response/range prior
+from conditioning the public range a second time: the sole empirical range is
+exactly `(1-eta)*uniform + eta*size_posterior`. The general solver retains its
+optional HUD prior for existing callers; offline labels disable it as well.

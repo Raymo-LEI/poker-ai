@@ -169,3 +169,9 @@ def test_late_start_absolute_cutoff_never_extends_nine_hours():
     assert deadline_budget(8.5,'2026-11-06T10:00:00+09:00',now)==(8.5,9*3600)
     with pytest.raises(ValueError):deadline_budget(8.5,'2026-11-05T10:00:00',now)
     with pytest.raises(ValueError):deadline_budget(8.5,'2026-11-05T01:00:00+09:00',now)
+
+
+def test_production_keeps_one_size_mixture_and_full_relative_window():
+    from overnight_production import ONLINE, deadline_budget
+    assert ONLINE['context_prior'] is False
+    assert deadline_budget(8.5,None)==(8.5,9*3600.)

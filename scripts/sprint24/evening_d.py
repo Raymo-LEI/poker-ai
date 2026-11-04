@@ -37,7 +37,10 @@ class Bundle:
         sys.modules[name]=package
         with zipfile.ZipFile(source) as archive:
             from alphanl.stage2.export import _sources
-            order=list(_sources(None,botzone=True))+['runtime']
+            # An archived bundle owns its dependency set. New runtime modules
+            # must not make older, valid release ZIPs impossible to evaluate.
+            order=[short for short in _sources(None,botzone=True)
+                   if 'stage2_runtime/'+short+'.py' in archive.namelist()]+['runtime']
             self.modules={}
             for short in order:
                 filename='stage2_runtime/'+short+'.py'

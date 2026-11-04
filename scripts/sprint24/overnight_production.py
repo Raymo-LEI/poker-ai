@@ -23,7 +23,7 @@ from evening_production import EXPECTED_CHAMPION_SHA256,find_champion,git,latenc
 HARD_SECONDS=9.*3600
 ONLINE=dict(iterations={'1':4,'2':4,'3':16},chance_samples=1,blueprint_weight={'1':.5,'2':.5,'3':.3},
             check_raise=True,contract='slim-rnr-terminal-match-v1',guard_mode='slim',legal_only=True,
-            rnr_eta=.5,terminal_match_utility=True,mathematical_locks=True)
+            rnr_eta=.5,context_prior=False,terminal_match_utility=True,mathematical_locks=True)
 OFFLINE=dict(river_iterations=64,turn_iterations=32,chance_samples=4,
              teacher_iterations={'1':32,'2':32,'3':64},teacher_chance_samples=2)
 ROLES=('baseline','g3','g4','g5')

@@ -1,5 +1,11 @@
 # Overnight phase-two production
 
+Current strategy/guard contract: [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md).
+It supersedes the historical giant-call fuse, preflop threshold patch and
+guard-selection details below. Formal deployments are Slim-only, with bounded
+size/uniform range mixtures and online terminal match utility. The legacy full
+guard is retained only for the 200-match-per-mode paired comparison.
+
 This controller builds on PR #82's exact
 `531281544d96f8d49ce910444e5d383fe4823c5d` source. It runs in a separate clean
 checkout, leaving the running evening checkout and all source checkpoints

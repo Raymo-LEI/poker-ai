@@ -56,7 +56,7 @@ class Agent:
     def observation(self, snapshot, context):
         # Same pre-softmax voluntary all-in mask as Stage 2 training/eval.
         # Absent settings leave the legal mask unchanged.
-        snap = mask_snapshot(self.guard.apply(snapshot), self.settings.get("botzone_native_allin_mask"))
+        snap = snapshot if self.settings.get('evening_online',{}).get('legal_only',False) else mask_snapshot(self.guard.apply(snapshot), self.settings.get("botzone_native_allin_mask"))
         batch = self.tokenizer.encode(snap)
         batch["match_ctx"] = np.asarray([list(context.as_dict(self.context_fields).values())], dtype=np.float32)
         return batch
@@ -91,6 +91,12 @@ class Agent:
         """
         from .search_game import PublicState
         from .search_belief import RangeError
+        evening=bool(self.settings.get('evening_v2',False))
+        profile=self.settings.get('evening_online',{})
+        guard_mode=profile.get('guard_mode','slim' if evening else 'legacy_full')
+        if guard_mode=='legacy_full' and evening and not profile.get('comparison_only',False):
+            raise ValueError('legacy full guard is comparison-only for Evening')
+        if guard_mode not in ('slim','legacy_full'):raise ValueError('invalid guard mode')
         self.search_request=request
         if amounts is None:
             public_state=PublicState.from_request(request,snapshot) if request is not None else PublicState.from_snapshot(snapshot)
@@ -101,10 +107,12 @@ class Agent:
                 my_id=snapshot.me_seat,dealer_id=1-snapshot.sb_seat,
                 total_win_chips=[context.hero_net_bb*100 if p==snapshot.me_seat else -context.hero_net_bb*100 for p in (0,1)],
                 history=list(snapshot.events),public_cards=list(snapshot.board_cards),my_chips=int(snapshot.me_stack))
-        mode,audit = blind_lock.choice(request,snapshot,lock_state) if (
-            self.deployment_guard["enabled"] and self.deployment_guard["victory_blind_lock_enabled"]) else (None,{})
-        if mode == "own" or (mode == "opponent_probe" and snapshot.street==0 and 1 in amounts):
-            action = 0 if mode == "own" else 1
+        use_lock=(evening and profile.get('mathematical_locks',True)) or (self.deployment_guard['enabled'] and self.deployment_guard['victory_blind_lock_enabled'])
+        mode,audit = blind_lock.choice(request,snapshot,lock_state) if use_lock else (None,{})
+        confirmed_sb=(mode=='opponent_confirmed' and snapshot.street==0 and snapshot.to_call==50 and not request.get('history') and 1 in amounts)
+        legacy_probe=(not evening and mode=='opponent_probe' and snapshot.street==0 and 1 in amounts)
+        if mode=='own' or confirmed_sb or legacy_probe:
+            action = 0 if mode=='own' else 1
             probs=np.zeros(5);probs[action]=1.
             self.last_guard=audit
             self.search_audit=dict(status="skipped",reason="blind_lock_"+mode)
@@ -119,32 +127,26 @@ class Agent:
             # Expected numeric/range failure is observable and NEVER a search pass.
             self.search_audit=dict(status="error_blueprint",error=type(exc).__name__,detail=str(exc))
             self.last_wizard="search=error_blueprint error="+type(exc).__name__+":"+str(exc)
-            if self.settings.get("strict_search",False):
+            if self.settings.get("strict_search",False) or (evening and snapshot.street==3):
                 raise
         active_evening=(self.settings.get('evening_v2',False) and snapshot.street>0 and
                         (self.search_audit.get('status')=='active' or self.search_audit.get('reason')=='current_hand_guaranteed_lock'))
-        if (safety and not active_evening and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot)>3.
+        if (safety and not evening and not active_evening and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot)>3.
                 and 1 in snapshot.legal_action_ids and 0<probs[4]<.05):
             probs[1]+=probs[4];probs[4]=0.
         before_guard=probs.copy()
-        guard_mode=self.settings.get('evening_online',{}).get('guard_mode','full')
-        if guard_mode not in ('full','slim'):raise ValueError('invalid postflop guard mode')
-        if active_evening:
+        if evening and guard_mode=='slim':
             probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context,search_active=True)
             self.last_guard['postflop_guard_mode']=guard_mode
-        elif snapshot.street>0 and guard_mode=='slim':
-            # Blind lock ran above. PublicState and the final executable-domain
-            # check retain stack/all-in legality; empirical edits are ablated.
-            self.last_guard={'postflop_guard_mode':'slim'}
         else:
             probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
         self.last_guard.update(audit)
-        if mode == "opponent_confirmed" and snapshot.street==0 and 1 in amounts:
+        if not evening and mode == "opponent_confirmed" and snapshot.street==0 and 1 in amounts:
             probs[1]+=probs[0];probs[0]=0.
             self.last_guard["opponent_lock_transfer"] = True
         changed=not np.allclose(before_guard,probs,atol=1e-14,rtol=0.)
         base_output="blueprint_fallback" if self.search_audit.get("status")=="error_blueprint" else self.search_audit.get("output","dcfr_average")
-        self.search_audit.update(final_output="empirical_guard_policy" if changed else base_output,
+        self.search_audit.update(final_output=("slim_safety_policy" if evening and guard_mode=='slim' else "empirical_guard_policy") if changed else base_output,
                                  guard_changed=changed)
         self.last_wizard += " final="+("empirical_guard" if changed else base_output)
         allowed=set(amounts)
@@ -428,7 +430,8 @@ def respond(agent, payload, safety=None):
     context, data = context_from_payload(payload)
     amounts = {a: snap.me_stack if r == -2 else min(snap.to_call, snap.me_stack) if a == 1 else max(r, 0)
                for a, r in responses.items()}
-    use_lock = agent.deployment_guard["enabled"] and agent.deployment_guard["victory_blind_lock_enabled"]
+    settings = getattr(agent,'settings',{})
+    use_lock = (settings.get('evening_v2',False) and settings.get('evening_online',{}).get('mathematical_locks',True)) or (agent.deployment_guard["enabled"] and agent.deployment_guard["victory_blind_lock_enabled"])
     lock_state = blind_lock.state_from_payload(payload) if use_lock else None
     action = agent.act(snap,context,safety=safety,amounts=amounts,request=request,lock_state=lock_state)
     if agent.last_guard.get("blind_lock") == "own":

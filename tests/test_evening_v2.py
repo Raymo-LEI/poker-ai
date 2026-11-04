@@ -201,12 +201,12 @@ def test_terminal_utility_expectation_and_symmetric_zero_sum():
     leaf=sol.tree.children[0].leaf
     hv,ov=sol.terminal(leaf,sol.rh,sol.ro)
     assert abs(np.dot(sol.rh,hv)+np.dot(sol.ro,ov))<1e-10
-    x=np.array([-30.,10.])
-    transformed=v._phi_blend(x,100,40,49)
-    sigma=1200.;lead=4000.
-    ref=.5*x+.5*(np.array([.5*(1+math.erf((lead+t*100)/(sigma*math.sqrt(2)))) for t in x])-.5*(1+math.erf(lead/(sigma*math.sqrt(2)))))*sigma/100
+    x=np.array([-3000.,1000.]);sigma=1200.;lead=400.
+    parameters=dict(lead=lead,sigma=sigma,remaining=10,own_budget=10000.,opponent_budget=10000.)
+    transformed=v.match_probability(x,parameters)
+    ref=np.array([.5*(1+math.erf((lead+t)/(sigma*math.sqrt(2)))) for t in x])
     np.testing.assert_allclose(transformed,ref)
-    assert abs(transformed.mean()-v._phi_blend(x.mean(),100,40,49))>1e-4
+    assert abs(transformed.mean()-v.match_probability(x.mean(),parameters))>1e-4
 
 
 def test_stats_budget_lock_and_rollback_gate():

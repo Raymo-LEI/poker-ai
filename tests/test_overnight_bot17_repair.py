@@ -61,23 +61,23 @@ def test_hand36_large_open_keeps_original_blueprint_fold(bundle):
     _,snap,amounts=case(bundle,36,241)
     raw=np.array([.485,.461,.017,.036,0]);raw/=raw.sum()
     config=guard_config(V102_R7_GUARD)
-    assert good_hand_blind_side(snap,config,lambda:.60) is None
-    final,info=apply_guard(snap,raw,config,lambda *a,**kw:.60,amounts)
+    assert good_hand_blind_side(snap,config,lambda:.60)=='bb'  # Old comparison rule remains reproducible.
+    final,info=apply_guard(snap,raw,config,lambda *a,**kw:.60,amounts,search_active=True)
     np.testing.assert_allclose(final,raw,atol=1e-15)
-    assert final[0]>.48 and final[1]<.47 and info['large_open_blueprint_preserved']
+    assert final[0]>.48 and final[1]<.47 and info['search_policy_preserved']
 
 
 @pytest.mark.parametrize('call',[219,220,241])
-def test_large_open_boundary_is_relative_to_big_blind(bundle,call):
+def test_slim_preflop_has_no_large_open_threshold(bundle,call):
     from dataclasses import replace
     _,snap,amounts=case(bundle,36,241)
     event=replace(snap.events[0],chips_added=call+50)
     snap=replace(snap,to_call=float(call),events=(event,),pot=float(200+call))
-    side=good_hand_blind_side(snap,guard_config(V102_R7_GUARD),lambda:.7)
-    assert side==('bb' if call<220 else None)
+    p,info=apply_search_guard(snap,np.array([.6,.4,0,0,0]))
+    np.testing.assert_allclose(p,[.6,.4,0,0,0])
 
 
-def test_hand17_full_combo_conditioning_reaches_direct_solver_and_folds(bundle):
+def test_hand17_full_combo_rnr_reaches_direct_solver_without_forced_fold(bundle):
     _,snap,_=case(bundle,17,16112,'match3')
     (rh,ro),audit=history_combo_ranges(snap,return_audit=True)
     assert rh.shape==ro.shape==(1081,) and ro.min()>0 and ro.max()>100*ro.min()
@@ -85,14 +85,13 @@ def test_hand17_full_combo_conditioning_reaches_direct_solver_and_folds(bundle):
     direct=solver.PublicSolver(snap,iterations=40,policy_only=True,check_raise=True).solve()
     at=next(i for i,h in enumerate(direct.hands) if frozenset(h)==frozenset(cfv.card(c) for c in snap.hole_cards))
     np.testing.assert_allclose(direct.ro,ro,atol=1e-15)
-    assert direct.average[at,direct.tree.labels.index(1)]<.01
-    assert direct.eq(direct.ro)[0][at]<snap.to_call/(snap.pot+snap.to_call)
+    assert audit['eta']==.5 and ro.min()>=.5/1081
     uniform=solver.PublicSolver(snap,opponent_range=np.ones(1081),iterations=40,policy_only=True).solve()
     assert uniform.average[at,uniform.tree.labels.index(1)]>.95
     assert abs(direct.trace['zero_sum_residual'])<1e-10
     final,info=apply_search_guard(snap,np.array([.032,.968,0,0,0]))
-    np.testing.assert_array_equal(final,[1.,0.,0.,0.,0.])
-    assert info['call_fuse']=='history_posterior_giant_allin'
+    np.testing.assert_array_equal(final,[.032,.968,0.,0.,0.])
+    assert info['call_fuse'] is None
 
 
 def test_range_inputs_ignore_opponent_cards_and_actual_hero_hole(bundle):
@@ -114,7 +113,6 @@ def test_giant_safety_preserves_nuts_and_does_not_treat_allin_calls_as_raises(bu
     nuts=replace(snap,hole_cards=('S2','H2'))
     p,info=apply_search_guard(nuts,np.array([.1,.9,0,0,0]))
     np.testing.assert_allclose(p,[.1,.9,0,0,0])
-    assert info['posterior_equity']==pytest.approx(1.)
     polar=history_combo_ranges(snap,return_audit=True)[1]['opponent_entropy']
     events=list(snap.events);events[-1]=replace(events[-1],to_call_before=events[-1].chips_added)
     calling=history_combo_ranges(replace(snap,events=tuple(events)),return_audit=True)[1]['opponent_entropy']
@@ -122,7 +120,7 @@ def test_giant_safety_preserves_nuts_and_does_not_treat_allin_calls_as_raises(bu
     stacks=list(snap.stacks);stacks[snap.me_seat]=100.
     short=replace(snap,stacks=tuple(stacks))
     _,short_info=apply_search_guard(short,np.array([.1,.9,0,0,0]))
-    assert short_info['pot_odds']==pytest.approx(100./(snap.pot-(snap.to_call-100.)+100.))
+    assert short_info['call_fuse'] is None
 
 
 def test_hand9_real_river_bluff_catch_and_runtime_guard_order(bundle,monkeypatch):
@@ -138,14 +136,16 @@ def test_hand9_real_river_bluff_catch_and_runtime_guard_order(bundle,monkeypatch
     assert agent.last_guard['search_policy_preserved']
 
 
-def test_hand17_actual_zip_policy_cannot_revive_giant_call(bundle,monkeypatch):
+def test_hand17_actual_zip_uses_terminal_match_utility_without_guard_override(bundle,monkeypatch):
     row,snap,amounts=case(bundle,17,16112,'match3')
     agent=bundle.agent
     monkeypatch.setattr(agent,'logits',lambda batch:np.log(np.maximum([.032,.968,0,0,0],1e-30))[None,:])
     ctx,_=bundle.runtime.context_from_payload({'requests':[row['request']]})
     p=agent.policy(snap,ctx,amounts=amounts,request=row['request'])
-    np.testing.assert_allclose(p,[1,0,0,0,0],atol=1e-12)
-    assert agent.last_guard['call_fuse']=='history_posterior_giant_allin'
+    mixed=.3*np.array([.032,.968,0,0,0])+.7*np.array(agent.last_evening['dcfr_average'])
+    np.testing.assert_allclose(p,mixed,atol=1e-12)
+    assert agent.last_guard['call_fuse'] is None
+    assert agent.search_audit['river_full_combo'] and agent.search_audit['terminal_match_utility']
 
 
 @pytest.mark.parametrize('street',[1,2,3])

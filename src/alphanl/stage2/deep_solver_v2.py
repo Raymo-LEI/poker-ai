@@ -152,7 +152,7 @@ def _groups(rank):
     return order, g0, g1
 
 
-def equity_vs(rank, c1, c2, weights, order, g0, g1):
+def equity_vs(rank, c1, c2, weights, order, g0, g1, return_ties=False):
     """Showdown equity of every hand against ``weights``, conflicts removed. O(K)."""
     weights = np.asarray(weights, dtype=np.float64)
     width = len(rank)
@@ -180,26 +180,45 @@ def equity_vs(rank, c1, c2, weights, order, g0, g1):
     mass = np.empty(width, dtype=np.float64)
     back[order] = equity
     mass[order] = den
+    if return_ties:
+        ties=np.empty(width,dtype=np.float64);ties[order]=tie_valid
+        return back,mass,ties
     return back, mass
 
 
+def match_parameters(snapshot,context):
+    """Future schedule plus a declared normal residual-score model (12BB/hand).
 
-def _phi_blend(delta_bb, blind, hero_net_bb, hands_played):
-    """Terminal-only zero-sum match objective; opponent receives its negative.
-
-    Normal CDF denominator is sigma*sqrt(2). No U(E[chips]) is used.
-    Labels always bypass this function and remain linear, zero-sum BB.
+    Exact match-win probability cannot be inferred from W/B/hands alone. These
+    are explicit model parameters; expectations at terminals are exact for
+    their W/T/L outcomes. Blind-lock boundaries and final-hand signs are exact.
     """
-    x = np.asarray(delta_bb, dtype=np.float64)
-    if hands_played is None or hero_net_bb is None:
-        return x
-    sigma = 1200.0 * math.sqrt(max(1, 50 - int(hands_played)))
-    lead = float(hero_net_bb) * blind
-    scale = sigma * math.sqrt(2.0)
-    erf = np.frompyfunc(math.erf, 1, 1)
-    after = .5 * (1 + np.asarray(erf((lead + x * blind) / scale),dtype=float))
-    before = .5 * (1 + math.erf(lead / scale))
-    return .5 * x + .5 * (after - before) * sigma / blind
+    if context is None:raise ValueError('match utility requires public match context')
+    blind=float(snapshot.big_blind)
+    meta=getattr(context,'public_match',None)
+    maximum=meta['maximum'] if meta else 50
+    hand=meta['hand'] if meta else int(context.hands_played)
+    remaining=max(0,maximum-hand-1)
+    if meta:
+        from .blind_lock import blind_budget
+        own=blind_budget(meta,meta['me'],False)
+        other=blind_budget(meta,1-meta['me'],False)
+    else:
+        bb=getattr(snapshot,'me_seat',0)!=getattr(snapshot,'sb_seat',1)
+        own=sum(blind if bb==(i%2==0) else .5*blind for i in range(1,remaining+1))
+        other=1.5*blind*remaining-own
+    return dict(lead=float(context.hero_net_bb)*blind,remaining=remaining,own_budget=float(own),
+                opponent_budget=float(other),sigma=12.*blind*math.sqrt(remaining),
+                sunk=max(0.,float(getattr(snapshot,'starting_stack',snapshot.me_stack+snapshot.pot/2))-snapshot.me_stack))
+
+
+def match_probability(delta_chips,parameters):
+    """P(win)+.5P(tie), with independent outcome evaluation before averaging."""
+    lead=parameters['lead']+np.asarray(delta_chips,dtype=np.float64)
+    if parameters['remaining']==0:return np.where(lead>0,1.,np.where(lead<0,0.,.5))
+    cdf=.5*(1.+np.asarray(np.frompyfunc(math.erf,1,1)(lead/(parameters['sigma']*math.sqrt(2.))),dtype=float))
+    return np.where(lead>parameters['own_budget'],1.,np.where(lead<-parameters['opponent_budget'],0.,cdf))
+
 
 
 def settle(pot, owed, hero_invest, opp_invest=None):
@@ -325,8 +344,6 @@ class PublicSolver:
         self.s = snapshot
         self.policy_only=bool(policy_only)
         self.board = tuple(sorted(_ev(c) for c in snapshot.board_cards))
-        if utility and len(self.board)<5:
-            raise ValueError("match utility requires terminal outcome distributions; expected chip CFVs cannot provide them")
         if (snapshot.big_blind<=0 or snapshot.pot<=0 or snapshot.to_call<0 or
             snapshot.to_call>snapshot.pot or min(snapshot.me_stack,snapshot.opp_stack)<0):
             raise ValueError("invalid public chip state")
@@ -370,8 +387,18 @@ class PublicSolver:
             self.tree.fallback=self.tree.strategy.copy()
         self.rootmass = (self.mass(self.ro),self.mass(self.rh))
         self.utility,self.context = utility,context
+        self.match=match_parameters(snapshot,context) if utility else None
+        self._utility_cache={}
+        if utility:
+            reference=float(snapshot.pot)/2-self.match['sunk']
+            self.cfv_match_offset=float(match_probability(reference,self.match))-.5
+            x=self.match['lead']+reference;sigma=self.match['sigma']
+            self.cfv_match_slope=(snapshot.big_blind*math.exp(-.5*(x/sigma)**2)/(sigma*math.sqrt(2*math.pi))
+                if sigma>0 and -self.match['opponent_budget']<=x<=self.match['own_budget'] else 0.)
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
-                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise),"range_audit":range_audit}
+                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise),"range_audit":range_audit,
+                      "terminal_match_utility":bool(utility),"utility_model":"normal_residual_score_with_blind_lock_boundaries" if utility else "linear_root_bb",
+                      "cfv_continuation":"first_order_root_tangent_not_U_of_mean" if utility else "linear_root_bb"}
         self.trace['match_prior'] = dict(self.match_profile, model='bounded-public-match-v1',
                                        response='restricted_nash_mixture', range='history_context_size_mixture')
         self._chance_cache = {}
@@ -399,8 +426,8 @@ class PublicSolver:
         z[z<1e-14] = 0.
         return z
 
-    def eq(self,w):
-        return equity_vs(self.rank,self.c1,self.c2,w,*self.groups)
+    def eq(self,w,ties=False):
+        return equity_vs(self.rank,self.c1,self.c2,w,*self.groups,return_ties=ties)
 
     def terminal(self,leaf,rh,ro):
         kind,h,o,p = leaf
@@ -411,9 +438,10 @@ class PublicSolver:
             # bet is refunded. Use the same centered baseline for both seats.
             value = (-h if kind=="fold0" else p0+o) / blind - p0/(2*blind)
             if self.utility:
-                sunk=max(0.,float(getattr(self.s,'starting_stack',self.s.me_stack+p0/2))-self.s.me_stack)
-                value += (p0/2-sunk)/blind
-                value = float(_phi_blend(value,blind,getattr(self.context,'hero_net_bb',None),getattr(self.context,'hands_played',None)))
+                delta=(-h if kind=='fold0' else p0+o)-self.match['sunk']
+                key=(kind,h,o,p)
+                if key not in self._utility_cache:self._utility_cache[key]=float(match_probability(delta,self.match))-.5
+                value=self._utility_cache[key]
             return value*self.mass(ro), -value*self.mass(rh)
         if len(self.board) < 5:
             return self.chance(leaf,rh,ro)
@@ -421,25 +449,19 @@ class PublicSolver:
         loss = (-h-p0/2)/blind
         tie = .5*(win+loss)
         if self.utility:
-            sunk=max(0.,float(getattr(self.s,'starting_stack',self.s.me_stack+p0/2))-self.s.me_stack)
-            shift=(p0/2-sunk)/blind
-            win,loss,tie = _phi_blend(np.array([win+shift,loss+shift,tie+shift]),blind,getattr(self.context,'hero_net_bb',None),getattr(self.context,'hands_played',None))
+            key=(kind,h,o,p)
+            if key not in self._utility_cache:
+                sunk=self.match['sunk']
+                delta=np.array([p+o-sunk,-h-sunk,.5*(p+o-h)-sunk])
+                self._utility_cache[key]=match_probability(delta,self.match)-.5
+            win,loss,tie=self._utility_cache[key]
         # Obtain W/T/L mass from the preserved grouping kernel. equity alone
         # suffices for linear chips. Nonlinear match utility needs separate ties.
         def payoff(w):
-            eq,z=self.eq(w)
+            if self.utility:eq,z,tm=self.eq(w,ties=True)
+            else:eq,z=self.eq(w)
             if not self.utility:
                 return z*(loss+(win-loss)*eq)
-            order,g0,g1=self.groups
-            # Tie mass is equity kernel with all other strength groups zeroed.
-            ws=w[order]; cs1=self.c1[order];cs2=self.c2[order]
-            pref=np.r_[0.,np.cumsum(ws)]
-            card=np.zeros((52,self.width+1))
-            np.add.at(card,(cs1,np.arange(1,self.width+1)),ws)
-            np.add.at(card,(cs2,np.arange(1,self.width+1)),ws)
-            np.cumsum(card,axis=1,out=card)
-            ties=pref[g1]-pref[g0]-(card[cs1,g1]-card[cs1,g0])-(card[cs2,g1]-card[cs2,g0])+ws
-            tm=np.empty(self.width);tm[order]=np.maximum(ties,0.)
             wins=eq*z-.5*tm
             return wins*win+tm*tie+np.maximum(z-wins-tm,0.)*loss
         hv=payoff(ro)
@@ -479,7 +501,8 @@ class PublicSolver:
 
     def chance(self,leaf,rh,ro):
         kind,h,o,p = leaf
-        if float(self.s.me_stack)-h<=1e-9 or float(self.s.opp_stack)-o<=1e-9:
+        if (float(self.s.me_stack)-h<=1e-9 or float(self.s.opp_stack)-o<=1e-9 or
+                (self.utility and self.match['remaining']==0)):
             return self.allin_chance(leaf,rh,ro)
         if self.weights is None:
             raise ValueError("non-river resolving requires validated CFV weights")
@@ -530,8 +553,14 @@ class PublicSolver:
             joint=float(np.dot(wh,zh))
             correction=(np.dot(wh,zh*vh)+np.dot(wo,zo*vo))/(2*joint) if joint>0 else 0.
             shift=(leafpot/2-h-float(self.s.pot)/2)/float(self.s.big_blind)
-            hv+=factor*zh*(vh-correction+shift)
-            ov+=factor*zo*(vo-correction-shift)
+            vh=vh-correction+shift;vo=vo-correction-shift
+            if self.utility:
+                # CFV heads contain only a chip first moment. Use a common
+                # root tangent in probability units, never claim U(E[X]) exact.
+                vh=self.cfv_match_offset+self.cfv_match_slope*vh
+                vo=-self.cfv_match_offset+self.cfv_match_slope*vo
+            hv+=factor*zh*vh
+            ov+=factor*zo*vo
         return hv,ov
 
     def walk(self,node,rh,ro,step,update=True,average=False):

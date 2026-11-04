@@ -46,11 +46,33 @@ def evaluate(releases,out,workers=24,benchmark_pairs=50,tournament_pairs=10,hand
     for (phase,name,opponent),scores in grouped.items():
         rows=[[scores[(pair,1)],scores[(pair,0)]] for pair in sorted({k[0] for k in scores})]
         stats=summarize(rows) if hands==50 else {'partial_protocol_only':True,'net_bb':rows}
+        stats['net_bb_pairs']=rows
         report['results'].setdefault(name,{}).setdefault(phase,{})[opponent]=stats
     report['runtime_ms']={'mean':float(np.mean(latency))*1000,'p99':float(np.percentile(latency,99))*1000,'n':len(latency)}
     report['total_played_hands']=len(payloads)*hands
     cfv.atomic_json(out/'summary.json',report)
     return report
+
+
+def compare_guards(report,roles):
+    """Paired EV/win-rate differences on identical 50-hand deck pairs."""
+    from alphanl.cfr.evaluation import mean_interval
+    result={}
+    for role in roles:
+        by_mode={}
+        for mode in ('slim','legacy_full'):
+            cells=report['results'][role+'_'+mode]['tournament']
+            by_mode[mode]=np.concatenate([np.asarray(cells[name]['net_bb_pairs']) for name in TOURNAMENT])
+        slim,old=by_mode['slim'],by_mode['legacy_full']
+        hands=report['hands_per_match']
+        ev=mean_interval((slim-old).mean(axis=1)/hands*1000.)
+        win=mean_interval(((slim>0).astype(float)-(old>0).astype(float)).mean(axis=1))
+        result[role]=dict(matches_per_mode=int(slim.size),duplicate_pairs=int(len(slim)),
+            hands_per_match=hands,paired_ev_gain_mbb_per_hand=ev,paired_win_rate_gain=win,
+            slim_ev_mbb_per_hand=float(slim.mean()/hands*1000.),legacy_ev_mbb_per_hand=float(old.mean()/hands*1000.),
+            slim_win_rate=float((slim>0).mean()),legacy_win_rate=float((old>0).mean()),
+            improvement_demonstrated=bool(hands==50 and ev['ci95'] and win['ci95'] and ev['ci95'][0]>0 and win['ci95'][0]>0))
+    return result
 
 
 def policy_evolution(releases,count=32):

@@ -1,5 +1,10 @@
 # V22 bot17 audit repairs
 
+Historical audit-patch record. The later [clean architecture](CLEAN_ARCHITECTURE.md)
+supersedes its giant-call fuse and individual preflop threshold patch. Current
+inference uses Slim safety and solver-level terminal utility/RNR inputs; the
+old Hand #17 forced-fold expectation is intentionally no longer a gate.
+
 The supplied audit identifies the actually deployed bot as V22,
 `release=V22_SEARCH_LOCK_20261104`, with V14-equivalent weights and legacy
 search/guard ordering. The uniform-range Evening result was an offline

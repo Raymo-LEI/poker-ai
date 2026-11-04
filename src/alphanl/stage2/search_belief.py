@@ -9,7 +9,7 @@ class RangeError(ValueError):
     pass
 
 
-HISTORY_RANGE_MODEL = 'public-combo-size-bayes-v1'
+HISTORY_RANGE_MODEL = 'public-combo-size-uniform-mixture-v2'
 
 
 def _percentiles(rank):
@@ -43,7 +43,7 @@ def _event_strength(board, prefix):
     return _percentiles(rank if len(board) == len(prefix) else solver.pack_many(hands, prefix))
 
 
-def history_combo_ranges(snapshot, return_audit=False):
+def history_combo_ranges(snapshot, return_audit=False, eta=.5):
     """Smooth public observation model, on complete board-legal combo support.
 
     Conditions on both players' public actions, including preflop size. Each
@@ -54,6 +54,8 @@ def history_combo_ranges(snapshot, return_audit=False):
     """
     from . import deep_solver_v2 as solver
     from .cfv import card
+    eta=float(eta)
+    if not np.isfinite(eta) or not 0<=eta<=.5:raise RangeError('size-range eta must be between 0 and .5')
     chronological = tuple(card(c) for c in snapshot.board_cards)
     board = tuple(sorted(chronological))
     hands, _, _ = solver._public(board)
@@ -108,7 +110,10 @@ def history_combo_ranges(snapshot, return_audit=False):
         if aggressive and owed>0:aggressive_streets[player].add(street)
     mass = np.exp(logmass - logmass.max(axis=1, keepdims=True))
     mass /= mass.sum(axis=1, keepdims=True)
+    size_entropy=float(-np.dot(mass[1],np.log(mass[1])))
+    mass[1]=(1.-eta)/len(hands)+eta*mass[1]
     audit = dict(model=HISTORY_RANGE_MODEL, support=len(hands), conditioned_actions=conditioned,
+                 eta=eta,uniform_combo_floor=(1.-eta)/len(hands),size_entropy=size_entropy,
                  opponent_entropy=float(-np.dot(mass[1], np.log(mass[1]))),
                  opponent_max_mass=float(mass[1].max()))
     result = (mass[0], mass[1])

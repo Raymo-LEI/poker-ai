@@ -1,5 +1,21 @@
 # Local validation
 
+After integration with main PR #84, the complete affected regression passed
+**222 tests in 179.91s**. All **25** portable source modules parsed with Python
+3.6 grammar; the development ZIP was regenerated. The production profile
+explicitly disables the separate HUD prior to preserve one size mixture.
+The launch handoff omits `--deadline`: 8.5 target hours and the 9-hour hard
+watchdog are relative to launch, with no absolute morning cutoff.
+
+Latest clean-architecture acceptance: **188 passed in 184.63s**, followed by
+**65 passed in 6.43s** including the two added own/opponent-lock and legal-only
+preflop cases. The actual 200-complete-matches-per-mode study and its negative
+result are documented in [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md) and
+`CLEAN_LOCAL_VALIDATION.json`. Earlier audit-patch behavior below is historical.
+After aligning teacher rollout masks to the same authoritative legal-only
+domain, the affected suites passed **142 tests in 28.81s**, including the new
+rollout-domain assertion.
+
 The later V22/bot17 fixes are documented in [BOT17_REPAIR.md](BOT17_REPAIR.md)
 and `BOT17_LOCAL_VALIDATION.json`: **175 passed in 167.62s**, plus **39 passed
 in 2.91s** after the final short-call refund refinement. The new suite contains
@@ -11,7 +27,8 @@ new 16-iteration river profile.
 The local host is macOS/arm64, using the existing isolated Python 3.11.17 /
 NumPy 2.4.6 / Torch environment and the actual verified 192/4/6 champion.
 OPENBLAS/OMP/MKL thread counts are one. No server training, checkpoint change,
-upload or deployment was performed by this development task.
+Botzone upload was performed by the local validation. Source-only server
+deployment is tracked separately; it does not start formal GPU training.
 
 The phase-two suite checks the new check-raise leaves against an independent
 chip-state ledger, including short stacks, all-in refunds and fold payoffs.

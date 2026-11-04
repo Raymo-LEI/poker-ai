@@ -1,0 +1,87 @@
+{
+  "kernel_cases": [
+    {
+      "board": [
+        "2s",
+        "3h",
+        "4d",
+        "9c",
+        "Ks"
+      ],
+      "sparse": false,
+      "max_absolute_error": 5.551115123125783e-16,
+      "reachable_mask_matches": true
+    },
+    {
+      "board": [
+        "2s",
+        "3h",
+        "4d",
+        "9c",
+        "Ks"
+      ],
+      "sparse": true,
+      "max_absolute_error": 2.220446049250313e-16,
+      "reachable_mask_matches": true
+    },
+    {
+      "board": [
+        "Ts",
+        "Js",
+        "Qs",
+        "Ks",
+        "As"
+      ],
+      "sparse": false,
+      "max_absolute_error": 3.3306690738754696e-16,
+      "reachable_mask_matches": true
+    },
+    {
+      "board": [
+        "Ts",
+        "Js",
+        "Qs",
+        "Ks",
+        "As"
+      ],
+      "sparse": true,
+      "max_absolute_error": 0.0,
+      "reachable_mask_matches": true
+    },
+    {
+      "board": [
+        "2s",
+        "2h",
+        "2d",
+        "9c",
+        "9s"
+      ],
+      "sparse": false,
+      "max_absolute_error": 9.992007221626409e-16,
+      "reachable_mask_matches": true
+    },
+    {
+      "board": [
+        "2s",
+        "2h",
+        "2d",
+        "9c",
+        "9s"
+      ],
+      "sparse": true,
+      "max_absolute_error": 0.0,
+      "reachable_mask_matches": true
+    }
+  ],
+  "kernel_max_error": 9.992007221626409e-16,
+  "kuhn": {
+    "iterations": 5000,
+    "value": -0.05555318946277521,
+    "analytic_value": -0.05555555555555555,
+    "pure_best_response_upper": -0.05375000642435368,
+    "pure_best_response_lower": -0.05623533184152324,
+    "nash_conv_gap": 0.0024853254171695593,
+    "zero_sum_error": 5.551115123125783e-17
+  },
+  "forced_terminal_10bb": 10.0
+}

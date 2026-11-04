@@ -1,0 +1,364 @@
+{
+  "generator": "math_contract_v1",
+  "scope": "tiny_numerical_acceptance",
+  "rows": [
+    {
+      "contract": {
+        "schema": "combo_value_v1",
+        "units": "BB",
+        "baseline": "root_centered",
+        "players": "zero_sum",
+        "scale": 1.0,
+        "features": "combo_board_state_ranges",
+        "state_fields": "actor,first,pending,street_put_bb,round_raise_bb,bb_chips",
+        "buckets": "none_combo_support"
+      },
+      "street": 3,
+      "board": [
+        0,
+        14,
+        28,
+        46,
+        11
+      ],
+      "pot_bb": 10.0,
+      "stacks_bb": [
+        1.0,
+        1.0
+      ],
+      "street_put_bb": [
+        0.0,
+        0.0
+      ],
+      "round_raise_bb": 0.5,
+      "actor": 0,
+      "first": 0,
+      "pending": 2,
+      "bb_chips": 100.0,
+      "hands": [
+        [
+          [
+            3,
+            17
+          ],
+          [
+            25,
+            38
+          ]
+        ],
+        [
+          [
+            12,
+            23
+          ],
+          [
+            7,
+            20
+          ]
+        ]
+      ],
+      "ranges": [
+        [
+          0.4,
+          0.6
+        ],
+        [
+          0.9,
+          0.1
+        ]
+      ],
+      "targets": [
+        [
+          5.12424940132451,
+          3.9113808159262953
+        ],
+        [
+          -5.0132129047855045,
+          1.1536336422137183
+        ]
+      ],
+      "reachable": [
+        [
+          true,
+          true
+        ],
+        [
+          true,
+          true
+        ]
+      ],
+      "zero_sum_error": 8.881784197001252e-16,
+      "iterations": 100,
+      "continuation": "river_terminal",
+      "production_training": false
+    },
+    {
+      "contract": {
+        "schema": "combo_value_v1",
+        "units": "BB",
+        "baseline": "root_centered",
+        "players": "zero_sum",
+        "scale": 1.0,
+        "features": "combo_board_state_ranges",
+        "state_fields": "actor,first,pending,street_put_bb,round_raise_bb,bb_chips",
+        "buckets": "none_combo_support"
+      },
+      "street": 3,
+      "board": [
+        0,
+        14,
+        28,
+        46,
+        11
+      ],
+      "pot_bb": 10.0,
+      "stacks_bb": [
+        1.0,
+        1.0
+      ],
+      "street_put_bb": [
+        0.0,
+        0.0
+      ],
+      "round_raise_bb": 0.5,
+      "actor": 0,
+      "first": 0,
+      "pending": 2,
+      "bb_chips": 100.0,
+      "hands": [
+        [
+          [
+            3,
+            17
+          ],
+          [
+            25,
+            38
+          ]
+        ],
+        [
+          [
+            12,
+            23
+          ],
+          [
+            7,
+            20
+          ]
+        ]
+      ],
+      "ranges": [
+        [
+          0.4,
+          0.6
+        ],
+        [
+          0.1,
+          0.9
+        ]
+      ],
+      "targets": [
+        [
+          5.906716524069836,
+          -4.7724145406963405
+        ],
+        [
+          -4.733767446456306,
+          1.0823765104838898
+        ]
+      ],
+      "reachable": [
+        [
+          true,
+          true
+        ],
+        [
+          true,
+          true
+        ]
+      ],
+      "zero_sum_error": 0.0,
+      "iterations": 100,
+      "continuation": "river_terminal",
+      "production_training": false
+    },
+    {
+      "contract": {
+        "schema": "combo_value_v1",
+        "units": "BB",
+        "baseline": "root_centered",
+        "players": "zero_sum",
+        "scale": 1.0,
+        "features": "combo_board_state_ranges",
+        "state_fields": "actor,first,pending,street_put_bb,round_raise_bb,bb_chips",
+        "buckets": "none_combo_support"
+      },
+      "street": 2,
+      "board": [
+        0,
+        14,
+        28,
+        46
+      ],
+      "pot_bb": 10.0,
+      "stacks_bb": [
+        1.0,
+        1.0
+      ],
+      "street_put_bb": [
+        0.0,
+        0.0
+      ],
+      "round_raise_bb": 0.5,
+      "actor": 0,
+      "first": 0,
+      "pending": 2,
+      "bb_chips": 100.0,
+      "hands": [
+        [
+          [
+            3,
+            17
+          ],
+          [
+            25,
+            38
+          ]
+        ],
+        [
+          [
+            12,
+            23
+          ],
+          [
+            7,
+            20
+          ]
+        ]
+      ],
+      "ranges": [
+        [
+          0.4,
+          0.6
+        ],
+        [
+          0.9,
+          0.1
+        ]
+      ],
+      "targets": [
+        [
+          4.818069073945935,
+          4.061101736507545
+        ],
+        [
+          -4.998650129709973,
+          1.3489644525607551
+        ]
+      ],
+      "reachable": [
+        [
+          true,
+          true
+        ],
+        [
+          true,
+          true
+        ]
+      ],
+      "zero_sum_error": 8.881784197001252e-16,
+      "iterations": 100,
+      "continuation": "enumerated_river_betting",
+      "production_training": false
+    },
+    {
+      "contract": {
+        "schema": "combo_value_v1",
+        "units": "BB",
+        "baseline": "root_centered",
+        "players": "zero_sum",
+        "scale": 1.0,
+        "features": "combo_board_state_ranges",
+        "state_fields": "actor,first,pending,street_put_bb,round_raise_bb,bb_chips",
+        "buckets": "none_combo_support"
+      },
+      "street": 2,
+      "board": [
+        0,
+        14,
+        28,
+        46
+      ],
+      "pot_bb": 10.0,
+      "stacks_bb": [
+        1.0,
+        1.0
+      ],
+      "street_put_bb": [
+        0.0,
+        0.0
+      ],
+      "round_raise_bb": 0.5,
+      "actor": 0,
+      "first": 0,
+      "pending": 2,
+      "bb_chips": 100.0,
+      "hands": [
+        [
+          [
+            3,
+            17
+          ],
+          [
+            25,
+            38
+          ]
+        ],
+        [
+          [
+            12,
+            23
+          ],
+          [
+            7,
+            20
+          ]
+        ]
+      ],
+      "ranges": [
+        [
+          0.4,
+          0.6
+        ],
+        [
+          0.1,
+          0.9
+        ]
+      ],
+      "targets": [
+        [
+          3.445355499823272,
+          -3.4275134966572938
+        ],
+        [
+          -4.999009887402382,
+          1.309185429783674
+        ]
+      ],
+      "reachable": [
+        [
+          true,
+          true
+        ],
+        [
+          true,
+          true
+        ]
+      ],
+      "zero_sum_error": 7.771561172376096e-16,
+      "iterations": 100,
+      "continuation": "enumerated_river_betting",
+      "production_training": false
+    }
+  ]
+}

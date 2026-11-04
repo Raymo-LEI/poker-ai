@@ -1,4 +1,5 @@
 """Source bundled by export_stage2_agent.py; runtime requires only NumPy."""
+import hashlib
 import base64
 import io
 import json
@@ -16,6 +17,7 @@ from .allin_mask import mask_snapshot
 from .deployment_guard import guard_config, apply_guard
 from .equity import estimated_equity
 from . import reconstruct as judge
+from . import blind_lock
 from .forward import features_forward, _linear, _gelu
 
 class Agent:
@@ -37,6 +39,16 @@ class Agent:
         self.guard = CFRActionGuard.from_config(SimpleNamespace(**config))
         self.deployment_guard = guard_config(deployment_guard)
         self.last_guard = {}
+        self.release_id = self.settings.get("release_id", "development_unreleased")
+        identity = hashlib.sha256(json.dumps([self.config,self.settings,self.deployment_guard],sort_keys=True).encode())
+        from .search_math import CONTRACT
+        identity.update(CONTRACT.encode())
+        for name in sorted(self.weights):
+            array = np.ascontiguousarray(self.weights[name])
+            identity.update(name.encode());identity.update(str((array.dtype,array.shape)).encode());identity.update(array.tobytes())
+        self.decision_identity = identity.hexdigest()
+        self.search_audit = {"status":"not_started"}
+        self.last_wizard = "search=not_started"
         self.meta = {"arch": config["model"]}
         # Charge BLAS initialization to model loading, not the first decision.
         self.logits({**self.tokenizer.blank(), "match_ctx":np.zeros((1,len(self.context_fields)), dtype=np.float32)})
@@ -58,24 +70,75 @@ class Agent:
         logits = ref + self.settings["alpha"] * np.tanh(delta)
         return np.where(batch["legal_mask"] > .5, logits, np.float32(-1e9))
 
-    def act(self, snapshot, context, *, safety=False, rng=None, amounts=None):
-        row = self.logits(self.observation(snapshot, context))[0].astype(np.float64)
-        probs = np.exp(row - row.max()); probs /= probs.sum()
-        if (safety and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot) > 3. and 1 in snapshot.legal_action_ids
-                and 0 < probs[4] < .05):
-            probs[1] += probs[4]; probs[4] = 0.
-        probs, self.last_guard = apply_guard(snapshot, probs, self.deployment_guard, estimated_equity, amounts)
-        from .wizard import fuse as _wizard_fuse
-        probs = _wizard_fuse(self, snapshot, context, probs, amounts)
-        if getattr(self, "force_argmax", False):
+    def raw_observation(self, snapshot, context):
+        """Rule-legal policy for candidate-specific event likelihoods."""
+        batch = self.tokenizer.encode(snapshot)
+        batch["match_ctx"] = np.asarray([list(context.as_dict(self.context_fields).values())],dtype=np.float32)
+        return batch
+
+    def policy(self, snapshot, context, *, safety=False, amounts=None, request=None, lock_state=None):
+        """One final pipeline for respond(), Agent.act() and local evaluation.
+
+        Lock -> search -> one named empirical guard -> final domain validation.
+        A configured lock does not skip ordinary search. There is no post-guard fusion.
+        """
+        from .search_game import PublicState
+        from .search_belief import RangeError
+        if amounts is None:
+            amounts = {a:x for a,x in PublicState.from_snapshot(snapshot).actions().items()
+                       if a in snapshot.legal_action_ids}
+        if request is None:
+            request = dict(num_players=2,hand=int(context.hands_played),max_hand=50,
+                my_id=snapshot.me_seat,dealer_id=1-snapshot.sb_seat,
+                total_win_chips=[context.hero_net_bb*100 if p==snapshot.me_seat else -context.hero_net_bb*100 for p in (0,1)],
+                history=list(snapshot.events),public_cards=list(snapshot.board_cards),my_chips=int(snapshot.me_stack))
+        mode,audit = blind_lock.choice(request,snapshot,lock_state) if (
+            self.deployment_guard["enabled"] and self.deployment_guard["victory_blind_lock_enabled"]) else (None,{})
+        if mode == "own" or (mode == "opponent_probe" and 1 in amounts):
+            action = 0 if mode == "own" else 1
+            probs=np.zeros(5);probs[action]=1.
+            self.last_guard=audit
+            self.search_audit=dict(status="skipped",reason="blind_lock_"+mode)
+            self.last_wizard="search=skipped reason=blind_lock_"+mode
+            return probs
+        row=self.logits(self.observation(snapshot,context))[0].astype(np.float64)
+        probs=np.exp(row-row.max());probs/=probs.sum()
+        from .wizard import fuse
+        try:
+            probs=fuse(self,snapshot,context,probs,amounts)
+        except (RangeError,FloatingPointError) as exc:
+            # Expected numeric/range failure is observable and NEVER a search pass.
+            self.search_audit=dict(status="error_blueprint",error=type(exc).__name__,detail=str(exc))
+            self.last_wizard="search=error_blueprint error="+type(exc).__name__+":"+str(exc)
+            if self.settings.get("strict_search",False):
+                raise
+        if (safety and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot)>3.
+                and 1 in snapshot.legal_action_ids and 0<probs[4]<.05):
+            probs[1]+=probs[4];probs[4]=0.
+        before_guard=probs.copy()
+        probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
+        self.last_guard.update(audit)
+        if mode == "opponent_confirmed" and 1 in amounts:
+            probs[1]+=probs[0];probs[0]=0.
+            self.last_guard["opponent_lock_transfer"] = True
+        changed=not np.allclose(before_guard,probs,atol=1e-14,rtol=0.)
+        base_output="blueprint_fallback" if self.search_audit.get("status")=="error_blueprint" else "dcfr_average"
+        self.search_audit.update(final_output="empirical_guard_policy" if changed else base_output,
+                                 guard_changed=changed)
+        self.last_wizard += " final="+("empirical_guard" if changed else base_output)
+        allowed=set(amounts)
+        if any(p>0 and a not in allowed for a,p in enumerate(probs)) or not np.isclose(probs.sum(),1.):
+            raise ValueError("final policy violates executable domain")
+        return probs
+
+    def act(self, snapshot, context, *, safety=False, rng=None, amounts=None, request=None, lock_state=None):
+        probs=self.policy(snapshot,context,safety=safety,amounts=amounts,request=request,lock_state=lock_state)
+        if getattr(self,"force_argmax",False):
             return int(np.argmax(probs))
-        rng = random if rng is None else rng
-        draw, cumulative = rng.random(), 0.
-        for index, prob in enumerate(probs):
-            cumulative += prob
-            if draw < cumulative:
-                return index
-        return int(np.argmax(probs))
+        draw=(random if rng is None else rng).random()
+        active=np.flatnonzero(probs>0)
+        cumulative=np.cumsum(probs[active]);cumulative[-1]=1.
+        return int(active[np.searchsorted(cumulative,min(draw,np.nextafter(1.,0.)),side="right")])
 
 
 def card(value):
@@ -138,6 +201,39 @@ def _object(value):
     return json.loads(value) if isinstance(value, str) else value
 
 
+def _handoff_evidence(previous, response, current):
+    """Prove an unseen terminal Fold from exact public chip reconciliation.
+
+    Calls/showdowns cannot give exactly the pre-bet opposing contribution:
+    a legal positive bet requires a positive opposing call, and a tie nets 0.
+    One skipped BB hand has only an opposing initial SB Fold and earns 50.
+    """
+    old, new = blind_lock.public_meta(previous), blind_lock.public_meta(current)
+    if old is None or new is None or old["me"] != new["me"] or old["maximum"] != new["maximum"]:
+        return None, False
+    gap = new["hand"]-old["hand"]
+    valid = (gap in (1,2) and (old["dealer"]+gap)%2==new["dealer"]
+             and (gap!=2 or old["me"]!=old["dealer"]))
+    if not valid:
+        return None, False
+    skipped = gap == 2
+    if isinstance(response,bool) or not isinstance(response,int) or response == -1:
+        return None, skipped
+    snap, _ = request_snapshot(previous)
+    if snap.opp_stack <= 0 or not judge.judge_accepts(judge.reconstruct(previous),response):
+        return None, skipped
+    gain = new["scores"][new["me"]]-old["scores"][old["me"]]-(50 if skipped else 0)
+    opponent_invested = snap.starting_stack-snap.opp_stack
+    added = snap.me_stack if response == -2 else snap.to_call if response == 0 else response
+    if added > snap.to_call:
+        if snap.street > 0:
+            return "postflop_bet_fold" if gain == opponent_invested and gain > 0 else "postflop_bet_nonfold", skipped
+        return "preflop_bet_fold" if gain == opponent_invested and gain > 0 else "preflop_bet_nonfold", skipped
+    if (gain == opponent_invested and gain > 0 and snap.street==0 and not snap.events and snap.me_seat==snap.sb_seat and response==0):
+        return "preflop_free_fold", skipped
+    return None, skipped
+
+
 def context_from_payload(payload):
     """Replay cumulative judge requests, deduplicating per-hand histories.
 
@@ -147,18 +243,50 @@ def context_from_payload(payload):
     """
     requests = [_object(r) for r in payload["requests"]]
     saved = _object(payload.get("data") or {})
+    if (saved.get("format") == "stage2_agent_data_v1"
+            and int(requests[-1].get("hand", 0)) < saved.get("hand", -1)):
+        saved = {}  # A new 50-hand match must not inherit the previous opponent.
     if saved.get("format") == "stage2_agent_data_v1":
         ctx = MatchCtx.from_state_dict(saved["context"])
+        if "opp_postflop_bet_responses" not in saved["context"]:
+            ctx.station_evidence_complete = False
         hand, seen, last = saved["hand"], saved["seen"], saved["last"]
         known_showdown = saved.get("known_showdown", False)
         requests = [r for r in requests if int(r.get("hand", 0)) >= hand]
     else:
         ctx, hand, seen, last = MatchCtx(), -1, 0, None
+        first = requests[0]
+        meta = blind_lock.public_meta(first)
+        complete_start = (meta is not None and not first.get("public_cards")
+            and ((meta["hand"]==0 and len(first.get("history",[]))==(0 if meta["me"]!=meta["dealer"] else 1))
+                 or (meta["hand"]==1 and meta["me"]!=meta["dealer"] and not first.get("history"))))
+        if not complete_start:
+            ctx.station_evidence_complete = False
+        elif meta["hand"] == 1:
+            # A complete stream starting at our second-hand SB query proves
+            # the opponent folded its initial SB without giving our BB a turn.
+            ctx.opp_preflop_action_opportunities += 1
         known_showdown = False
     for req in requests:
         current = int(req.get("hand", 0))
         if current != hand:
             if ctx.active:
+                response = saved.get("response") if saved.get("last") == last else None
+                if response is None:
+                    historical_responses = payload.get("responses") or []
+                    for index, original in enumerate(payload["requests"]):
+                        if index < len(historical_responses) and _object(original) == last:
+                            response = historical_responses[index]
+                evidence, skipped = _handoff_evidence(last,response,req)
+                if response is None:
+                    ctx.station_evidence_complete = False
+                if skipped:
+                    ctx.opp_preflop_action_opportunities += 1
+                if evidence in ("postflop_bet_fold", "postflop_bet_nonfold"):
+                    ctx.opp_postflop_bet_responses += 1
+                    ctx.opp_postflop_bet_folds += int(evidence == "postflop_bet_fold")
+                elif evidence in ("preflop_bet_fold","preflop_bet_nonfold","preflop_free_fold"):
+                    ctx.opp_preflop_action_opportunities += 1
                 old_total = last.get("total_win_chips", [0,0])[last["my_id"]]
                 new_total = req.get("total_win_chips", [0,0])[req["my_id"]]
                 # We cannot infer showdown from missing terminal actions.
@@ -174,21 +302,32 @@ def context_from_payload(payload):
             ctx.observe_action(event)
         if len(snap.events) >= seen:
             seen, last, known_showdown = len(snap.events), req, False
-    return ctx, {"format":"stage2_agent_data_v1", "context":ctx.state_dict(), "hand":hand, "seen":seen, "last":last, "known_showdown":known_showdown}
+    # Deployment-only public score/schedule; not serialized into neural HUD columns.
+    ctx.public_match = blind_lock.public_meta(requests[-1])
+    return ctx, {"format":"stage2_agent_data_v1", "context":ctx.state_dict(), "hand":hand, "seen":seen, "last":last, "known_showdown":known_showdown, "opp_shove_count":ctx.opp_shove_count}
 
 
 def respond(agent, payload, safety=None):
     safety = SAFETY if safety is None else safety
     request = _object(payload["requests"][-1])
-    decision_key = json.dumps([request.get("hand", 0), request["my_id"], request["my_cards"], request["history"], request["public_cards"]], sort_keys=True)
+    decision_key = json.dumps([agent.decision_identity,agent.release_id,request],sort_keys=True)
     saved = _object(payload.get("data") or {})
     if saved.get("decision_key") == decision_key and "response" in saved:
-        return {"response":saved["response"], "data":saved}
+        if not judge.judge_accepts(judge.reconstruct(request),saved["response"]):
+            raise ValueError("cached response is no longer legal")
+        agent.last_guard=saved.get("decision_guard",{})
+        agent.search_audit=dict(status="cached",original=saved.get("search_audit",{}))
+        agent.last_wizard="search=cached original="+saved.get("search_audit",{}).get("status","unknown")
+        return {"response":saved["response"],"data":saved}
     snap, responses = request_snapshot(request)
     context, data = context_from_payload(payload)
     amounts = {a: snap.me_stack if r == -2 else min(snap.to_call, snap.me_stack) if a == 1 else max(r, 0)
                for a, r in responses.items()}
-    action = agent.act(snap, context, safety=safety, amounts=amounts)
+    use_lock = agent.deployment_guard["enabled"] and agent.deployment_guard["victory_blind_lock_enabled"]
+    lock_state = blind_lock.state_from_payload(payload) if use_lock else None
+    action = agent.act(snap,context,safety=safety,amounts=amounts,request=request,lock_state=lock_state)
+    if agent.last_guard.get("blind_lock") == "own":
+        responses[0] = -1  # judge-legal free fold is a match-objective constraint
     response = responses[action]
     if not judge.judge_accepts(judge.reconstruct(request), response):
         raise ValueError("export selected judge-illegal response")
@@ -201,6 +340,11 @@ def respond(agent, payload, safety=None):
         snap.to_call, snap.me_stack, snap.legal_action_ids))
     data.update(context=context.state_dict(), seen=len(snap.events)+1, decision_key=decision_key,
                 response=int(response), known_showdown=action == 1 and (snap.street == 3 or snap.opp_stack == 0 or chips == snap.me_stack))
+    data["search_audit"] = agent.search_audit
+    data["decision_guard"] = agent.last_guard
+    if use_lock:
+        data["blind_lock"] = blind_lock.commit_response(request, int(response), lock_state)
+        data["decision_guard"] = agent.last_guard
     return {"response":int(response), "data":data}
 
 

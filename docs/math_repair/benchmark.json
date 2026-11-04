@@ -1,0 +1,68 @@
+{
+  "source_sha256": {
+    "src/alphanl/stage2/search_math.py": "8a06061858fa3b6112c8e18257e5647ea7ea2360b66ea3deba2d462bb6d3aab2",
+    "src/alphanl/stage2/search_game.py": "651304882d448ece3533b4538e2ad205e8087ef2b661b49314bb9ec4560f5db5",
+    "src/alphanl/stage2/search_belief.py": "c1f82e1ba38d24462278b5dbf663439719f04604156c1a24da568f7aaa46d573",
+    "src/alphanl/stage2/search_preflop.py": "0792ab63727a74b3a89b8b4e80d0628f735fef0f19e544d05dae4f7cbbb4d9be",
+    "src/alphanl/stage2/search_values.py": "4da688d30f5b58baf2ab9430985716234d872a2726beeff07e7258dbd452e2c2",
+    "src/alphanl/stage2/portable_runtime.py": "9551abcd4860bccabe119c629c6083a63afb3a1d84356aaa8c8f94274ceab4a4",
+    "src/alphanl/stage2/wizard.py": "651cdab50f3afb6a5d31e8d74b70e3bda4f0258635c1521f922968b781328e0f",
+    "src/alphanl/stage2/export.py": "6233c569f9803f2a5b7d12c45ed2f64cdf3fd4688491fe4cd50e20fd8ad54def",
+    "botzone_bots/stage2/botzone_entry.py": "3df1dd45f6d5b37ba68e7830095d23a1fddf3cf10b0efa9ccd34d432fe392853"
+  },
+  "weights_sha256": "59e436f18b4dfd636a6bdbedf4da83025233f2d966d22cf3fca130449e63ce63",
+  "environment": {
+    "python": "3.12.15",
+    "numpy": "2.5.4",
+    "platform": "macOS-26.6-arm64-arm-64bit",
+    "threads": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1"
+    }
+  },
+  "kernel": {
+    "median_ms": 0.07818697486072779,
+    "min_ms": 0.07341592572629452,
+    "max_ms": 0.22662500850856304,
+    "repeats": 100
+  },
+  "kernel_max_dense_error": 4.440892098500626e-16,
+  "solve_warm_ranks": {
+    "median_ms": 167.55554196424782,
+    "min_ms": 161.8662920081988,
+    "max_ms": 171.62787495180964,
+    "repeats": 3
+  },
+  "solve_definition": "full1081,24 iterations,raise_cap2,includes tree; excludes model/history/rank build",
+  "solve_cold_ranks": {
+    "median_ms": 177.5144999846816,
+    "min_ms": 172.87445906549692,
+    "max_ms": 178.51437500212342,
+    "repeats": 3
+  },
+  "process_model_history_decision": {
+    "median_ms": 10271.783125004731,
+    "min_ms": 10034.828040981665,
+    "max_ms": 10764.667624956928,
+    "repeats": 3
+  },
+  "process_evidence": {
+    "debug": "py3.12.15 np2.5.4 ok V15_MODEL.npz release=V15_R15_DEEP_REBEL_20261104 source=development_unreleased search=active solver=public_tree_dcfr_v1 value=river_full1081 schema=combo_value_v1 output=dcfr_average iter=24 legacy=rejected final=empirical_guard guard=empirical {\"pruned\":[],\"active_cap\":true,\"call_fuse\":null,\"passive_probe\":false,\"forced_call\":false,\"opp_shove_count\":0,\"effective_shove\":false,\"remapped_mass\":0.002605304114805767,\"equity\":0.26953125,\"shove_route\":\"free_renormalize\",\"lock_revoked\":true} 10733ms",
+    "search_audit": {
+      "status": "active",
+      "solver": "public_tree_dcfr_v1",
+      "value": "river_full1081",
+      "output": "dcfr_average",
+      "iterations": 24,
+      "raise_cap": 2,
+      "observation": "blueprint_neutral_context_size_coarsened",
+      "legacy_rejected": true,
+      "zero_sum_error": 3.830936218399853e-17,
+      "final_output": "empirical_guard_policy",
+      "guard_changed": true
+    },
+    "response": 100,
+    "weights": "/Users/runyuanlei/Documents/ChatGPT/Poker/UPLOAD_V15_R15_DEEP_REBEL_20261104/V15_MODEL.npz",
+    "source": "development_unreleased from this checkout; not the audited V15 ZIP"
+  }
+}

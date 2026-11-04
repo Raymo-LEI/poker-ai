@@ -1,0 +1,166 @@
+{
+  "generator": "math_contract_v1",
+  "scope": "tiny_numerical_acceptance",
+  "kind": "summary_of_generated_data",
+  "full_data_sha256": "5ac7475594b97e3d44d14f5eb8c7df99550170c95d11c04a8edfef397e4dce7b",
+  "depths": [
+    {
+      "schema": "preflop_public_history_v1",
+      "value_contract": {
+        "schema": "combo_value_v1",
+        "units": "BB",
+        "baseline": "root_centered",
+        "players": "zero_sum",
+        "scale": 1.0,
+        "features": "combo_board_state_ranges",
+        "state_fields": "actor,first,pending,street_put_bb,round_raise_bb,bb_chips",
+        "buckets": "none_combo_support"
+      },
+      "stack_bb": 100,
+      "continuation": "sampled_checkdown",
+      "runouts": 8,
+      "support": [
+        [
+          [
+            "5s",
+            "6h"
+          ],
+          [
+            "Ah",
+            "Ad"
+          ]
+        ],
+        [
+          [
+            "As",
+            "Qh"
+          ],
+          [
+            "9s",
+            "9h"
+          ]
+        ]
+      ],
+      "range_weights": [
+        [
+          0.4,
+          0.6
+        ],
+        [
+          0.7,
+          0.3
+        ]
+      ],
+      "iterations": 100,
+      "zero_sum_error": 1.1102230246251565e-16,
+      "production_chart": false,
+      "nodes": 92,
+      "root": {
+        "history": [],
+        "player": 0,
+        "actions": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "strategy": [
+          [
+            0.20006101716027389,
+            0.07433844596003511,
+            0.03391378150221682,
+            0.03391378150221682,
+            0.6577729738752573
+          ],
+          [
+            5.911038865080537e-07,
+            0.16559156170408074,
+            0.013896104707786974,
+            0.013896104707786974,
+            0.8066156377764588
+          ]
+        ]
+      }
+    },
+    {
+      "schema": "preflop_public_history_v1",
+      "value_contract": {
+        "schema": "combo_value_v1",
+        "units": "BB",
+        "baseline": "root_centered",
+        "players": "zero_sum",
+        "scale": 1.0,
+        "features": "combo_board_state_ranges",
+        "state_fields": "actor,first,pending,street_put_bb,round_raise_bb,bb_chips",
+        "buckets": "none_combo_support"
+      },
+      "stack_bb": 200,
+      "continuation": "sampled_checkdown",
+      "runouts": 8,
+      "support": [
+        [
+          [
+            "5s",
+            "6h"
+          ],
+          [
+            "Ah",
+            "Ad"
+          ]
+        ],
+        [
+          [
+            "As",
+            "Qh"
+          ],
+          [
+            "9s",
+            "9h"
+          ]
+        ]
+      ],
+      "range_weights": [
+        [
+          0.4,
+          0.6
+        ],
+        [
+          0.7,
+          0.3
+        ]
+      ],
+      "iterations": 100,
+      "zero_sum_error": 1.1102230246251565e-16,
+      "production_chart": false,
+      "nodes": 92,
+      "root": {
+        "history": [],
+        "player": 0,
+        "actions": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "strategy": [
+          [
+            0.3220102911336934,
+            0.15453602779457062,
+            0.1041085687590452,
+            0.1041085687590452,
+            0.31523654355364555
+          ],
+          [
+            5.911038865080538e-07,
+            0.13012608562740985,
+            0.19533608584260653,
+            0.19533608584260653,
+            0.4792011515834905
+          ]
+        ]
+      }
+    }
+  ]
+}

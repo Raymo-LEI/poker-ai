@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field, asdict
 import math
 from typing import Optional
+from .shove_threat import shove_threat
 
 CONTEXT_FIELDS = (
     "hand_progress", "bankroll_diff", "vpip", "pfr", "three_bet",
@@ -38,6 +39,17 @@ class MatchCtx:
     postflop_bets: set = field(default_factory=set)
     last_preflop_aggressor_is_me: Optional[bool] = None
     flop_opponent_acted: bool = False
+    # Deployment-only evidence. These are NOT extra neural HUD input columns.
+    opp_shove_count: int = 0
+    opp_effective_shove_count: int = 0
+    opp_preflop_effective_shove_count: int = 0
+    opp_preflop_action_opportunities: int = 0
+    opp_postflop_bet_responses: int = 0
+    opp_postflop_bet_folds: int = 0
+    station_evidence_complete: bool = True
+    opp_regular_postflop_actions: int = 0
+    opp_regular_postflop_bets: int = 0
+    opp_postflop_checks: int = 0
 
     def begin_hand(self):
         if self.active or self.hands_played >= 50:
@@ -72,6 +84,20 @@ class MatchCtx:
             if event.action_type == "check":
                 self.opponent_checks.add(event.street)
         if not event.actor_is_me:
+            all_in = event.chips_added > 0 and event.chips_added == event.stack_before
+            if (all_in and aggressive and event.chips_added > 5000.
+                    and event.chips_added > event.pot_before):
+                self.opp_shove_count += 1
+            if shove_threat(event, allow_near=True):
+                self.opp_effective_shove_count += 1
+                if event.street == 0:
+                    self.opp_preflop_effective_shove_count += 1
+            if event.street == 0:
+                self.opp_preflop_action_opportunities += 1
+            if event.street > 0 and not all_in:
+                self.opp_regular_postflop_actions += 1
+                self.opp_regular_postflop_bets += int(aggressive)
+                self.opp_postflop_checks += int(event.action_type == "check")
             if event.street == 0:
                 self.vpip |= event.chips_added > 0
                 self.pfr |= aggressive
@@ -83,6 +109,9 @@ class MatchCtx:
                     self._record("fold_to_preflop_raise", event.action_type == "fold")
                     self.preflop_fold_seen = True
             else:
+                if event.to_call_before > 0:
+                    self.opp_postflop_bet_responses += 1
+                    self.opp_postflop_bet_folds += int(event.action_type == "fold")
                 # Aggression frequency = bets/raises / all voluntary actions, folds included.
                 self._record(CONTEXT_FIELDS[5 + event.street], aggressive)
                 if event.to_call_before > 0:
@@ -148,4 +177,9 @@ class MatchCtx:
         if (set(value.trap_successes) != set(TRAP_PRIORS) or set(value.trap_opportunities) != set(TRAP_PRIORS)
                 or any(not math.isfinite(value.trap_successes[k]) or not 0 <= value.trap_successes[k] <= value.trap_opportunities[k] for k in TRAP_PRIORS)):
             raise ValueError("invalid trap context counters")
+        counters = (value.opp_shove_count, value.opp_effective_shove_count, value.opp_regular_postflop_actions,
+                    value.opp_regular_postflop_bets, value.opp_postflop_checks)
+        if (any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in counters)
+                or value.opp_regular_postflop_bets + value.opp_postflop_checks > value.opp_regular_postflop_actions):
+            raise ValueError("invalid deployment context counters")
         return value

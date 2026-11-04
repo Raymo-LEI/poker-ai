@@ -13,6 +13,7 @@ import sys
 import time
 
 WEIGHTS_NAME = "stage2_model.npz"
+RELEASE_ID = "development_unreleased"
 WEIGHTS_FORMAT = "stage2_botzone_v1"
 DEBUG_LIMIT = 1000
 
@@ -47,12 +48,16 @@ def load_agent(runtime):
         weights = {key: archive[key] for key in archive.files if key != "meta_json"}
     if meta.get("format") != WEIGHTS_FORMAT:
         raise ValueError("unsupported weights format %r" % meta.get("format"))
+    if RELEASE_ID != "development_unreleased" and meta.get("deployment_release") != RELEASE_ID:
+        raise ValueError("source/model release contract mismatch")
     config = meta.get("deployment_guard")
     override = os.environ.get("POKER_STAGE2_GUARD_CONFIG")
     if override:
         with open(override) as handle:
             config = json.load(handle)
     agent = runtime.Agent(weights, meta["config"], meta["settings"], meta["numeric_version"], config)
+    agent.release_id = meta.get("deployment_release", "development_unreleased")
+    agent.decision_identity += ":" + agent.release_id
     return agent, bool(meta.get("safety", False)), path
 
 
@@ -93,11 +98,11 @@ def main():
         from stage2_runtime import runtime
         agent, safety, path = load_agent(runtime)
         result = runtime.respond(agent, payload, safety)
-        note = "ok " + os.path.basename(path)
-        if agent.deployment_guard["enabled"]:
-            note += " guard=v10 " + json.dumps(agent.last_guard, separators=(",", ":"))
+        note = "ok " + os.path.basename(path) + " release=" + agent.release_id + " source=" + RELEASE_ID
         if getattr(agent, "last_wizard", ""):
             note += " " + agent.last_wizard
+        if agent.deployment_guard["enabled"]:
+            note += " guard=empirical " + json.dumps(agent.last_guard, separators=(",", ":"))
     except Exception as exc:
         note = "fallback %s: %s" % (type(exc).__name__, exc)
         print(note, file=sys.stderr)

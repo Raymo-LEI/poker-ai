@@ -5,7 +5,7 @@ for _key in ('OPENBLAS_NUM_THREADS','OMP_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR
 import argparse
 import hashlib
 import importlib
-import importlib.util
+import importlib.machinery
 import json
 from multiprocessing.connection import Listener,Client
 from pathlib import Path
@@ -15,7 +15,6 @@ import resource
 import sys
 import threading
 import time
-import types
 import zipfile
 import numpy as np
 
@@ -25,44 +24,103 @@ def peak_rss_mb():
     return float(value)/(1024.**2 if sys.platform=='darwin' else 1024.)
 
 
+class _ZipSourceLoader:
+    """Execute packaged stage2_runtime modules and serve their original bytes.
+
+    ``validate_embedded`` hashes sources through ``__loader__.get_data(__file__)``.
+    ``__file__`` stays ``<zip>/stage2_runtime/<name>.py`` so that check is unchanged.
+    """
+    def __init__(self,archive,files):
+        self.archive=archive;self.files=files
+    def create_module(self,spec):
+        return None
+    def exec_module(self,module):
+        member=module.__spec__.loader_state
+        module.__file__=self.archive+'/'+member
+        module.__loader__=self
+        source=self.files.get(member)
+        if source is None:
+            if member.endswith('/__init__.py'):return
+            raise ImportError(member)
+        exec(compile(source,member,'exec'),module.__dict__)
+    def get_data(self,pathname):
+        path=str(pathname);prefix=self.archive+'/'
+        if not path.startswith(prefix):raise OSError(pathname)
+        try:return self.files[path[len(prefix):]]
+        except KeyError:raise OSError(pathname) from None
+
+
+class _ZipSourceFinder:
+    """Resolve one hashed package from zip members already read into memory."""
+    def __init__(self,package,loader):
+        self.package=package;self.loader=loader
+    def _spec(self,fullname,member,*,package=False):
+        # has_location is what makes importlib copy origin onto __file__.
+        spec=importlib.machinery.ModuleSpec(fullname,self.loader,origin=self.loader.archive+'/'+member,is_package=package)
+        spec.has_location=True
+        spec.loader_state=member
+        if package:spec.submodule_search_locations=[self.loader.archive+'/stage2_runtime']
+        return spec
+    def find_spec(self,fullname,path,target=None):
+        if fullname==self.package:return self._spec(fullname,'stage2_runtime/__init__.py',package=True)
+        prefix=self.package+'.'
+        if not fullname.startswith(prefix):return None
+        short=fullname[len(prefix):]
+        if not short.isidentifier():return None
+        member='stage2_runtime/'+short+'.py'
+        if member not in self.loader.files:return None
+        return self._spec(fullname,member)
+
+
+def _drop_loaded_package(name):
+    sys.meta_path[:]=[finder for finder in sys.meta_path if getattr(finder,'package',None)!=name]
+    prefix=name+'.'
+    for key in list(sys.modules):
+        if key==name or key.startswith(prefix):del sys.modules[key]
+
+
 def load_modules(source):
-    """Import ZIP modules by name. Sorted archives are not dependency order."""
-    source=Path(source)
-    texts={}
-    with zipfile.ZipFile(source) as archive:
-        for filename in archive.namelist():
-            if not filename.startswith('stage2_runtime/') or not filename.endswith('.py'):continue
-            short=Path(filename).stem
-            if short!='__init__':texts[short]=archive.read(filename)
+    """Import every packaged module. Relative imports do not depend on zip order.
+
+    A meta-path finder loads a dependency the first time a module asks for it,
+    and each module is registered before its body runs. Alphabetical member
+    order, notably ``allin_mask`` importing ``equity``, therefore works.
+    ``__file__`` and ``get_data`` stay available for ``validate_embedded``.
+    """
+    source=Path(source);archive=str(source)
     name='_server_numpy_'+hashlib.sha256(source.read_bytes()).hexdigest()[:12]
     package=sys.modules.get(name)
-    if package is None:
-        package=types.ModuleType(name);package.__path__=[str(source)];package.__package__=name
-        sys.modules[name]=package
-        class Loader:
-            def __init__(self,short):self.short=short
-            def create_module(self,spec):return None
-            def exec_module(self,module):
-                filename='stage2_runtime/%s.py'%self.short
-                exec(compile(texts[self.short],filename,'exec'),module.__dict__)
-        class Finder:
-            def find_spec(self,fullname,path,target=None):
-                prefix=name+'.'
-                if not fullname.startswith(prefix):return None
-                short=fullname[len(prefix):]
-                if short not in texts:return None
-                return importlib.util.spec_from_loader(fullname,Loader(short))
-        sys.meta_path.insert(0,Finder())
-    modules={}
-    for short in texts:
-        module=importlib.import_module(name+'.'+short)
-        setattr(package,short,module);modules[short]=module
-    return modules
+    if package is not None and getattr(package,'_server_numpy_ready',False):
+        return package._server_numpy_modules
+    if package is not None:_drop_loaded_package(name)
+    files={}
+    with zipfile.ZipFile(source) as archive_file:
+        for filename in archive_file.namelist():
+            if not filename.startswith('stage2_runtime/') or not filename.endswith('.py'):continue
+            if '/' in filename[len('stage2_runtime/'):-3]:
+                raise RuntimeError('nested stage2_runtime module is not supported: '+filename)
+            files[filename]=archive_file.read(filename)
+    missing=[item for item in ('stage2_runtime/runtime.py','stage2_runtime/cfv.py') if item not in files]
+    if missing:raise RuntimeError('source zip missing '+', '.join(missing))
+    loader=_ZipSourceLoader(archive,files);finder=_ZipSourceFinder(name,loader)
+    sys.meta_path.insert(0,finder)
+    try:
+        importlib.import_module(name)
+        modules={}
+        for filename in sorted(item for item in files if not item.endswith('/__init__.py')):
+            short=filename.rsplit('/',1)[-1][:-3]
+            modules[short]=importlib.import_module(name+'.'+short)
+        package=sys.modules[name]
+        package._server_numpy_modules=modules;package._server_numpy_ready=True
+        return modules
+    except BaseException:
+        _drop_loaded_package(name);raise
 
 
 class NumpyBundle:
     def __init__(self,source,model):
         self.source=Path(source);self.model=Path(model)
+        # Zip namelist order is alphabetical, not a dependency order.
         self.modules=load_modules(self.source)
         with np.load(model,allow_pickle=False) as blob:
             self.meta=json.loads(blob['meta_json'].tobytes())

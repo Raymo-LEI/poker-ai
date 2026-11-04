@@ -4,6 +4,8 @@ for _key in ('OPENBLAS_NUM_THREADS','OMP_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR
     os.environ[_key]='1'
 import argparse
 import hashlib
+import importlib
+import importlib.util
 import json
 from multiprocessing.connection import Listener,Client
 from pathlib import Path
@@ -15,7 +17,6 @@ import threading
 import time
 import types
 import zipfile
-import zipimport
 import numpy as np
 
 
@@ -24,22 +25,45 @@ def peak_rss_mb():
     return float(value)/(1024.**2 if sys.platform=='darwin' else 1024.)
 
 
+def load_modules(source):
+    """Import ZIP modules by name. Sorted archives are not dependency order."""
+    source=Path(source)
+    texts={}
+    with zipfile.ZipFile(source) as archive:
+        for filename in archive.namelist():
+            if not filename.startswith('stage2_runtime/') or not filename.endswith('.py'):continue
+            short=Path(filename).stem
+            if short!='__init__':texts[short]=archive.read(filename)
+    name='_server_numpy_'+hashlib.sha256(source.read_bytes()).hexdigest()[:12]
+    package=sys.modules.get(name)
+    if package is None:
+        package=types.ModuleType(name);package.__path__=[str(source)];package.__package__=name
+        sys.modules[name]=package
+        class Loader:
+            def __init__(self,short):self.short=short
+            def create_module(self,spec):return None
+            def exec_module(self,module):
+                filename='stage2_runtime/%s.py'%self.short
+                exec(compile(texts[self.short],filename,'exec'),module.__dict__)
+        class Finder:
+            def find_spec(self,fullname,path,target=None):
+                prefix=name+'.'
+                if not fullname.startswith(prefix):return None
+                short=fullname[len(prefix):]
+                if short not in texts:return None
+                return importlib.util.spec_from_loader(fullname,Loader(short))
+        sys.meta_path.insert(0,Finder())
+    modules={}
+    for short in texts:
+        module=importlib.import_module(name+'.'+short)
+        setattr(package,short,module);modules[short]=module
+    return modules
+
+
 class NumpyBundle:
     def __init__(self,source,model):
         self.source=Path(source);self.model=Path(model)
-        name='_server_numpy_'+hashlib.sha256(self.source.read_bytes()).hexdigest()[:12]
-        package=types.ModuleType(name);package.__path__=[];sys.modules[name]=package
-        self.modules={}
-        with zipfile.ZipFile(source) as archive:
-            # Canonical archives store their modules in dependency order.
-            for filename in archive.namelist():
-                if not filename.startswith('stage2_runtime/') or not filename.endswith('.py'):continue
-                short=Path(filename).stem
-                if short=='__init__':continue
-                module=types.ModuleType(name+'.'+short);module.__package__=name
-                module.__file__=str(source)+'/'+filename;module.__loader__=zipimport.zipimporter(str(source))
-                sys.modules[module.__name__]=module;setattr(package,short,module)
-                exec(compile(archive.read(filename),filename,'exec'),module.__dict__);self.modules[short]=module
+        self.modules=load_modules(self.source)
         with np.load(model,allow_pickle=False) as blob:
             self.meta=json.loads(blob['meta_json'].tobytes())
             weights={k:np.array(blob[k]) for k in blob.files if k!='meta_json'}

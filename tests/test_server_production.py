@@ -334,6 +334,18 @@ def test_d_ranges_condition_once_and_subnode_hud_eta_is_bounded(bundle):
     check(sol.tree)
 
 
+def test_numpy_loader_resolves_equity_when_zip_entries_are_sorted(tmp_path):
+    import zipfile
+    from alphanl.stage2.export import pack_botzone_zip
+    from server_numpy_runtime import load_modules
+    dest=tmp_path/'V999_SOURCE.zip'
+    pack_botzone_zip(dest,release_id='V999_LOADER_ORDER')
+    names=zipfile.ZipFile(dest).namelist()
+    assert names.index('stage2_runtime/allin_mask.py')<names.index('stage2_runtime/equity.py')
+    modules=load_modules(dest)
+    assert modules['allin_mask'].estimated_equity is modules['equity'].estimated_equity
+
+
 def test_benchmark_repeated_states_never_mutate_the_public_hud_corpus(monkeypatch):
     """Reconciliation may consume nested dictionaries: every call owns a copy."""
     import server_benchmark as b

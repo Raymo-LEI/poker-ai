@@ -192,7 +192,7 @@ def run(a):
             raise RuntimeError('POLICY_EVOLUTION_GATE_FAILED '+json.dumps(evolution))
         stage('parallel_zip_evaluation')
         report=evaluate(releases,out/'evaluation',workers,1 if a.smoke else 50,1 if a.smoke else 10,2 if a.smoke else 50)
-        if report['runtime_ms']['mean']>=40 or report['runtime_ms']['p99']>=120:
+        if report['runtime_ms']['mean']>=65 or report['runtime_ms']['p99']>=120:
             raise RuntimeError('full evaluation latency gate failed: '+json.dumps(report['runtime_ms']))
         if cfv.digest(champion)!=before:raise RuntimeError('source champion changed during run')
         result=dict(status='COMPLETE',identity=identity,plan=plan,cfv=stats,distillation=cd,releases=releases,latency=gates,

@@ -86,6 +86,8 @@ The public solver retains full combo support. Both CFV heads train for 50
 epochs with cosine learning-rate annealing, from 1e-3 to 1e-5. The holdout gate
 requires at least 10% MAE improvement over the training-mean bucket constant,
 normalized pot-MAE <=12%, and a positive paired 95% lower bound on improvement.
+Uncertainty clusters correlated trajectory rows by independent rollout; every
+Dirichlet exploration row is an independent cluster.
 Torch/NumPy parity must also pass. Counts cap at 500,000 river and 350,000 turn.
 These gates measure solver-value approximation, not poker playing strength.
 
@@ -112,6 +114,7 @@ data, the existing orthogonalized direction/column ranking/outer-product
 operator, three sites, three alphas and two column counts: 18 rank-one
 candidates. An independent tuning split chooses a candidate; a separate
 surgery-gate split requires positive paired 95% CE gain above 1e-5,
+with uncertainty clustered by independent rollout rather than decision row,
 non-regressing value MAE, and preflop TV <=1e-12. Final acceptance uses another
 untouched holdout. Surgery significance refers to solver-policy fidelity,
 not a statistically established match-score gain.

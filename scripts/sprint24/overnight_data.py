@@ -85,7 +85,7 @@ def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=N
             wanted=(snap.street==0 if preflop else snap.street>0 and (street is None or snap.street==street))
             if wanted:
                 item=dict(identity=(hand_seed,len(snap.events),seat),snapshot=snap,
-                          row={k:x.numpy().copy() for k,x in obs.items()},prior=prior.astype(np.float32))
+                          rollout_seed=seed,row={k:x.numpy().copy() for k,x in obs.items()},prior=prior.astype(np.float32))
                 if snap.street>0:
                     rh,ro=posterior_ranges(particles,(mass[seat],mass[1-seat]),snap.board_cards)
                     item.update(rh=rh,ro=ro)
@@ -137,10 +137,11 @@ def mixed_worker(payload):
     index,n,seed,street,it,chance=payload;start=time.monotonic()
     real=trajectory(_MODEL,n//2,seed,street=street)
     trajectory_stats=dict(trajectory.last_stats)
-    rows=[];identities=[]
+    rows=[];identities=[];clusters=[]
     for i,item in enumerate(real):
         rows.append(label(item['snapshot'],item['rh'],item['ro'],_NET,it,chance,seed+i))
         identities.append(item['identity'])
+        clusters.append(seed)
     for i in range(n-n//2):
         # SeedSequence accepts the full namespace, without 32-bit wrapping.
         rng=np.random.default_rng(seed+2048+i);deck=rng.permutation(v.DECK)
@@ -151,8 +152,9 @@ def mixed_worker(payload):
         snap.first_player=0 if call else int(rng.integers(2));snap.me_seat=int(rng.integers(2)) if call else snap.first_player
         rh,ro=rng.dirichlet(np.full(32,.7)),rng.dirichlet(np.full(32,.7))
         rows.append(label(snap,rh,ro,_NET,it,chance,seed+2048+i));identities.append((seed+2048+i,-1,-1))
+        clusters.append(seed+2048+i)
     x,y=map(np.stack,zip(*rows))
-    return index,x,y,identities,start,time.monotonic(),trajectory_stats
+    return index,x,y,identities,start,time.monotonic(),trajectory_stats,clusters
 
 
 def teacher_worker(payload):
@@ -179,20 +181,37 @@ def mixed_dataset(path,source,street,n,seed,workers,it,chance,nets=None):
               iterations=it,chance_samples=chance,active_compute_s=max(p[5] for p in parts)-min(p[4] for p in parts),
               trajectory_hands=sum(p[6]['hands'] for p in parts),particle_exhaustions=sum(p[6]['particle_exhaustions'] for p in parts),
               teacher_sha256=None if nets is None else cfv.digest(nets))
-    cfv.publish(path,dict(x=x,y=y),n,0,'dataset',meta)
+    clusters=np.array([c for p in parts for c in p[7]],dtype=np.int64)
+    cfv.publish(path,dict(x=x,y=y,cluster_ids=clusters),n,0,'dataset',meta)
+    meta['cluster_ids']=clusters
     return x,y,meta
 
 
-def holdout_gate(weights,prefix,train_y,validation):
+def paired_gain(gain,groups=None,minimum=0.):
+    """Paired mean with cluster-robust uncertainty across independent rollouts."""
+    gain=np.asarray(gain,dtype=float)
+    if gain.ndim!=1 or len(gain)<2 or not np.isfinite(gain).all():
+        return dict(accepted=False,reason='insufficient finite pairs')
+    groups=np.arange(len(gain)) if groups is None else np.asarray(groups)
+    if groups.shape!=gain.shape:raise ValueError('invalid paired cluster identities')
+    unique,inverse=np.unique(groups,return_inverse=True);n=len(unique)
+    if n<2:return dict(accepted=False,reason='fewer than two independent rollouts',n=len(gain),clusters=n)
+    centered=np.bincount(inverse,weights=gain-gain.mean())
+    se=float(np.sqrt(n/(n-1)*np.dot(centered,centered))/len(gain))
+    lower=float(gain.mean()-1.96*se)
+    return dict(accepted=bool(lower>minimum),mean_gain=float(gain.mean()),lower95=lower,n=len(gain),clusters=n,minimum=minimum)
+
+
+def holdout_gate(weights,prefix,train_y,validation,clusters=None):
     x,y=validation
     pred=cfv.predict_residual_cfv(weights,prefix,x)
     error=np.abs(pred-y);constant=np.abs(train_y.mean(axis=0)-y)
     rows=error.mean(1);gain=(constant-error).mean(1)
-    se=float(gain.std(ddof=1)/np.sqrt(len(gain))) if len(gain)>1 else float('inf')
+    confidence=paired_gain(gain,clusters)
     ratio=float(np.mean(error/np.maximum(x[:,119:120]*200.,1.)))
     result=dict(mae=float(rows.mean()),constant_mae=float(constant.mean()),pot_mae_ratio=ratio,
-                gain_lower95=float(gain.mean()-1.96*se),samples=len(x))
-    result['passed']=bool(all(np.isfinite(v) for k,v in result.items()) and rows.mean()<constant.mean()*.90 and ratio<=.12 and result['gain_lower95']>0)
+                gain_lower95=confidence.get('lower95'),samples=len(x),independent_clusters=confidence.get('clusters',0))
+    result['passed']=bool(confidence['accepted'] and np.isfinite(rows).all() and np.isfinite(ratio) and rows.mean()<constant.mean()*.90 and ratio<=.12)
     return result
 
 
@@ -204,7 +223,7 @@ def phase_b(source,out,plan,workers,device,smoke=False):
         x,y,meta=mixed_dataset(out/(name+'_ds.npz'),source,street,plan[name+'_n'],seed,workers,it,chance,net_path)
         vx,vy,vm=mixed_dataset(out/(name+'_holdout.npz'),source,street,plan['holdout_n'],seed+5000000000,workers,it,chance,net_path)
         w,s=_train(x,y,prefix,plan['net_epochs'],street,device,(vx,vy),cosine=True)
-        gate=holdout_gate(w,prefix,y,(vx,vy));s['CFV_HOLDOUT_GATE']=gate
+        gate=holdout_gate(w,prefix,y,(vx,vy),vm['cluster_ids']);s['CFV_HOLDOUT_GATE']=gate
         if not smoke and not gate['passed']:raise RuntimeError('CFV_HOLDOUT_GATE_FAILED '+name+' '+str(gate))
         weights.update(w);stats[name]=s
         if street==3:

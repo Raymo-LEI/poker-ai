@@ -75,8 +75,8 @@
   },
   "tested_code_sha256": {
     "scripts/sprint24/overnight_production.py": "aa43ecce7a350b73fe1906807cf83bb42c4e1ab10a8e2eae50e7f377a7f83116",
-    "scripts/sprint24/overnight_data.py": "0c4491dc82f1b7b097627fef942b017d7cae08b57b8a3a641803254192ed3311",
-    "scripts/sprint24/overnight_distill.py": "71089bcc3e5bd6a06742e45c6674e884d17316948e3e54d8277636cb1ca8cca1",
+    "scripts/sprint24/overnight_data.py": "1b4e98c503b9dca066d811b415a11024b2b4a71745b0bef3cd174d928e4ccf40",
+    "scripts/sprint24/overnight_distill.py": "d68f1f86b2dd59bc34397ee1ca4e99c1e95d646bae8949f87e19e40f41507de3",
     "scripts/sprint24/evening_pipeline.py": "6574cde2ea05235536cf1f86c8ee48b046568aacf3eff70549c500f42c48c9fa",
     "scripts/sprint24/evening_production_eval.py": "1413ce88061e35cfc2144c63f9aa4ad886a404e91af52caa8db05d67b59ed637",
     "scripts/sprint24/pack_wizard.py": "9cc6fe638deedcd22571e6a4e87af84956a9f50aafcb71f37e71f478f7fff1d2",
@@ -85,7 +85,7 @@
     "src/alphanl/stage2/evening_strategy.py": "efd85e7dd0ebbec0c76f2bbe141055ea0470c4d5eaa19dd777939a25f5b7ee7c",
     "src/alphanl/stage2/portable_runtime.py": "2b3332d11477b08c7b723bfc058cc220f4f73b6034b7318b00935b9ce4a34179",
     "src/alphanl/stage2/train.py": "9d27ece2459ee8c8b212f5fba6a14390787700a7862e62794aab9335b474d7ee",
-    "tests/test_overnight_production.py": "6925f43988c44e21a9f75918599ba40eb292d02e2dfd66cd07c83827f04ac2ad"
+    "tests/test_overnight_production.py": "34aac255b7a51e3c8b4569687e3369876f5bbe3e3fb31baeeb5ae8eb18c7cf98"
   },
   "limitations": [
     "No RTX 5090 production run was launched locally.",
@@ -93,5 +93,25 @@
     "Surgery significance measures solver-policy CE fidelity, not a demonstrated match-score gain.",
     "Smoke matches are partial two-hand protocol checks.",
     "Production CFV quality, full match matrices and target runtime gates execute on the server."
-  ]
+  ],
+  "cluster_gate_followup": {
+    "tests": 87,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 17.579,
+    "uncertainty_unit": "independent_rollout_cluster",
+    "phase_two_cases": 18
+  },
+  "pre_cluster_repair_clean_smoke": {
+    "commit": "04497a937ab7776da21f1afa7f454dcde13803a0",
+    "status": "COMPLETE",
+    "allow_dirty": false,
+    "elapsed_s": 103.5671881249873,
+    "preflop_max_tv": {
+      "g3": 0.0,
+      "g4": 0.0,
+      "g5": 0.0
+    }
+  }
 }

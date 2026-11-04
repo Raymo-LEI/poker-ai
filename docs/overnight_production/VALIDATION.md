@@ -21,6 +21,10 @@ resource-budget floors and process-group descendant cleanup.
 Final expanded regression: **145 passed in 167.63 seconds**. All 24 exported
 portable modules also passed Python 3.6 grammar parsing, and `git diff --check`
 passed. Grammar acceptance does not establish execution on Botzone's runtime.
+After strengthening CFV/Astra confidence intervals to cluster correlated rows
+by independent rollout, the affected regression suites passed **87 tests in
+17.59s**, including all 18 phase-two cases. Added assertions reject a spurious
+row-level significance result when only two independent rollouts support it.
 
 Reproduction (use an interpreter with the repository's current dependencies):
 

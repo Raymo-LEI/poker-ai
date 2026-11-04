@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from alphanl.stage2 import cfv
 from evening_cd import _batch
-from overnight_data import collect_teacher,TREE
+from overnight_data import collect_teacher,TREE,paired_gain
 
 
 def bind_champion(model,champion):
@@ -99,11 +99,8 @@ def fit(model,items,epochs,kl=.01):
     return dict(loss=float(loss.detach()),kl=kl,value_weight=.1,hidden=model.settings['hidden'])
 
 
-def paired_improvement(before,after,minimum=1e-5):
-    gain=np.asarray(before)-np.asarray(after)
-    if len(gain)<2 or not np.isfinite(gain).all():return dict(accepted=False,reason='insufficient finite pairs')
-    lower=float(gain.mean()-1.96*gain.std(ddof=1)/np.sqrt(len(gain)))
-    return dict(accepted=bool(lower>minimum),mean_gain=float(gain.mean()),lower95=lower,n=len(gain),minimum=minimum)
+def paired_improvement(before,after,minimum=1e-5,groups=None):
+    return paired_gain(np.asarray(before)-np.asarray(after),groups,minimum)
 
 
 def gate(model,baseline,items,anchors,strict=False):
@@ -111,7 +108,7 @@ def gate(model,baseline,items,anchors,strict=False):
     drift=float((.5*np.abs(measures(model,anchors)[2]-measures(baseline,anchors)[2]).sum(1)).max())
     result=dict(candidate_ce=float(ce.mean()),baseline_ce=float(bc.mean()),candidate_value_mae=float(ve.mean()),
                 baseline_value_mae=float(bv.mean()),preflop_max_tv=drift,postflop_max_tv=float((.5*np.abs(p-bp).sum(1)).max()),
-                significance=paired_improvement(bc,ce))
+                significance=paired_improvement(bc,ce,groups=[r['rollout_seed'] for r in items]))
     result['accepted']=bool(np.isfinite(ce).all() and np.isfinite(ve).all() and ce.mean()<=bc.mean()+1e-6 and
         ve.mean()<=bv.mean()+1e-4 and drift<=1e-12 and (not strict or result['significance']['accepted']))
     return result
@@ -164,7 +161,7 @@ def one_generation(source,dest,champion,nets,seed,plan,workers,device,smoke=Fals
         items=collect_teacher(source,n,seed+j*10000000000,nets,workers,2 if smoke else {'1':32,'2':32,'3':64},1 if smoke else 2,name=='anchor')
         # Preserve raw observations and precise supervision for an independent audit.
         payload={k:np.concatenate([r['row'][k] for r in items]) for k in items[0]['row']}
-        payload.update(target=np.stack([r.get('target',r['prior']) for r in items]),
+        payload.update(cluster_ids=np.array([r['rollout_seed'] for r in items],dtype=np.int64),target=np.stack([r.get('target',r['prior']) for r in items]),
                        value=np.array([r.get('value',0.) for r in items]),prior=np.stack([r['prior'] for r in items]))
         path=dest.with_name(dest.stem+'.'+name+'.npz')
         cfv.publish(path,payload,n,0,'joint_distillation',dict(tree=TREE,identities=[r['identity'] for r in items],teacher_sha256=cfv.digest(nets)))

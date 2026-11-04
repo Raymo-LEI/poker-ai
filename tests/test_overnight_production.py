@@ -110,6 +110,10 @@ def test_paired_surgery_gate_rejects_ties_noise_and_regressions():
     assert not paired_improvement([1.],[0.])['accepted']
     noisy=np.r_[np.full(1024,.5),np.full(1024,1.4999)]
     assert not paired_improvement(x,noisy)['accepted']
+    gain=np.r_[np.full(1024,.1),np.full(1024,-.08)]
+    assert paired_improvement(x,x-gain)['accepted']
+    assert not paired_improvement(x,x-gain,groups=np.repeat([0,1],1024))['accepted']
+    assert not paired_improvement(x,x*.99,groups=np.zeros(2048))['accepted']
 
 
 def test_strict_cfv_holdout_gate_rejects_constant_and_large_pot_error(monkeypatch):

@@ -98,6 +98,10 @@ def test_full_budget_includes_three_generations_50_epochs_holdout_and_watchdog()
     assert 8192<=p['river_n']<=500000 and 4096<=p['turn_n']<=350000
     assert p['predicted_seconds']<=8.5*3600<HARD_SECONDS
     with pytest.raises(RuntimeError):plan_counts(dict(rates,river=100,turn=100,rebel=100),8.5,600,100,24)
+    tight=dict(river=.8,turn=.1,rebel=.02,anchor=.01,cfv_epoch=.01,policy_epoch=.001)
+    paid=plan_counts(tight,8.5,200,100,24)
+    assert paid['river_n']>=8192 and paid['turn_n']>=4096 and paid['rebel_n']>=4096
+    assert paid['predicted_seconds']<=8.5*3600
     with pytest.raises(ValueError):plan_counts(rates,9,600,100,24)
     with pytest.raises(ValueError):plan_counts(dict(rates,turn=float('nan')),8.5,600,100,24)
 

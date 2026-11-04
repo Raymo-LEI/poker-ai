@@ -108,11 +108,15 @@ def plan_counts(rates,hours,eval_seconds,elapsed,workers,smoke=False):
     if budget<=0:raise RuntimeError('measured evaluation/training/holdout floors cannot fit 8.5h')
     costs=dict(river_n=rates['river']+50*rates['cfv_epoch'],turn_n=rates['turn']+50*rates['cfv_epoch'],
                rebel_n=3*(rates['rebel']+12*rates['policy_epoch']))
-    result={}
-    for name,share,floor,cap in (('river_n',.25,8192,500000),('turn_n',.30,4096,350000),('rebel_n',.45,4096,200000)):
-        count=int(budget*share/costs[name])//256*256
-        if count<floor:raise RuntimeError('calibrated production floor cannot fit: '+name)
-        result[name]=min(count,cap)
+    specs=(('river_n',.25,8192,500000),('turn_n',.30,4096,350000),('rebel_n',.45,4096,200000))
+    result={name:min(int(budget*share/costs[name])//256*256,cap) for name,share,floor,cap in specs}
+    # Shares are a leftover split. Floors are paid first when the total budget can hold them.
+    if any(result[name]<floor for name,share,floor,cap in specs):
+        if sum(floor*costs[name] for name,share,floor,cap in specs)>budget:
+            short=next(name for name,share,floor,cap in specs if result[name]<floor)
+            raise RuntimeError('calibrated production floor cannot fit: '+short)
+        left=budget-sum(floor*costs[name] for name,share,floor,cap in specs)
+        result={name:min(floor+int(left*share/costs[name])//256*256,cap) for name,share,floor,cap in specs}
     predicted=elapsed+reserve+fixed+sum(result[name]*cost for name,cost in costs.items())
     if predicted>hours*3600 or predicted>=HARD_SECONDS:raise RuntimeError('plan exceeds target or hard watchdog')
     result.update(net_epochs=50,policy_epochs=12,holdout_n=holdout,workers=workers,predicted_seconds=predicted,

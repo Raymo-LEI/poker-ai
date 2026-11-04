@@ -20,6 +20,16 @@ import numpy as np
 
 
 def peak_rss_mb():
+    """Peak RSS of this process image, in MiB.
+
+    Linux keeps ru_maxrss across exec. A service forked from the Torch
+    benchmark would otherwise report the parent's high-water mark.
+    """
+    status=Path('/proc/self/status')
+    if status.exists():
+        for line in status.read_text().splitlines():
+            if line.startswith('VmHWM:'):
+                return int(line.split()[1])/1024.
     value=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return float(value)/(1024.**2 if sys.platform=='darwin' else 1024.)
 

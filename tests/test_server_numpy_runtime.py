@@ -6,6 +6,7 @@ accepts a request. The checked-in Botzone export lists ``allin_mask.py`` before
 the relative import and every later benchmark gate died with it.
 """
 import hashlib
+import os
 import subprocess
 import sys
 import zipfile
@@ -120,6 +121,19 @@ def test_numpy_bundle_loads_real_export_when_equity_follows_allin_mask(tmp_path)
         assert archive.read('stage2_runtime/equity.py') == original.read('stage2_runtime/equity.py')
     assert reversed_runtime.index('stage2_runtime/equity.py') < reversed_runtime.index('stage2_runtime/allin_mask.py')
     _run(tmp_path, 'load', [REAL_SOURCE, reversed_zip])
+
+
+def test_peak_rss_ignores_parent_high_water_after_exec():
+    if not Path('/proc/self/status').exists():
+        import pytest
+        pytest.skip('Linux VmHWM is the production RSS source')
+    blob=bytearray(256*1024*1024)
+    env=dict(os.environ)
+    env['PYTHONPATH']=str(SPRINT)+os.pathsep+env.get('PYTHONPATH','')
+    result=subprocess.run([sys.executable,'-c','from server_numpy_runtime import peak_rss_mb; print(peak_rss_mb())'],capture_output=True,text=True,env=env)
+    del blob
+    assert result.returncode==0, result.stderr
+    assert float(result.stdout.strip())<180
 
 
 def test_numpy_bundle_drops_a_partial_package_when_equity_is_absent(tmp_path):

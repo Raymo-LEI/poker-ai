@@ -84,8 +84,10 @@ class Agent:
         """
         from .search_game import PublicState
         from .search_belief import RangeError
+        self.search_request=request
         if amounts is None:
-            amounts = {a:x for a,x in PublicState.from_snapshot(snapshot).actions().items()
+            public_state=PublicState.from_request(request,snapshot) if request is not None else PublicState.from_snapshot(snapshot)
+            amounts = {a:x for a,x in public_state.actions().items()
                        if a in snapshot.legal_action_ids}
         if request is None:
             request = dict(num_players=2,hand=int(context.hands_played),max_hand=50,

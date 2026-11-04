@@ -73,7 +73,7 @@ def policy_rows(agent, snapshot, context, hands, chunk=64):
     return np.concatenate(rows)
 
 
-def event_snapshot(snapshot, index):
+def event_snapshot(snapshot, index, request=None):
     """Reconstruct only fields available immediately BEFORE this action."""
     event = snapshot.events[index]
     seat = event.actor_seat
@@ -96,12 +96,18 @@ def event_snapshot(snapshot, index):
         rewritten.append(prev)
     kwargs['events'] = tuple(rewritten)
     out = snapshot.__class__(**kwargs)
-    legal = tuple(PublicState.from_snapshot(out).actions())
+    if request is not None:
+        raw_actor=request['history'][index]['player_id']
+        prefix=dict(request,history=request['history'][:index],my_id=raw_actor,
+                    public_cards=request['public_cards'][:board_len])
+        legal=tuple(PublicState.from_request(prefix,out).actions())
+    else:
+        legal = tuple(PublicState.from_snapshot(out).actions())
     object.__setattr__(out, 'legal_action_ids', legal)
     return out
 
 
-def history_beliefs(agent, snapshot, context):
+def history_beliefs(agent, snapshot, context, request=None):
     """Replay from the same combo support; no street resampling or epsilon mass.
 
     Neutral match context is intentional: this is a declared observation model,
@@ -111,7 +117,7 @@ def history_beliefs(agent, snapshot, context):
     beliefs = [ComboBelief(hands), ComboBelief(hands)]
     neutral = context.__class__()
     for i, event in enumerate(snapshot.events):
-        state = event_snapshot(snapshot, i)
+        state = event_snapshot(snapshot, i, request)
         rows = policy_rows(agent, state, neutral, hands)
         if event.action_type == 'fold':
             likelihood = rows[:, 0]

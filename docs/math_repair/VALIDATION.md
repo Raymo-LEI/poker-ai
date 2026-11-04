@@ -6,10 +6,10 @@
   math, generated entry, original Stage 2 export/guard/native/trace APIs, the
   100-hand synthetic referee protocol test and original external-sampling /
   Kuhn trainer tests. No online match or production training was launched.
-- After the last sampling-roundoff / fallback-output diagnostic refinement:
-  **8 targeted tests passed in 1.17s** (`test_search_entry.py` and
-  `test_wizard_solver.py`), including the new zero/illegal-tail sampling case.
-  These overlap the expanded suite; they are not 8 additional unique tests.
+- After the final raw-positive-undercall history, sampling-roundoff and
+  fallback-diagnostic refinements: **45 tests passed in 3.07s**
+  (`tests/math_repair`, `test_search_entry.py`, `test_wizard_solver.py`). These
+  overlap the expanded suite and are not an additional 45 unique cases.
 - NumPy-only mathematical suite after kernel cancellation stabilization:
   **36 passed in 2.30s**, Python 3.9 / NumPy 1.26.4. This overlaps the expanded
   suite and does not require Torch.
@@ -62,8 +62,8 @@ subprocesses loading the original frozen policy and reconstructing six history
 actions before a real `respond()` decision. The source is development code
 from this branch, **not** the V15 source ZIP. Filesystem caches may be warm; this was not a dedicated idle benchmark machine.
 
-Local kernel latency is around **0.08ms**, full solve around **0.18s**, and
-model/history/process decision around **10.3s**. These values must never be
+Local kernel latency is **0.072ms**, full solve **161.8ms**, and
+model/history/process decision **9145.9ms**. These values must never be
 interchanged. End-to-end latency remains a deployment blocker. No target
 platform, production value network, production preflop chart, full-game GTO,
 playing strength or improved win rate is certified.

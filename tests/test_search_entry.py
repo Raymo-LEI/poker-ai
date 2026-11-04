@@ -129,3 +129,20 @@ def test_sampling_roundoff_cannot_select_zero_or_illegal_tail(live,monkeypatch):
     agent.force_argmax=False
     rng=type('Rng',(),{'random':lambda self:np.nextafter(1.,0.)})()
     assert agent.act(None,None,rng=rng)==3
+
+
+def test_raw_positive_undercall_preserves_judge_raise_state(live):
+    mod,agent,runtime,wizard=live
+    from _stage2_export.search_game import PublicState
+    # Legal but unusual platform history: a positive undercall is semantically
+    # labelled call, yet the referee still updates round_raise from 102 to 150.
+    history=[dict(round=0,player_id=p,action=x) for p,x in zip((1,0,1,0,1,0,1),(0,100,101,102,3,100,150))]
+    req=dict(request(),my_id=0,my_chips=19598,history=history)
+    snap,mapping=mod.request_snapshot(req)
+    state=PublicState.from_request(req,snap)
+    assert snap.events[-1].action_type=='call'
+    assert state.view.round_raise==150
+    assert state.view.street_put==[402,354]
+    assert state.view.chips==[19598,19646]
+    out=mod.respond(agent,{'requests':[req],'responses':[]},safety=False)
+    assert out['data']['search_audit']['status']=='active'

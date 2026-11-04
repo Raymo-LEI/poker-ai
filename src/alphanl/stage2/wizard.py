@@ -16,12 +16,13 @@ def bind(evaluator):
 
 
 def fuse(agent, snapshot, context, probs, amounts=None):
-    state = PublicState.from_snapshot(snapshot)
+    request=getattr(agent,'search_request',None)
+    state = PublicState.from_request(request,snapshot) if request is not None else PublicState.from_snapshot(snapshot)
     if amounts is None:
         amounts = {a:x for a,x in state.actions().items() if a in snapshot.legal_action_ids}
     elif set(amounts) != set(snapshot.legal_action_ids):
         raise ValueError('search requires a complete executable action mapping')
-    hands, ranges = history_beliefs(agent,snapshot,context)
+    hands, ranges = history_beliefs(agent,snapshot,context,request)
     options = getattr(agent,'settings',{}).get('search_v1',{})
     iterations = int(options.get('iterations',24))
     cap = int(options.get('raise_cap',2))

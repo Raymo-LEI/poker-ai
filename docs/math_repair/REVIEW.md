@@ -57,7 +57,9 @@ board ties, including 5s6h versus AsQh on 2s3h4d9cKs. The same portable evaluato
 is always used; correctness does not depend on an optional package.
 
 Public successor nodes reuse `reconstruct.judge_accepts`, `min_raise_extra` and
-`_put`. Terminal nodes have no response slots. Check/bet/raise/call/fold paths
+`_put`. Production roots and event-time legal domains read authoritative raw
+judge histories: semantic call events alone cannot recover round_raise after
+a rare positive undercall. Terminal nodes have no response slots. Check/bet/raise/call/fold paths
 are actual nodes; per-own-hand strategies are shared over hidden opponent
 hands. There is no per-pair maximum. Calls use the outstanding additional cost
 once; short all-ins and uncalled chip refunds are settled explicitly. Tests

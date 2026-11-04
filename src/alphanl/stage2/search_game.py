@@ -53,6 +53,18 @@ class PublicState:
                    pending=2 if not current and snap.street==0 and snap.me_seat==snap.sb_seat else
                            1 if current or snap.to_call else 2)
 
+    @classmethod
+    def from_request(cls, request, snapshot):
+        """Use authoritative raw judge history when semantic events lose raw bet kind."""
+        v=judge.reconstruct(request)
+        me=request['my_id'];other=1-me
+        current=[e for e in request['history'] if e.get('round')==v.street]
+        initial_sb=(v.street==0 and not current and me!=v.dealer)
+        pending=2 if initial_sb or (not current and not snapshot.to_call) else 1
+        return cls(v.pot,(v.chips[me],v.chips[other]),snapshot.to_call,v.street,
+                   (v.street_put[me],v.street_put[other]),v.round_raise,
+                   first=0 if me!=v.dealer else 1,pending=pending)
+
     @property
     def owed(self):
         return max(self.view.street_put) - self.view.street_put[self.actor]

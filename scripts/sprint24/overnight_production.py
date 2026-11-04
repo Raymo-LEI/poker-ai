@@ -21,7 +21,7 @@ if str(REPO/'src') not in sys.path:sys.path.insert(0,str(REPO/'src'))
 from evening_production import EXPECTED_CHAMPION_SHA256,find_champion,git,latency_gate
 
 HARD_SECONDS=9.*3600
-ONLINE=dict(iterations={'1':4,'2':4,'3':8},chance_samples=1,blueprint_weight={'1':.5,'2':.5,'3':.3},
+ONLINE=dict(iterations={'1':4,'2':4,'3':16},chance_samples=1,blueprint_weight={'1':.5,'2':.5,'3':.3},
             check_raise=True,contract='hero-root-prior-convex-checkraise-v1')
 OFFLINE=dict(river_iterations=64,turn_iterations=32,chance_samples=4,
              teacher_iterations={'1':32,'2':32,'3':64},teacher_chance_samples=2)
@@ -193,7 +193,8 @@ def run(a):
         # Use the largest deployed residual for timing calibration.
         wide=expand(copy.deepcopy(base));wide_path=out/'pilot/wide.pt';save_checkpoint(wide_path,wide)
         pilot_latency={};profiles=[]
-        for iterations in ({'1':4,'2':4,'3':8},{'1':3,'2':3,'3':6},{'1':2,'2':2,'3':4}):
+        for iterations in ({'1':4,'2':4,'3':16},{'1':4,'2':4,'3':12},{'1':4,'2':4,'3':8},
+                           {'1':3,'2':3,'3':6},{'1':2,'2':2,'3':4}):
             profile=dict(ONLINE,iterations=iterations,guard_mode='full')
             fixture=internal(wide_path,nets_path,'pilot_'+str(len(profiles)),profile)
             try:

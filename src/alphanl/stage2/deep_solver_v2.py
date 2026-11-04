@@ -115,6 +115,11 @@ def _select(board, hero):
 
 
 def expand_range(ranges, bins):
+    if np.asarray(ranges).shape == (len(bins),):
+        values = np.asarray(ranges,dtype=np.float64)
+        if not np.isfinite(values).all() or np.any(values<0) or values.sum()<=0:
+            raise ValueError('invalid full-combo public range')
+        return values/values.sum()
     ranges = normalize_range(ranges)
     count = np.bincount(bins, minlength=32)
     return ranges[bins] / count[bins]
@@ -323,8 +328,14 @@ class PublicSolver:
         self.c2 = np.array([CARD_ID[h[1]] for h in self.hands])
         self.groups = _groups(self.rank)
         self.width = len(self.hands)
-        self.rh = expand_range(np.full(32,1/32.) if hero_range is None else hero_range,self.bins)
-        self.ro = expand_range(np.full(32,1/32.) if opponent_range is None else opponent_range,self.bins)
+        range_audit = None
+        if hero_range is None or opponent_range is None:
+            from .search_belief import history_combo_ranges
+            (default_h,default_o),range_audit=history_combo_ranges(snapshot,return_audit=True)
+            if hero_range is None:hero_range=default_h
+            if opponent_range is None:opponent_range=default_o
+        self.rh = expand_range(hero_range,self.bins)
+        self.ro = expand_range(opponent_range,self.bins)
         self.weights = weights
         self.iterations = iterations or (RIVER_ITERS if len(self.board)==5 else TURN_ITERS)
         self.chance_samples,self.seed = int(chance_samples),int(seed)
@@ -346,7 +357,7 @@ class PublicSolver:
         self.rootmass = (self.mass(self.ro),self.mass(self.rh))
         self.utility,self.context = utility,context
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
-                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise)}
+                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise),"range_audit":range_audit}
         self._chance_cache = {}
 
     def mass(self,w):

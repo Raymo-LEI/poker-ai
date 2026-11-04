@@ -621,6 +621,7 @@ def good_hand_blind_side(snapshot, config, equity):
     if not config["good_hand_blind_protection_enabled"] or snapshot.street != 0:
         return None
     blind = float(snapshot.big_blind)
+    if large_preflop_open(snapshot):return None
     if (snapshot.me_seat == snapshot.sb_seat and not snapshot.events
             and snapshot.to_call == .5 * blind and equity() >= config["sb_good_hand_equity"]):
         return "sb"
@@ -977,8 +978,62 @@ def _dominant_fold_filter(snapshot, raw, probs, legal, amount, config, equity, i
                     dominant_fold_forced=bool(sum(probs[a] for a in (1,2,3,4)) == 0))
 
 
-def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, context=None):
+def large_preflop_open(snapshot):
+    """First BB response to a >=3.2BB SB open; amounts are chips ADDED."""
+    if snapshot.street!=0 or snapshot.me_seat==snapshot.sb_seat or len(snapshot.events)!=1:return False
+    event=snapshot.events[0]
+    if event.actor_is_me or event.chips_added<=event.to_call_before or event.action_type=='all_in' or snapshot.opp_stack==0:return False
+    blind=float(snapshot.big_blind)
+    return snapshot.to_call>=2.2*blind or event.chips_added+.5*blind>=3.2*blind
+
+
+def apply_search_guard(snapshot,probabilities,amounts=None):
+    """Legality and a posterior-priced giant river all-in fuse only.
+
+    Never prune tails, transfer Fold to Call, or re-run empirical pot control
+    after an active Evening solve. This applies to both ablation mode labels.
+    """
+    probs=np.asarray(probabilities,dtype=np.float64).copy()
+    if probs.shape!=(5,) or not np.isfinite(probs).all() or np.any(probs<0):raise ValueError('invalid search probabilities')
+    legal=set(snapshot.legal_action_ids)
+    if amounts is not None:legal&=set(amounts)
+    probs[[a for a in range(5) if a not in legal]]=0.
+    if probs.sum()<=0:raise ValueError('empty executable search policy')
+    probs/=probs.sum()
+    info=dict(search_policy_preserved=True,pruned=[],active_cap=False,call_fuse=None)
+    prior_raise=any(not e.actor_is_me and 0<e.street<snapshot.street and
+                    e.action_type in ('bet','raise','all_in') and e.to_call_before>0 and e.chips_added>e.to_call_before
+                    for e in snapshot.events)
+    if (snapshot.street==3 and snapshot.opp_stack==0 and snapshot.to_call>50*snapshot.big_blind
+            and prior_raise and 0 in legal and probs[1]>0):
+        from . import deep_solver_v2 as solver
+        from .search_belief import history_combo_ranges
+        from .cfv import card
+        hands,rank,_=solver._public(tuple(sorted(card(c) for c in snapshot.board_cards)))
+        ro=history_combo_ranges(snapshot)[1]
+        c1=np.array([solver.CARD_ID[h[0]] for h in hands]);c2=np.array([solver.CARD_ID[h[1]] for h in hands])
+        eq,_=solver.equity_vs(rank,c1,c2,ro,*solver._groups(rank))
+        at=next(i for i,h in enumerate(hands) if frozenset(h)==frozenset(card(c) for c in snapshot.hole_cards))
+        call=min(float(snapshot.to_call),snapshot.me_stack)
+        contested,invested,_=solver.settle(snapshot.pot,snapshot.to_call,call)
+        price=invested/(contested+invested)
+        info.update(posterior_equity=float(eq[at]),pot_odds=price)
+        if eq[at]<price:
+            # Risk-only action: call mass may move to Fold, never the reverse.
+            probs[0]+=probs[1];probs[1]=0.
+            info.update(call_fuse='history_posterior_giant_allin',search_policy_preserved=False)
+    return probs,info
+
+
+def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, context=None,search_active=False):
     """Keep legacy v10 exact; adaptive guards remap BEFORE tail pruning."""
+    if search_active and snapshot.street>0:return apply_search_guard(snapshot,probabilities,amounts)
+    if config['enabled'] and large_preflop_open(snapshot):
+        # Preserve the blueprint's complete legal distribution before any
+        # weak-reraise/pot-control/pruning chain can recycle Fold into Call.
+        probs,info=apply_search_guard(snapshot,probabilities,amounts)
+        info['large_open_blueprint_preserved']=True
+        return probs,info
     if config["version"] not in ("v10.1", "v10.2") or not config["enabled"]:
         return _apply_v10_guard(snapshot, probabilities, config, equity_fn, amounts)
     raw = np.asarray(probabilities, dtype=np.float64).copy()

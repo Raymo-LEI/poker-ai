@@ -1,12 +1,118 @@
 """Combo-level Bayes with an explicit frozen-policy observation model."""
 import copy
+from functools import lru_cache
 import numpy as np
 from .search_math import combos, card_text, hand_masks
-from .search_game import PublicState
 
 
 class RangeError(ValueError):
     pass
+
+
+HISTORY_RANGE_MODEL = 'public-combo-size-bayes-v1'
+
+
+def _percentiles(rank):
+    # Equal made hands have equal likelihood, independent of combo ordering.
+    ordered = np.sort(rank)
+    return (np.searchsorted(ordered, rank, side='left') +
+            np.searchsorted(ordered, rank, side='right')) / (2. * len(rank))
+
+
+@lru_cache(maxsize=128)
+def _preflop_strength(board):
+    from . import deep_solver_v2 as solver
+    hands, _, _ = solver._public(board)
+    try:
+        from .equity import preflop_table
+    except ImportError:
+        from alphanl.transformer.equity import preflop_table
+    table = preflop_table()
+    values = []
+    for a, b in hands:
+        hi, lo = sorted((a[0], b[0]), key='23456789TJQKA'.index, reverse=True)
+        key = hi + lo + ('' if hi == lo else 's' if a[1] == b[1] else 'o')
+        values.append(table[key])
+    return np.asarray(values)
+
+
+@lru_cache(maxsize=128)
+def _event_strength(board, prefix):
+    from . import deep_solver_v2 as solver
+    hands, rank, _ = solver._public(board)
+    return _percentiles(rank if len(board) == len(prefix) else solver.pack_many(hands, prefix))
+
+
+def history_combo_ranges(snapshot, return_audit=False):
+    """Smooth public observation model, on complete board-legal combo support.
+
+    Conditions on both players' public actions, including preflop size. Each
+    action is graded on the board visible AT that action, never future cards or
+    either actual private hand. A positive bluff likelihood prevents hard
+    removal of a possible bluff. This is a declared approximation, not a fitted
+    posterior or a claim that every large bet is value.
+    """
+    from . import deep_solver_v2 as solver
+    from .cfv import card
+    chronological = tuple(card(c) for c in snapshot.board_cards)
+    board = tuple(sorted(chronological))
+    hands, _, _ = solver._public(board)
+    logmass = np.zeros((2, len(hands)))
+    blind = float(snapshot.big_blind)
+    me = getattr(snapshot, 'me_seat', 0)
+    sb = getattr(snapshot, 'sb_seat', 1)
+    puts = [blind * (.5 if me == sb else 1.), blind * (1. if me == sb else .5)]
+    aggressive_streets = [set(), set()]
+    conditioned = [0, 0]
+    for event in getattr(snapshot, 'events', ()):
+        street = int(event.street)
+        if street > int(snapshot.street):raise RangeError('history contains a future street')
+        player = 0 if event.actor_is_me else 1
+        chips = float(event.chips_added)
+        owed = float(event.to_call_before)
+        if street == 0:puts[player] += chips
+        aggressive = event.action_type in ('bet', 'raise', 'all_in') and chips > owed
+        likelihood = None
+        if street == 0:
+            if aggressive:
+                equity = _preflop_strength(board)
+                # Large opens concentrate around the audited strong-size band,
+                # with a nonzero off-style/bluff component for other opponents.
+                total_bb = puts[player] / blind
+                threshold = .586 if total_bb >= 3.3 else .50 if total_bb >= 2.5 else .43
+                likelihood = .015 + .985 / (1. + np.exp(-(equity-threshold)/.035))
+        else:
+            prefix = chronological[:street + 2]
+            strength = _event_strength(board, prefix)
+            size = chips / max(float(event.pot_before), 1.)
+            if aggressive:
+                prior_raise = any(s < street for s in aggressive_streets[player])
+                giant = street >= 2 and chips > 50 * blind and size > 1. and prior_raise
+                if giant:
+                    likelihood = .0005 + .9995 * strength**80
+                elif size > 1.:
+                    likelihood = .005 + .995 * strength**(12 + 8 * min(size, 4.))
+                elif size <= .55 and owed == 0:
+                    # Small probes carry substantial air; preserve bluff catches.
+                    likelihood = .8 + .2 * (1. - strength)
+                else:
+                    likelihood = .2 + .8 * strength**2
+            elif event.action_type == 'call' or (event.action_type == 'all_in' and chips <= owed):
+                likelihood = .4 + .6 * strength
+            elif event.action_type == 'check':
+                likelihood = 1. - .25 * strength
+        if likelihood is not None:
+            logmass[player] += np.log(likelihood)
+            conditioned[player] += 1
+        # Track aggressive actions, not all-in calls. No opponent hole access.
+        if aggressive and owed>0:aggressive_streets[player].add(street)
+    mass = np.exp(logmass - logmass.max(axis=1, keepdims=True))
+    mass /= mass.sum(axis=1, keepdims=True)
+    audit = dict(model=HISTORY_RANGE_MODEL, support=len(hands), conditioned_actions=conditioned,
+                 opponent_entropy=float(-np.dot(mass[1], np.log(mass[1]))),
+                 opponent_max_mass=float(mass[1].max()))
+    result = (mass[0], mass[1])
+    return (result, audit) if return_audit else result
 
 
 def normalized_policy(probs, legal):
@@ -75,6 +181,7 @@ def policy_rows(agent, snapshot, context, hands, chunk=64):
 
 def event_snapshot(snapshot, index, request=None):
     """Reconstruct only fields available immediately BEFORE this action."""
+    from .search_game import PublicState
     event = snapshot.events[index]
     seat = event.actor_seat
     stacks = [int(snapshot.starting_stack)]*2

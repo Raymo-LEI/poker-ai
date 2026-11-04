@@ -1,5 +1,13 @@
 # Local validation
 
+The later V22/bot17 fixes are documented in [BOT17_REPAIR.md](BOT17_REPAIR.md)
+and `BOT17_LOCAL_VALIDATION.json`: **175 passed in 167.62s**, plus **39 passed
+in 2.91s** after the final short-call refund refinement. The new suite contains
+30 cases, including the five supplied public decision states. All 24 exported
+portable modules still pass Python 3.6 grammar parsing. The original phase-two
+development measurements below are historical and are not measurements of the
+new 16-iteration river profile.
+
 The local host is macOS/arm64, using the existing isolated Python 3.11.17 /
 NumPy 2.4.6 / Torch environment and the actual verified 192/4/6 champion.
 OPENBLAS/OMP/MKL thread counts are one. No server training, checkpoint change,

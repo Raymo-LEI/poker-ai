@@ -4,6 +4,7 @@ The Transformer stays frozen. A 256-wide residual replaces the 64-wide branch;
 the original champion's independent 64-wide preflop branch is never trained.
 """
 import copy
+from collections import Counter
 from pathlib import Path
 import numpy as np
 from alphanl.stage2 import cfv
@@ -164,7 +165,8 @@ def one_generation(source,dest,champion,nets,seed,plan,workers,device,smoke=Fals
         payload.update(cluster_ids=np.array([r['rollout_seed'] for r in items],dtype=np.int64),target=np.stack([r.get('target',r['prior']) for r in items]),
                        value=np.array([r.get('value',0.) for r in items]),prior=np.stack([r['prior'] for r in items]))
         path=dest.with_name(dest.stem+'.'+name+'.npz')
-        cfv.publish(path,payload,n,0,'joint_distillation',dict(tree=TREE,identities=[r['identity'] for r in items],teacher_sha256=cfv.digest(nets)))
+        cfv.publish(path,payload,n,0,'joint_distillation',dict(tree=TREE,identities=[r['identity'] for r in items],
+            opponent_counts=dict(Counter(r['opponent'] for r in items)),teacher_sha256=cfv.digest(nets)))
         hashes[name]=cfv.digest(path);splits[name]=items
     training=fit(model,splits['train'],plan['policy_epochs'])
     distill_gate=gate(model,baseline,splits['validation'],splits['anchor'])

@@ -45,7 +45,7 @@ def bayes(weights,likelihood):
     return out/out.sum()
 
 
-def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=None,chance_samples=2,preflop=False):
+def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=None,chance_samples=2,preflop=False,opponent=None):
     """Collect unique current-policy states, ranges and optional pure DCFR targets."""
     import torch
     from alphanl.transformer.hunl import HunlTable,HunlTokenizer
@@ -57,6 +57,9 @@ def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=N
     tokenizer=HunlTokenizer(model.config.model.max_seq_len,**model.config.tokenizer_kwargs())
     guard=CFRActionGuard.from_config(model.config)
     table=HunlTable(seed=seed)
+    if opponent is not None:
+        from ladder_actors import SlayerActor
+        replica=SlayerActor(opponent,seed=seed,equity_samples=16)
     contexts=[MatchCtx(),MatchCtx()]
     result=[];hands_seen=0;exhaustions=0
     def observe(snap,ctx):
@@ -68,26 +71,37 @@ def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=N
         # No deal is reused between chunks/splits. Particle RNG never sees deck.
         hand_seed=seed+hands_seen
         table.reset();[ctx.begin_hand() for ctx in contexts]
+        hero_seat=hands_seen%2
+        if opponent is not None:replica.begin_hand(1-hero_seat)
         public_hands=list(__import__('itertools').combinations(v.DECK,2))
         selected=rng.choice(len(public_hands),PARTICLES,replace=False)
         particles=tuple(tuple(sorted(public_hands[i],key=cfv.CARD_ID.get)) for i in selected)
         mass=np.full((2,PARTICLES),1./PARTICLES)
         exhausted=False
         while not table.is_over() and len(result)<count:
-            seat=table.current_player();snap,obs=observe(table.snapshot(seat),contexts[seat])
+            seat=table.current_player()
+            if opponent is not None and seat!=hero_seat:
+                from alphanl.transformer.actor_actions import apply_actor_decision
+                apply_actor_decision(table,replica.act(table.snapshot(seat)))
+                for p in (0,1):contexts[p].observe_action(table.events_for(p)[-1])
+                continue
+            snap,obs=observe(table.snapshot(seat),contexts[seat])
             board=set(cfv.card(c) for c in snap.board_cards)
             valid=np.array([not set(h)&board for h in particles])
-            if not np.any(mass[:,valid].sum(axis=1)>0) or np.any(mass[:,valid].sum(axis=1)<=0):
+            if opponent is None and np.any(mass[:,valid].sum(axis=1)<=0):
                 exhausted=True;break
-            mass*=valid;mass/=mass.sum(axis=1,keepdims=True)
+            if opponent is None:mass*=valid;mass/=mass.sum(axis=1,keepdims=True)
             with torch.inference_mode():
                 prior=model({k:x.to(device) for k,x in obs.items()})[0][0].softmax(-1).cpu().double().numpy()
             wanted=(snap.street==0 if preflop else snap.street>0 and (street is None or snap.street==street))
             if wanted:
                 item=dict(identity=(hand_seed,len(snap.events),seat),snapshot=snap,
-                          rollout_seed=seed,row={k:x.numpy().copy() for k,x in obs.items()},prior=prior.astype(np.float32))
+                          rollout_seed=seed,opponent=opponent or 'current_blueprint',row={k:x.numpy().copy() for k,x in obs.items()},prior=prior.astype(np.float32))
                 if snap.street>0:
-                    rh,ro=posterior_ranges(particles,(mass[seat],mass[1-seat]),snap.board_cards)
+                    if opponent is None:rh,ro=posterior_ranges(particles,(mass[seat],mass[1-seat]),snap.board_cards)
+                    else:
+                        from alphanl.stage2.search_belief import history_combo_ranges
+                        rh,ro=history_combo_ranges(snap)
                     item.update(rh=rh,ro=ro)
                     if teacher:
                         it=iterations.get(str(snap.street)) if isinstance(iterations,dict) else iterations
@@ -99,6 +113,10 @@ def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=N
                 result.append(item)
                 if len(result)==count:break
             action=int(rng.choice(5,p=prior/prior.sum()))
+            if opponent is not None:
+                table.step(action)
+                for p in (0,1):contexts[p].observe_action(table.events_for(p)[-1])
+                continue
             # Evaluate the actual observed action under every public particle.
             batches=[];indices=[]
             for i,h in enumerate(particles):
@@ -159,7 +177,8 @@ def mixed_worker(payload):
 
 def teacher_worker(payload):
     index,n,seed,it,chance,preflop=payload;start=time.monotonic()
-    rows=trajectory(_MODEL,n,seed,teacher=not preflop,nets=_NET,iterations=it,chance_samples=chance,preflop=preflop)
+    opponent='Bot17_Probe3Bet' if not preflop and index%5==0 else None
+    rows=trajectory(_MODEL,n,seed,teacher=not preflop,nets=_NET,iterations=it,chance_samples=chance,preflop=preflop,opponent=opponent)
     return index,rows,start,time.monotonic()
 
 

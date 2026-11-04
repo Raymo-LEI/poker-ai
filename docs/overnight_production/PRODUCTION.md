@@ -54,7 +54,7 @@ The legacy evening tree remains the default when this option is absent.
 
 The pilot measures the exact ZIP `runtime.respond()` with the maximum
 256-wide residual, full guard and expanded tree. It selects the first passing
-online budget from 4/4/8, 3/3/6 and 2/2/4 flop/turn/river iterations, with one
+online budget from 4/4/16, 4/4/12, 4/4/8, 3/3/6 and 2/2/4 flop/turn/river iterations, with one
 chance sample and the existing 0.5/0.5/0.3 blueprint mixture. Offline precision
 is never lowered to meet an online timing limit. Every guard variant and
 formal release repeats mean<40ms, p99<120ms and maximum cold<0.5s checks.
@@ -99,6 +99,11 @@ values supervise the policy and value heads; labels contain no online prior
 or policy mixture. Teacher budgets are 32 flop/turn and 64 river iterations,
 with two chance samples. Collection publishes observations, policy/value
 targets, priors, exact identities and hashes for every split.
+Following the V22 bot17 audit, one in five teacher chunks plays the audited
+`Bot17_Probe3Bet` size replica instead of neural self-play. Those states use
+the declared full-combo history observation model, not neural likelihoods
+misrepresented as bot17's policy. The 50/50 self-play/exploration CFV mixture
+is unchanged. Split manifests record actual opponent sample counts.
 
 The residual expands from 64 to 256 dimensions without changing initial
 logits. Its extra capacity, context, fusion, policy and value parameters train;
@@ -135,6 +140,17 @@ two makes both compared modes explicit. Full uses canonical `V10_GUARD` with
 defaults are preserved. Slim retains the same preflop behavior, blind-lock
 path, native all-in mask and final executable-domain validation, while skipping
 postflop empirical distribution edits. Search continues in both modes.
+
+The subsequent bot17 audit repair supersedes the unsafe part of this ablation:
+after an active Evening search, **both** mode labels use only executable-domain
+validation and the history-posterior-priced giant river all-in fuse. Full mode
+cannot revive pot control, Fold-to-Call transfers, tail pruning, opponent-lock
+Call transfers or legacy optional-safety remapping after search. Blind-lock
+probes/confirmed-opponent transfers are preflop only; the own guaranteed-win
+lock remains. Thus identical safe-mode scores are expected and ties keep full.
+Preflop R5 blind protection is excluded for first BB responses to >=3.2BB
+opens (to_call>=2.2BB), preserving the complete legal blueprint distribution.
+See [the exact audit regressions](BOT17_REPAIR.md).
 
 All four roles run both modes against all five tournament opponents, four
 duplicate 50-hand pairs each, on separate tuning and confirmation seed sets

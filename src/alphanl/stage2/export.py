@@ -99,7 +99,8 @@ def cat(values, dim=0):
     sources["forward"] = forward + '\n' + feature_function
     for module in ("search_math", "search_game", "search_belief", "search_values"):
         sources[module] = (base / ("stage2/" + module + ".py")).read_text()
-    sources["wizard"] = (base / "stage2/wizard.py").read_text()
+    for module in ("cfv", "deep_solver_v2", "evening_strategy", "wizard"):
+        sources[module] = (base / ("stage2/" + module + ".py")).read_text()
     if botzone:
         # Botzone python3 is 3.6: postponed annotations do not exist there.
         sources = {name: _FUTURE_ANNOTATIONS.sub("", text) for name, text in sources.items()}
@@ -176,7 +177,8 @@ def pack_botzone_zip(destination, *, release_id=None):
     return {"path": str(destination), "bytes": destination.stat().st_size, "files": [n for n, _ in entries]}
 
 
-def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_guard=None, release_id=None):
+def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_guard=None, release_id=None,
+                           cfv_nets=None, evening_iterations=None, chance_samples=2):
     """Frozen policy plus config. Release exports require Vn_MODEL.npz and matching source."""
     model, blob = load_checkpoint(checkpoint)
     from .deployment_guard import guard_config
@@ -194,13 +196,30 @@ def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_
         meta["search_contract"]="public_tree_dcfr_v1"
         meta["value_network"]="unavailable_exact_or_checkdown"
     weights = _weights(model)
+    if cfv_nets is not None:
+        from .cfv import load_nets, SCHEMA
+        heads, manifest = load_nets(cfv_nets)
+        weights.update(heads)
+        anchor = blob.get("metadata", {}).get("preflop_anchor")
+        if anchor is not None:
+            weights.update({"preflop_anchor." + k: v.detach().cpu().numpy() for k, v in anchor.items()})
+        meta["cfv"] = manifest
+        meta["settings"] = dict(meta["settings"], evening_v2=True, strict_search=True,
+                                evening_iterations=evening_iterations, evening_chance_samples=chance_samples)
+        meta["cfv_schema"] = SCHEMA
+        meta["search_contract"] = SCHEMA
+        meta["value_network"] = "range_conditioned_residual_cfv"
     if "meta_json" in weights:
         raise ValueError("weight key collides with meta_json")
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("xb" if release_id is not None else "wb") as handle:
+    if release_id is not None and destination.exists():
+        raise FileExistsError("versioned weights must not be overwritten")
+    temporary = destination.with_name(destination.name + ".tmp")
+    with temporary.open("wb") as handle:
         np.savez(handle, meta_json=np.frombuffer(json.dumps(meta).encode("utf-8"), dtype=np.uint8),
                  **{k: np.ascontiguousarray(v) for k, v in weights.items()})
+    temporary.replace(destination)
     return {"path": str(destination), "bytes": destination.stat().st_size,
             "parameters": int(sum(v.size for v in weights.values())),
             "numeric_version": config.numeric_version, "reference_width": config.model.d_model,

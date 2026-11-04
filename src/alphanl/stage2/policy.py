@@ -65,6 +65,19 @@ class ResidualExploiterPolicy(nn.Module):
             raise ValueError("invalid match_ctx")
         fused = self.fusion(torch.cat((batch["poker_features"].detach(), self.context_encoder(context)), -1))
         logits = batch["ref_logits"].detach() + self.settings["alpha"] * self.delta_head(fused).tanh()
+        anchor = getattr(self, "_evening_preflop_anchor", None)
+        if anchor is not None:
+            # Evening distillation may update shared residual layers, but the
+            # frozen source residual owns every preflop decision exactly.
+            with torch.no_grad():
+                linear = torch.nn.functional.linear
+                gelu = torch.nn.functional.gelu
+                a = {k: v.to(logits.device) for k, v in anchor.items()}
+                ac = gelu(linear(context, a["context_encoder.0.weight"], a["context_encoder.0.bias"]))
+                af = gelu(linear(torch.cat((batch["poker_features"], ac), -1), a["fusion.0.weight"], a["fusion.0.bias"]))
+                al = batch["ref_logits"] + self.settings["alpha"] * linear(af, a["delta_head.weight"], a["delta_head.bias"]).tanh()
+                post = (((batch["token_ids"] >= 4) & (batch["token_ids"] <= 6)) & (batch["type_ids"] == 4)).any(-1)
+            logits = torch.where(post[:, None], logits, al)
         if mask_illegal:
             # legal_mask already includes the optional native all-in mask.
             # Illegal logits become ILLEGAL_LOGIT (-1e9) before this softmax.

@@ -6,16 +6,19 @@ from pathlib import Path
 import numpy as np
 import torch
 
-sys.path.insert(0, "/root/autodl-tmp/sprint24")
-sys.path.insert(0, "/root/autodl-tmp/stage2_botzone_native_code_20261030/src")
-sys.path.insert(0, "/root/autodl-tmp/stage2_botzone_native_code_20261030/scripts")
+REPO = Path(__file__).resolve().parents[2]
+if str(REPO / "src") not in sys.path:
+    sys.path.insert(0, str(REPO / "src"))
 
 from alphanl.cfr.evaluation import RuleActor, mean_interval
 from alphanl.stage2.env import BotzoneMatchEnv
 from alphanl.stage2.opponents import NeuralMatchActor
 from alphanl.transformer.tables import standard_deck
 from ladder_actors import SlayerActor
-from surgery import load_model
+from alphanl.stage2.train import load_checkpoint
+
+def load_model(path, device):
+    return load_checkpoint(path, device=device)
 
 OUT = Path("/root/autodl-tmp/sprint24/tournament")
 SEED = 20261030
@@ -32,21 +35,22 @@ def remaining_posts(hands_played, first_seat):
     total = 0
     for hand in range(hands_played, 50):
         seat = first_seat ^ (hand % 2)
-        total += 100 if seat == (hand % 2) else 50
+        total += 100 if seat == 0 else 50
     return total
 
 
 def locked(env, first_seat):
-    lead = abs(env.ctx.hero_net_bb * 100.0)
-    return lead > remaining_posts(env.ctx.hands_played, first_seat)
+    lead = env.ctx.hero_net_bb * 100.0
+    snap = env._hero_decision_snapshot()
+    invested = max(0., snap.starting_stack - snap.me_stack)
+    return lead > remaining_posts(env.ctx.hands_played, first_seat) + invested
 
 
 def summarize(pairs):
-    array = np.asarray(pairs, dtype=np.float64)
-    per_match = array.mean(axis=1)
-    wins = float((per_match > 0).mean())
-    interval = mean_interval(per_match / 50.0 * 1000.0)
-    return {"mbb_per_hand": round(float(interval["mean"]), 1), "win_rate": round(wins, 4), "matches": int(array.shape[0] * array.shape[1])}
+    from alphanl.stage2.evaluation import summarize_match_pairs
+    stats = summarize_match_pairs(pairs)
+    stats["win_rate"] = stats["match_win"]
+    return stats
 
 
 class TorchHero:
@@ -82,8 +86,6 @@ def play(hero, opponent, pair_decks, first, seed):
     )
     env.reset()
     while not env.done:
-        if locked(env, first):
-            break
         env.step(hero.act(env))
     return env.ctx.hero_net_bb
 

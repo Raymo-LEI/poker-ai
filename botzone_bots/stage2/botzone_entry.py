@@ -50,6 +50,9 @@ def load_agent(runtime):
         raise ValueError("unsupported weights format %r" % meta.get("format"))
     if RELEASE_ID != "development_unreleased" and meta.get("deployment_release") != RELEASE_ID:
         raise ValueError("source/model release contract mismatch")
+    if "cfv_schema" in weights or meta.get("settings", {}).get("evening_v2"):
+        from stage2_runtime.cfv import validate_embedded
+        validate_embedded(weights, meta["cfv"])
     config = meta.get("deployment_guard")
     override = os.environ.get("POKER_STAGE2_GUARD_CONFIG")
     if override:

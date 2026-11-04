@@ -137,6 +137,9 @@ def final_policy_diagnostics(model, batch, *, minibatch_size=256):
 
 
 def save_checkpoint(path, model, *, optimizer=None, pool=None, update=0, metadata=None):
+    metadata = dict(metadata or {})
+    if getattr(model, "_evening_preflop_anchor", None) is not None:
+        metadata["preflop_anchor"] = {k: v.detach().cpu().clone() for k, v in model._evening_preflop_anchor.items()}
     blob = {"format": FORMAT, "config": model.config.to_dict(), "settings": model.settings,
             "rules_version": RULES_VERSION, "numeric_version": model.config.numeric_version,
             "context_fields": list(model.context_fields), "model": {k: v.detach().cpu() for k, v in model.state_dict().items()},
@@ -167,6 +170,13 @@ def load_checkpoint(path, *, device="cpu"):
     model.load_state_dict(blob["model"], strict=True)
     if any(not torch.isfinite(v).all() for v in model.state_dict().values()):
         raise ValueError("nonfinite Stage 2 checkpoint")
+    anchor = blob.get("metadata", {}).get("preflop_anchor")
+    if anchor is not None:
+        expected = {k for k in model.state_dict() if k.startswith(("context_encoder.", "fusion.", "delta_head."))}
+        if (set(anchor) != expected or any(not isinstance(v, torch.Tensor) or
+                v.shape != model.state_dict()[k].shape or not torch.isfinite(v).all() for k, v in anchor.items())):
+            raise ValueError("invalid frozen preflop anchor")
+        model._evening_preflop_anchor = {k: v.detach().cpu().clone() for k, v in anchor.items()}
     return model.to(device).eval(), blob
 
 

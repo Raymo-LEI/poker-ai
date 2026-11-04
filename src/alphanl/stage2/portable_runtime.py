@@ -68,6 +68,13 @@ class Agent:
         fused = _gelu(_linear(np.concatenate((features, encoded), -1), self.weights["fusion.0.weight"], self.weights["fusion.0.bias"]))
         delta = _linear(fused, self.weights["delta_head.weight"], self.weights["delta_head.bias"])
         logits = ref + self.settings["alpha"] * np.tanh(delta)
+        if "preflop_anchor.context_encoder.0.weight" in self.weights:
+            a = {k[len("preflop_anchor."):]: v for k, v in self.weights.items() if k.startswith("preflop_anchor.")}
+            ac = _gelu(_linear(batch["match_ctx"], a["context_encoder.0.weight"], a["context_encoder.0.bias"]))
+            af = _gelu(_linear(np.concatenate((features, ac), -1), a["fusion.0.weight"], a["fusion.0.bias"]))
+            al = ref + self.settings["alpha"] * np.tanh(_linear(af, a["delta_head.weight"], a["delta_head.bias"]))
+            post = np.any((batch["token_ids"] >= 4) & (batch["token_ids"] <= 6) & (batch["type_ids"] == 4), axis=-1)
+            logits = np.where(post[:, None], logits, al)
         return np.where(batch["legal_mask"] > .5, logits, np.float32(-1e9))
 
     def raw_observation(self, snapshot, context):
@@ -196,6 +203,7 @@ def request_snapshot(request):
     snap = HandSnapshot(tuple(events), tuple(card(c) for c in request["my_cards"]),
         tuple(card(c) for c in request["public_cards"]), canonical(me), 1, view.street,
         view.pot, stacks, owed, tuple(sorted(responses)), 100., 20000.)
+    object.__setattr__(snap, "postflop_first_seat", 1)
     return snap, responses
 
 

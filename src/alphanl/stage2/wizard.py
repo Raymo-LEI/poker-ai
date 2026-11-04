@@ -16,6 +16,9 @@ def bind(evaluator):
 
 
 def fuse(agent, snapshot, context, probs, amounts=None):
+    if "cfv_schema" in agent.weights or agent.settings.get("evening_v2"):
+        from .evening_strategy import fuse as evening_fuse
+        return evening_fuse(agent,snapshot,context,probs,amounts)
     request=getattr(agent,'search_request',None)
     state = PublicState.from_request(request,snapshot) if request is not None else PublicState.from_snapshot(snapshot)
     if amounts is None:

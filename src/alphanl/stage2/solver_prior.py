@@ -2,13 +2,14 @@
 import numpy as np
 
 
-def profile(context, street, snapshot=None):
+def profile(context, street, snapshot=None, eta_max=.35):
     successes = getattr(context, 'successes', {})
     chances = getattr(context, 'opportunities', {})
     fold_key = 'fold_to_preflop_raise' if street == 0 else 'fold_to_postflop_bet'
     aggro_key = ('pfr', 'flop_aggression', 'turn_aggression', 'river_aggression')[street]
     folds, actions = chances.get(fold_key, 0), chances.get(aggro_key, 0)
-    sample_eta = min(.35, max(0., float(getattr(context, 'hands_played', 0))) / 40.)
+    if not 0 <= eta_max <= .35:raise ValueError("invalid HUD eta bound")
+    sample_eta = min(eta_max, max(0., float(getattr(context, 'hands_played', 0))) / 40.)
     risk, scale = 0., 20.
     if snapshot is not None:
         risk = max(float(snapshot.pot), float(snapshot.to_call)) / snapshot.big_blind

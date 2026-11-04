@@ -77,12 +77,13 @@ def _fixture(name,path):
     return mod
 
 
-def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call',keep_trace=True):
+def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call',keep_trace=True,observer=None):
     judge=_fixture('_evening_judge_'+str(seed),REPO/'tests/fixtures/botzone_judge.py')
     judge.random=random.Random(seed)
     requests={0:[],1:[]};responses={0:[],1:[]};data={0:'',1:''}
     log=[];initdata=None;times=[];traces=[];counts={};score=None;complete=False
     actor=None;opponent_hand=-1;cfv_calls=0
+    current_hand=0;hand_start=0.;hand_actions=[];settled=[];guard_stats={}
     if opponent not in ('call','fold'):
         from alphanl.cfr.evaluation import RuleActor
         from ladder_actors import SlayerActor
@@ -94,15 +95,33 @@ def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call',keep_trace
         output=json.loads(judge.judge(json.dumps(query)))
         if output['display'].get('error'):raise RuntimeError('judge rejection: '+str(output['display']['error']))
         if output['command']=='finish':
-            score=output['content'][str(hero_seat)];complete=True;break
+            score=output['content'][str(hero_seat)];complete=True
+            settled.append(dict(hand=current_hand,net_bb=score-hand_start,actions=hand_actions))
+            break
         initdata=output.get('initdata',initdata)
         (seat,request),= [(int(k),v) for k,v in output['content'].items()]
+        if request['hand']!=current_hand:
+            total=request['total_win_chips'][hero_seat]/100.
+            settled.append(dict(hand=current_hand,net_bb=total-hand_start,actions=hand_actions))
+            current_hand=request['hand'];hand_start=total;hand_actions=[]
         if request['hand']>=max_hands:
             score=request['total_win_chips'][hero_seat]/100.;break
         requests[seat].append(request)
         payload={'requests':requests[seat],'responses':responses[seat],'data':data[seat]}
         if seat==hero_seat:
+            if observer is not None:observer(payload)
             started=time.perf_counter();body=bundle.respond(payload);times.append(time.perf_counter()-started)
+            guard=getattr(bundle.agent,'last_guard',{})
+            for rule,stat in guard.get('rules',{}).items():
+                dst=guard_stats.setdefault(rule,dict(fires=0,mass_moved=0.))
+                dst['fires']+=stat['fires'];dst['mass_moved']+=stat['mass_moved']
+            if keep_trace:
+                view,_=bundle.runtime.request_snapshot(request)
+                hand_actions.append(dict(street=len(request['public_cards']),hole=request['my_cards'],
+                    board=request['public_cards'],stack=request['my_chips'],pot=view.pot,to_call=view.to_call,response=body['response'],
+                    before=getattr(bundle.agent,'guard_before',np.zeros(5)).tolist(),
+                    after=getattr(bundle.agent,'guard_after',np.zeros(5)).tolist(),guard=guard,
+                    search_audit=dict(getattr(bundle.agent,'search_audit',{}))))
             response=body['response'];data[seat]=body.get('data','')
             trace=getattr(bundle.agent,'last_evening',{})
             street=len(request['public_cards'])
@@ -121,7 +140,8 @@ def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call',keep_trace
         log.append({'output':output});log.append({str(seat):{'verdict':'OK','response':response}})
     return dict(hero_net_bb=score,complete=complete,hands=max_hands,hero_decisions=len(times),errors=0,
                 max_turn_s=max(times) if times else 0,mean_turn_s=float(np.mean(times)) if times else 0,
-                decisions_by_board_size=counts,traces=traces,cfv_calls=cfv_calls,turn_s=times)
+                decisions_by_board_size=counts,traces=traces,cfv_calls=cfv_calls,turn_s=times,guard_stats=guard_stats,
+                losing_hands=sorted((h for h in settled if h['net_bb']<0),key=lambda h:h['net_bb'])[:20])
 
 
 def actor_response(bundle,snap,request,options,decision):

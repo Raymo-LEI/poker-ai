@@ -1040,7 +1040,9 @@ def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, contex
             and (postflop_tail or (snapshot.pot >= config["micro_min_pot_bb"] * blind
                  and (call <= config["micro_max_call_bb"] * blind or odds <= config["micro_max_pot_odds"])
                  and equity() > odds))):
+        audit_before=probs.copy()
         probs[:] = 0.; probs[1] = 1.
+        record_guard_rule(info,"legacy.micro_commitment",audit_before,probs)
         info.update(micro_commitment=True, micro_postflop_tail=postflop_tail,
                     pot_odds=odds, micro_invested_bb=invested/blind)
         return probs, info
@@ -1054,7 +1056,9 @@ def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, contex
             and pre_shoves >= config["shove_sb_min_preflop_shoves"]
             and pre_shoves / max(pre_actions, 1) > config["shove_sb_min_frequency"]
             and not runway_hand_allowed(snapshot, equity(), status)):
+        audit_before=probs.copy()
         probs[:] = 0.; probs[0] = 1.
+        record_guard_rule(info,"legacy.shove_sb_discipline",audit_before,probs)
         info.update(shove_sb_discipline=True, preflop_shove_frequency=pre_shoves/max(pre_actions,1))
         return probs, info
     before, source = pot_before_bet(snapshot)
@@ -1090,7 +1094,9 @@ def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, contex
                         info["adaptive_call_protected"] = True
                     protected.add(1)  # An unlocked call must not be relocked by tail pruning.
                 if force and 1 in legal:
+                    audit_before=probs.copy()
                     probs[:] = 0.; probs[1] = 1.; info["forced_call"] = True
+                    record_guard_rule(info,"legacy.adaptive_force_call",audit_before,probs)
                     if config["adaptive_call_protection_enabled"]:
                         return probs, info
                     _r4_continuation_guards(snapshot, raw, probs, legal, config, equity, info, protected)
@@ -1107,7 +1113,9 @@ def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, contex
                 or value < info["pot_odds"] + config["big_call_equity_margin"]):
             info["call_fuse"] = "big_call"
         if info["call_fuse"]:
+            audit_before=probs.copy()
             probs[:] = 0.; probs[0] = 1.
+            record_guard_rule(info,"legacy.call_fuse",audit_before,probs)
             return probs, info
     amount = {1: call, 2: int(snapshot.pot * .5), 3: int(snapshot.pot), 4: snapshot.me_stack}
     if amounts is not None:
@@ -1137,8 +1145,10 @@ def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, contex
             and actions >= config["passive_min_actions"] and checks >= config["passive_min_checks"]
             and regular_bets / max(actions, 1) <= config["passive_max_aggression"]
             and equity() >= config["passive_min_equity"]):
+        audit_before=probs.copy()
         transfer = probs[1] * config["passive_check_transfer"]
         probs[1] -= transfer; probs[2] += transfer
+        record_guard_rule(info,"legacy.passive_probe",audit_before,probs)
         info.update(passive_probe=True, probe_mass=float(transfer), regular_aggression=regular_bets / max(actions, 1))
         protected.add(2)
     _pot_control(snapshot, raw, probs, legal, amount, config, equity, info, protected)
@@ -1150,11 +1160,134 @@ def apply_guard(snapshot, probabilities, config, equity_fn, amounts=None, contex
     _r5_blind_protection(snapshot, probs, legal, config, equity, info, protected)
     _r7_thin_call_fold(snapshot, raw, probs, legal, config, equity, info, protected)
     _r6_strong_fold_floor(snapshot, probs, legal, config, equity, info, protected)
+    audit_before=probs.copy()
     for action in sorted(legal):
         if action not in protected and 0 < probs[action] < config["prune_below"]:
             probs[action] = 0.; info["pruned"].append(action)
+    audit_after=probs/probs.sum() if probs.sum()>0 else probs
+    record_guard_rule(info,"legacy.tail_pruning",audit_before/audit_before.sum(),audit_after)
     _r6_purify(snapshot, probs, legal, config, info, protected)
     if probs.sum() <= 0:
         probs[int(np.argmax(raw))] = 1.
     probs /= probs.sum()
     return probs, info
+
+
+def record_guard_rule(info, name, before, after, fired=False):
+    """Mass is total variation moved at this individual rule boundary."""
+    mass = float(.5 * np.abs(np.asarray(after) - np.asarray(before)).sum())
+    if fired or mass > 1e-15:
+        row = info.setdefault('rules', {}).setdefault(name, dict(fires=0, mass_moved=0.))
+        row['fires'] += 1
+        row['mass_moved'] += mass
+
+
+def apply_surgical_guard(snapshot, probabilities, config, equity_fn, amounts=None, context=None):
+    """Legacy's monotone-fold subset, with symmetric investment caps.
+
+    No pot-control, blind protection, fold relief, purification or forced calls.
+    Caps and the two retained fold-only rules stop at the river boundary.
+    """
+    original = np.asarray(probabilities, dtype=np.float64)
+    probs, safety = apply_search_guard(snapshot, probabilities, amounts)
+    info = dict(safety, guard_mode='surgical', rules={})
+    legal = set(snapshot.legal_action_ids)
+    if amounts is not None:
+        legal &= set(amounts)
+    masked = np.maximum(original, 0.).copy()
+    masked[[a for a in range(5) if a not in legal]] = 0.
+    masked /= masked.sum()
+    record_guard_rule(info, 'legal_mask_normalize', original, masked)
+    record_guard_rule(info, 'free_fold_to_check', masked, probs)
+    if int(snapshot.street) == 3:
+        info['river_solver_untouched'] = True
+        return probs, info
+    if legal=={1}:
+        info['legal_forced_continuation']=True
+        return probs,info
+    baseline = probs.copy()
+    call = min(float(snapshot.to_call), float(snapshot.me_stack))
+    amount = {0:0., 1:call, 2:call + snapshot.pot * .5,
+              3:call + snapshot.pot, 4:float(snapshot.me_stack)}
+    if amounts is not None:
+        amount.update(amounts)
+    # Shared cap for EVERY investment, including Call. A pot-sized minimum
+    # raise cannot smuggle an intercepted jam into a stack-off call.
+    stack = float(getattr(snapshot, 'starting_stack', snapshot.me_stack))
+    threshold = max(config['active_shove_min_bb'] * snapshot.big_blind,
+                    min(.25 * stack, config['active_shove_pot_ratio'] * snapshot.pot))
+    if snapshot.street == 0:
+        threshold = min(threshold, config['preflop_raise_cap_bb'] * snapshot.big_blind)
+    cached = []
+    def equity():
+        if not cached:
+            value = float(equity_fn(snapshot, samples=config['equity_samples'], seed=config['equity_seed']))
+            if not math.isfinite(value) or not 0 <= value <= 1:
+                raise ValueError('invalid surgical equity')
+            cached.append(value)
+        return cached[0]
+    blocked = [a for a in (1,2,3,4) if a in legal and probs[a] > 0 and amount[a] > threshold]
+    if blocked:
+        value = equity()
+        strong = (value >= config['preflop_raise_equity'] if snapshot.street == 0 else
+                  value >= config['postflop_raise_equity'] and strong_made_hand(snapshot))
+        info.update(equity=value, cap_chips=float(threshold), capped_actions=[] if strong else blocked)
+        if not strong:
+            # Medium hands can continue ONLY at an uncapped price. Weak hands
+            # fold when priced and check when free. Existing Fold is never spent.
+            medium = value >= .5
+            target = 1 if 1 in legal and (call == 0 or (medium and call <= threshold)) else 0
+            if target not in legal:
+                raise ValueError('no legal surgical cap target')
+            for action in blocked:
+                before = probs.copy()
+                mass = float(probs[action]); probs[action] = 0.; probs[target] += mass
+                record_guard_rule(info, 'cap_' + ('call' if action == 1 else 'all_in' if action == 4 else 'raise'), before, probs)
+            if call > 0 and probs[1] > .95 and baseline[1] < 1.:
+                # A medium-hand redirect may never manufacture a mandatory Call.
+                # Keep at least 5% Fold when all capped aggression collapses here.
+                before = probs.copy()
+                moved = min(probs[1] - .95, max(0., probs[1] - baseline[1]))
+                probs[1] -= moved; probs[0] += moved
+                record_guard_rule(info, 'no_forced_call', before, probs)
+    protected = set()
+    for name, fn, args in (
+        ('legacy_dominant_fold', _dominant_fold_filter,
+         (snapshot, baseline, probs, legal, amount, config, equity, info, protected)),
+        ('legacy_thin_call_fold', _r7_thin_call_fold,
+         (snapshot, baseline, probs, legal, config, equity, info, protected))):
+        before = probs.copy(); fn(*args)
+        probs /= probs.sum()
+        record_guard_rule(info, name, before, probs)
+    if call > 0 and probs[0] + 1e-12 < baseline[0]:
+        raise AssertionError('SURGICAL_FOLD_MONOTONICITY_FAILED')
+    if call > 0 and probs[1] == 1. and baseline[1] != 1.:
+        raise AssertionError('SURGICAL_FORCED_CALL_FAILED')
+    info['fold_before'] = float(baseline[0]); info['fold_after'] = float(probs[0])
+    return probs, info
+
+
+
+def _audited_legacy_rule(function, probability_index, info_index):
+    def audited(*args, **kwargs):
+        info=args[info_index]
+        if info.get('guard_mode')=='surgical':return function(*args,**kwargs)
+        before=np.array(args[probability_index],copy=True)
+        result=function(*args,**kwargs)
+        after=np.array(args[probability_index],copy=True)
+        if before.sum()>0:before/=before.sum()
+        if after.sum()>0:after/=after.sum()
+        record_guard_rule(info,'legacy.'+function.__name__.lstrip('_'),before,after)
+        return result
+    return audited
+
+
+# Read-only boundary instrumentation. Nested helpers each retain their own
+# boundary TV; their per-rule totals are not added to claim a net pipeline TV.
+for _rule,_prob_index,_info_index in (
+    ('_redirect_raise_mass',2,6),('_r4_continuation_guards',2,6),
+    ('_r5_blind_protection',1,5),('_r5_weak_reraise',2,7),('_r5_final_guards',2,7),
+    ('_r5_supplement',2,7),('_pot_control',2,7),('_late_pot_control',1,6),
+    ('_safe_shove_transfer',2,8),('_r6_strong_fold_floor',1,5),
+    ('_r7_thin_call_fold',2,6),('_r6_purify',1,4),('_dominant_fold_filter',2,7)):
+    globals()[_rule]=_audited_legacy_rule(globals()[_rule],_prob_index,_info_index)

@@ -14,7 +14,7 @@ from .hunl import HunlTokenizer
 from .context import MatchCtx, CONTEXT_FIELDS
 from .actions import CFRActionGuard
 from .allin_mask import mask_snapshot
-from .deployment_guard import guard_config, apply_guard
+from .deployment_guard import guard_config, apply_guard, apply_surgical_guard, record_guard_rule
 from .equity import estimated_equity
 from . import reconstruct as judge
 from . import blind_lock
@@ -94,9 +94,9 @@ class Agent:
         evening=bool(self.settings.get('evening_v2',False))
         profile=self.settings.get('evening_online',{})
         guard_mode=profile.get('guard_mode','slim' if evening else 'legacy_full')
-        if guard_mode=='legacy_full' and evening and not profile.get('comparison_only',False):
+        if guard_mode=='legacy_full' and evening and not (profile.get('comparison_only',False) or profile.get('server_arena_release',False)):
             raise ValueError('legacy full guard is comparison-only for Evening')
-        if guard_mode not in ('slim','legacy_full'):raise ValueError('invalid guard mode')
+        if guard_mode not in ('slim','legacy_full','surgical'):raise ValueError('invalid guard mode')
         self.search_request=request
         if amounts is None:
             public_state=PublicState.from_request(request,snapshot) if request is not None else PublicState.from_snapshot(snapshot)
@@ -114,7 +114,10 @@ class Agent:
         if mode=='own' or confirmed_sb or legacy_probe:
             action = 0 if mode=='own' else 1
             probs=np.zeros(5);probs[action]=1.
-            self.last_guard=audit
+            self.guard_before=probs.copy(); self.guard_after=probs.copy()
+            self.last_guard=dict(audit,rules={})
+            record_guard_rule(self.last_guard,'lock_'+mode,probs,probs,fired=True)
+            self.last_evening=dict(search=False,reason='blind_lock_'+mode,cfv_calls=0)
             self.search_audit=dict(status="skipped",reason="blind_lock_"+mode)
             self.last_wizard="search=skipped reason=blind_lock_"+mode
             return probs
@@ -135,11 +138,17 @@ class Agent:
                 and 1 in snapshot.legal_action_ids and 0<probs[4]<.05):
             probs[1]+=probs[4];probs[4]=0.
         before_guard=probs.copy()
-        if evening and guard_mode=='slim':
+        if evening and guard_mode=='surgical':
+            probs,self.last_guard=apply_surgical_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
+        elif evening and guard_mode=='slim':
             probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context,search_active=True)
             self.last_guard['postflop_guard_mode']=guard_mode
         else:
             probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
+        self.guard_before=before_guard.copy(); self.guard_after=probs.copy()
+        self.last_guard['pipeline_net_mass_moved']=float(.5*np.abs(before_guard-probs).sum())
+        if guard_mode!='surgical' and not self.last_guard.get('rules'):
+            record_guard_rule(self.last_guard,'legacy_pipeline' if guard_mode=='legacy_full' else 'slim_safety',before_guard,probs)
         self.last_guard.update(audit)
         if not evening and mode == "opponent_confirmed" and snapshot.street==0 and 1 in amounts:
             probs[1]+=probs[0];probs[0]=0.

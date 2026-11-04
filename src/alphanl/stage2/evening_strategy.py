@@ -47,9 +47,15 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
     hero=frozenset(cfv.card(c) for c in snapshot.hole_cards)
     hands=solver._public(tuple(sorted(cfv.card(c) for c in snapshot.board_cards)))[0]
     at=next(i for i,h in enumerate(hands) if frozenset(h)==hero)
+    # Nonlinear match utility is evaluated at actual river W/T/L terminals.
+    # Earlier streets retain chip CFVs; U(E[chips]) is not a valid substitute.
+    from .solver_prior import profile
+    match_profile = profile(context, int(snapshot.street), snapshot)
+    match_utility = bool(online and context is not None and snapshot.street == 3
+                         and match_profile['pot_risk_bb'] >= 40.)
     sol=solver.solve_public_subgame(snapshot,rh,ro,weights=weights,amounts=amounts,
                                     iterations=iterations,chance_samples=chance_samples,
-                                    utility=False,context=context,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
+                                    utility=match_utility,context=context,context_prior=online,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
     out=np.zeros(5)
     for i,a in enumerate(sol.tree.labels):out[a]=sol.average[at,i]
     out*=mask
@@ -65,7 +71,8 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
     trace.update(search=True,reason='exact_river_terminals' if len(snapshot.board_cards)==5 else 'range_conditioned_cfv_leaves',
                  target='blueprint_dcfr_mixture' if online else 'dcfr_average',feature_dim=136,
                  blueprint_weight=mix if online else 0.,initial_strategy='hero_root_blueprint' if online else 'uniform',
-                 dcfr_average=average.tolist(),blueprint=prior.tolist() if online else None,root_value_bb=float(sol.state[at]),range_audit=range_audit)
+                 dcfr_average=average.tolist(),blueprint=prior.tolist() if online else None,root_value_bb=float(sol.state[at]),range_audit=range_audit,
+                 match_utility=match_utility)
     return out,trace
 
 
@@ -82,6 +89,9 @@ def fuse(agent,snapshot,context,probs,amounts):
     agent.search_audit=dict(status='active' if trace['search'] else 'skipped',
                             solver=cfv.SCHEMA,reason=trace['reason'],output=trace.get('target','blueprint'),
                             cfv_calls=trace['cfv_calls'],feature_dim=136)
+    if 'match_prior' in trace:
+        agent.search_audit['match_prior'] = trace['match_prior']
+        agent.search_audit['match_utility'] = trace['match_utility']
     agent.last_evening=trace
     agent.last_wizard='wiz=v2/search=%d/cfv=%d/dim=136/reason=%s' % (trace['search'],trace['cfv_calls'],trace['reason'])
     if trace.get('range_audit'):

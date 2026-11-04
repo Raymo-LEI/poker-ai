@@ -270,7 +270,10 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, c
             jam_h = min(me,owed+jam_o)
             children.append(Node(0,[leaf("fold0",h,0),showdown(jam_h,jam_o)],labels=["fold","call"]))
             labels.append("raise_all_in")
-        return Node(1,children,labels=labels)
+        node = Node(1,children,labels=labels)
+        node.facing_fraction = h / max(pot, 1.)
+        node.risk_pot = pot + h
+        return node
     def after_check():
         if opp <= 0 or me <= 0:
             return showdown(0,0)
@@ -284,7 +287,10 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, c
                 # The second size is a stack jam. Only jam can be a short raise.
                 for raise_to in sorted(set((min(me,pot+3*bet),me))):
                     if raise_to <= bet or (raise_to < 2*bet and raise_to != me):continue
-                    replies.append(Node(1,[leaf("fold1",0,bet),showdown(raise_to,min(opp,raise_to))],labels=["fold","call"]))
+                    reply = Node(1,[leaf("fold1",0,bet),showdown(raise_to,min(opp,raise_to))],labels=["fold","call"])
+                    reply.facing_fraction = raise_to / max(pot + bet, 1.)
+                    reply.risk_pot = pot + bet + raise_to
+                    replies.append(reply)
                     names.append("check_raise_to_%g" % raise_to)
             children.append(Node(0,replies,labels=names))
             labels.append(bet)
@@ -314,7 +320,8 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, c
 class PublicSolver:
     def __init__(self, snapshot, hero_range=None, opponent_range=None, weights=None,
                  iterations=None, chance_samples=2, seed=0, first_player=0,
-                 amounts=None, utility=False, context=None, policy_only=False, root_prior=None, hero_at=None, check_raise=False):
+                 amounts=None, utility=False, context=None, policy_only=False, root_prior=None, hero_at=None, check_raise=False,
+                 context_prior=True):
         self.s = snapshot
         self.policy_only=bool(policy_only)
         self.board = tuple(sorted(_ev(c) for c in snapshot.board_cards))
@@ -336,6 +343,12 @@ class PublicSolver:
             if opponent_range is None:opponent_range=default_o
         self.rh = expand_range(hero_range,self.bins)
         self.ro = expand_range(opponent_range,self.bins)
+        from .solver_prior import profile, condition_range
+        from .search_belief import _percentiles
+        self.match_context = context
+        self.match_profile = profile(context, int(snapshot.street), snapshot) if context_prior else profile(None, int(snapshot.street), snapshot)
+        self.match_strength = _percentiles(self.rank)
+        self.ro = condition_range(snapshot, context, self.ro, self.match_strength, self.match_profile)
         self.weights = weights
         self.iterations = iterations or (RIVER_ITERS if len(self.board)==5 else TURN_ITERS)
         self.chance_samples,self.seed = int(chance_samples),int(seed)
@@ -344,6 +357,7 @@ class PublicSolver:
                                  check_closes=first_player==0 and float(snapshot.to_call)==0 and
                                      getattr(snapshot,'me_seat',0)!=getattr(snapshot,'postflop_first_seat',0),check_raise=check_raise)
         self.tree.init(self.width)
+        self._init_match_prior(self.tree)
         if root_prior is not None:
             if first_player!=0 or hero_at is None:raise ValueError('blueprint prior requires the acting hero root information set')
             prior=np.asarray(root_prior,dtype=np.float64)
@@ -358,7 +372,25 @@ class PublicSolver:
         self.utility,self.context = utility,context
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
                       "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise),"range_audit":range_audit}
+        self.trace['match_prior'] = dict(self.match_profile, model='bounded-public-match-v1',
+                                       response='restricted_nash_mixture', range='history_context_size_mixture')
         self._chance_cache = {}
+
+    def _init_match_prior(self, node):
+        if node.player is None:
+            return
+        if node.player == 1 and self.match_profile['eta'] > 0:
+            from .solver_prior import response_prior, profile
+            node.match_prior = response_prior(node.labels, self.match_strength, self.match_profile,
+                                              self.match_context, getattr(node, 'facing_fraction', None))
+            risk_state = SimpleNamespace(pot=getattr(node, 'risk_pot', self.s.pot),
+                                         to_call=0., big_blind=self.s.big_blind)
+            eta = min(self.match_profile['eta'], profile(self.match_context, int(self.s.street), risk_state)['eta'])
+            node.match_eta = eta
+            node.strategy = (1. - eta) * node.strategy + eta * node.match_prior
+            node.fallback = node.strategy.copy()
+        for child in node.children:
+            self._init_match_prior(child)
 
     def mass(self,w):
         cards = np.bincount(self.c1,weights=w,minlength=52)+np.bincount(self.c2,weights=w,minlength=52)
@@ -532,6 +564,12 @@ class PublicSolver:
         positive=np.maximum(node.regret,0.)
         den=positive.sum(axis=1,keepdims=True)
         node.strategy=np.divide(positive,den,out=node.fallback.copy(),where=den>0)
+        if hasattr(node, 'match_prior'):
+            # Keep the empirical component throughout resolving. A warm start
+            # alone disappears after the first regret-matching iteration.
+            eta = node.match_eta
+            baseline = np.divide(positive, den, out=np.full_like(positive, 1. / len(node.children)), where=den>0)
+            node.strategy = (1. - eta) * baseline + eta * node.match_prior
         for child in node.children:self.update_strategies(child)
 
     def solve(self):

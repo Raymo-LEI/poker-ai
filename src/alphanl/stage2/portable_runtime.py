@@ -223,47 +223,110 @@ def _object(value):
     return json.loads(value) if isinstance(value, str) else value
 
 
-def _handoff_evidence(previous, response, current):
-    """Prove an unseen terminal Fold from exact public chip reconciliation.
+def _handoff_delta(previous, current):
+    """Completed-hand score only; judge total_win_chips excludes new blinds.
 
-    Calls/showdowns cannot give exactly the pre-bet opposing contribution:
-    a legal positive bet requires a positive opposing call, and a tie nets 0.
-    One skipped BB hand has only an opposing initial SB Fold and earns 50.
+    my_chips is a different ledger (20000 less current-hand contributions).
+    Only a wholly unqueried BB hand proves an opposing SB first-action Fold.
+    Alternating seats make any larger ambiguous gap fail closed.
     """
     old, new = blind_lock.public_meta(previous), blind_lock.public_meta(current)
     if old is None or new is None or old["me"] != new["me"] or old["maximum"] != new["maximum"]:
-        return None, False
-    gap = new["hand"]-old["hand"]
-    valid = (gap in (1,2) and (old["dealer"]+gap)%2==new["dealer"]
-             and (gap!=2 or old["me"]!=old["dealer"]))
-    if not valid:
-        return None, False
-    skipped = gap == 2
-    if isinstance(response,bool) or not isinstance(response,int) or response == -1:
-        return None, skipped
-    snap, _ = request_snapshot(previous)
-    if snap.opp_stack <= 0 or not judge.judge_accepts(judge.reconstruct(previous),response):
-        return None, skipped
-    gain = new["scores"][new["me"]]-old["scores"][old["me"]]-(50 if skipped else 0)
-    opponent_invested = snap.starting_stack-snap.opp_stack
-    added = snap.me_stack if response == -2 else snap.to_call if response == 0 else response
-    if added > snap.to_call:
-        if snap.street > 0:
-            return "postflop_bet_fold" if gain == opponent_invested and gain > 0 else "postflop_bet_nonfold", skipped
-        return "preflop_bet_fold" if gain == opponent_invested and gain > 0 else "preflop_bet_nonfold", skipped
-    if (gain == opponent_invested and gain > 0 and snap.street==0 and not snap.events and snap.me_seat==snap.sb_seat and response==0):
-        return "preflop_free_fold", skipped
-    return None, skipped
+        return None, []
+    gap = new["hand"] - old["hand"]
+    if gap < 1 or (old["dealer"] + gap) % 2 != new["dealer"]:
+        return None, []
+    skipped = []
+    for hand in range(old["hand"] + 1, new["hand"]):
+        dealer = (old["dealer"] + hand - old["hand"]) % 2
+        if old["me"] != dealer:  # Hero SB necessarily receives the first query.
+            return None, []
+        skipped.append(hand)
+    net = new["scores"][new["me"]] - old["scores"][old["me"]] - 50 * len(skipped)
+    return net, skipped
+
+
+def _freeze_lock_profile(ctx, request):
+    meta = blind_lock.public_meta(request)
+    if meta is None:
+        return
+    for seat in (0, 1):
+        # Freeze near the proven all-fold blind budget, before the cliff itself.
+        if meta["scores"][seat] >= .9 * blind_lock.blind_budget(meta, seat):
+            ctx.freeze_frequencies(meta["hand"], "near_blind_lock_seat_%d" % seat)
+
+
+def _commit_context_action(ctx, request, snap, response):
+    """Commit the exact executable action once, for live and cumulative replay."""
+    chips = 0 if response == -1 else snap.me_stack if response == -2 else min(snap.to_call, snap.me_stack) if response == 0 else response
+    kind = ("fold" if response == -1 else "all_in" if chips == snap.me_stack else "check" if chips == 0
+            else "call" if chips <= snap.to_call else "bet" if snap.to_call == 0 else "raise")
+    ctx.observe_action(ActionEvent(snap.street, snap.me_seat, snap.me_position, True, None, kind,
+        snap.pot, chips, chips / snap.pot, nearest_pot_fraction_bucket(chips / snap.pot),
+        snap.to_call, snap.me_stack, snap.legal_action_ids))
+    ctx.remember_action(request.get("hand", 0), snap, chips, kind)
+    return kind != "fold" and chips > 0 and chips <= snap.to_call and (
+        snap.street == 3 or snap.opp_stack == 0 or chips == snap.me_stack)
+
+
+def _complete_terminal(ctx, previous, response, current):
+    """Reconcile only a validated complete Botzone per-player request stream."""
+    net, skipped = _handoff_delta(previous, current)
+    if net is None:
+        return None, None
+    old = blind_lock.public_meta(previous)
+    # Migrate older data checkpoints without replaying the already counted hero action.
+    if ctx.last_hand_idx != old["hand"] and response is not None:
+        snap, _ = request_snapshot(previous)
+        if judge.judge_accepts(judge.reconstruct(previous), response):
+            chips = 0 if response == -1 else snap.me_stack if response == -2 else snap.to_call if response == 0 else response
+            kind = "fold" if response == -1 else "check" if chips == 0 else "call" if chips <= snap.to_call else "raise"
+            ctx.remember_action(old["hand"], snap, chips, kind)
+    pending = ctx.terminal_pending and ctx.last_hand_idx == old["hand"]
+    if pending and ctx.last_action_type == "fold":
+        ctx.terminal_pending = False
+        return ("fold" if net == -ctx.my_committed_after_act else None), net
+    call_closes = (ctx.last_action_type in ("call", "all_in") and not ctx.my_last_action_was_bet_or_raise
+                   and (ctx.last_street == 3 or min(ctx.last_me_stack_after, ctx.last_opp_stack) == 0))
+    if pending and (ctx.last_check_closes or call_closes):
+        ctx.terminal_pending = False
+        matched = min(ctx.my_committed_after_act, ctx.opp_committed_at_my_act)
+        return ("showdown" if net in (-matched, matched) or abs(net) <= 1 else None), net
+    if not pending:
+        snap, _ = request_snapshot(previous)
+        if snap.events:
+            end = snap.events[-1]
+            mine = snap.starting_stack - snap.me_stack
+            theirs = snap.starting_stack - snap.opp_stack
+            if end.action_type == "fold":
+                expected = -mine if end.actor_is_me else theirs
+                return ("fold" if net == expected else None), net
+            call = end.chips_added > 0 and end.chips_added <= end.to_call_before
+            checks = len(snap.events) >= 2 and all(e.street == 3 and e.action_type == "check" for e in snap.events[-2:])
+            if checks or (call and (end.street == 3 or min(snap.stacks) == 0)):
+                matched = min(mine, theirs)
+                return ("showdown" if net in (-matched, matched) or abs(net) <= 1 else None), net
+    result = ctx.terminal_response(old["hand"], net)
+    if result is None:
+        return None, net
+    kind, chips = result
+    street, owed, stack = ctx.last_street, ctx.my_committed_after_act - ctx.opp_committed_at_my_act, ctx.last_opp_stack
+    # Reuse the opportunity accounting, including 3-bet and trap denominators.
+    ctx.observe_action(ActionEvent(street, 1 - (0 if old["me"] == old["dealer"] else 1),
+        "SB" if old["me"] == old["dealer"] else "BB", False, None, kind,
+        ctx.my_committed_after_act + ctx.opp_committed_at_my_act, chips, 0., 0, owed, stack, ()))
+    return kind, net
 
 
 def context_from_payload(payload):
     """Replay cumulative judge requests, deduplicating per-hand histories.
 
     Botzone requests carry zero-based hand and total_win_chips. data is used
-    as a compact cross-process checkpoint. Unseen terminal actions are never
-    invented; only observed actions/opportunities contribute to HUD.
+    as a compact cross-process checkpoint. Missing terminal actions enter the
+    HUD only after exact public chip-ledger reconciliation.
     """
     requests = [_object(r) for r in payload["requests"]]
+    historical = [(_object(r), response) for r, response in zip(payload["requests"], payload.get("responses") or [])]
     saved = _object(payload.get("data") or {})
     if (saved.get("format") == "stage2_agent_data_v1"
             and int(requests[-1].get("hand", 0)) < saved.get("hand", -1)):
@@ -287,7 +350,11 @@ def context_from_payload(payload):
         elif meta["hand"] == 1:
             # A complete stream starting at our second-hand SB query proves
             # the opponent folded its initial SB without giving our BB a turn.
-            ctx.opp_preflop_action_opportunities += 1
+            _freeze_lock_profile(ctx, first)
+            if not ctx.frequency_frozen:
+                ctx.opp_preflop_action_opportunities += 1
+                ctx._record("vpip", False)
+                ctx._record("pfr", False)
         known_showdown = False
     for req in requests:
         current = int(req.get("hand", 0))
@@ -299,22 +366,29 @@ def context_from_payload(payload):
                     for index, original in enumerate(payload["requests"]):
                         if index < len(historical_responses) and _object(original) == last:
                             response = historical_responses[index]
-                evidence, skipped = _handoff_evidence(last,response,req)
-                if response is None:
+                settled_net, skipped = _handoff_delta(last, req)
+                terminal, _ = _complete_terminal(ctx, last, response, req)
+                if response is None or terminal is None:
                     ctx.station_evidence_complete = False
-                if skipped:
-                    ctx.opp_preflop_action_opportunities += 1
-                if evidence in ("postflop_bet_fold", "postflop_bet_nonfold"):
-                    ctx.opp_postflop_bet_responses += 1
-                    ctx.opp_postflop_bet_folds += int(evidence == "postflop_bet_fold")
-                elif evidence in ("preflop_bet_fold","preflop_bet_nonfold","preflop_free_fold"):
-                    ctx.opp_preflop_action_opportunities += 1
                 old_total = last.get("total_win_chips", [0,0])[last["my_id"]]
                 new_total = req.get("total_win_chips", [0,0])[req["my_id"]]
-                # We cannot infer showdown from missing terminal actions.
-                ctx.finish_hand((new_total - old_total) / 100., showdown=known_showdown)
+                net = new_total - old_total if settled_net is None else settled_net
+                showdown = terminal in ("call", "showdown")
+                ctx.last_terminal_status = "split" if showdown and abs(net) <= 1 else terminal or "unknown"
+                ctx.finish_hand(net / 100., showdown=showdown, split=abs(net) <= 1,
+                                statistics_known=terminal is not None)
+                for skipped_hand in skipped:
+                    score_before = new_total - 50 * (current - skipped_hand)
+                    skipped_req = dict(req, hand=skipped_hand, dealer_id=(last["dealer_id"] + skipped_hand - hand) % 2,
+                                       total_win_chips=[score_before if seat == req["my_id"] else -score_before for seat in (0, 1)])
+                    _freeze_lock_profile(ctx, skipped_req)
+                    if not ctx.frequency_frozen:
+                        ctx.opp_preflop_action_opportunities += 1
+                        ctx._record("vpip", False)
+                        ctx._record("pfr", False)
             ctx.hands_played = current
             ctx.hero_net_bb = req.get("total_win_chips", [0,0])[req["my_id"]] / 100.
+            _freeze_lock_profile(ctx, req)
             ctx.begin_hand()
             hand, seen, known_showdown = current, 0, False
         if len(req["history"]) < seen:
@@ -323,7 +397,16 @@ def context_from_payload(payload):
         for event in snap.events[seen:]:
             ctx.observe_action(event)
         if len(snap.events) >= seen:
-            seen, last, known_showdown = len(snap.events), req, False
+            seen, last = len(snap.events), req
+            if snap.events:
+                end = snap.events[-1]
+                call = end.chips_added > 0 and end.chips_added <= end.to_call_before
+                known_showdown |= call and (end.street == 3 or min(snap.stacks) == 0)
+            for original, response in historical:
+                if original == req and judge.judge_accepts(judge.reconstruct(req), response):
+                    known_showdown |= _commit_context_action(ctx, req, snap, response)
+                    seen += 1
+                    break
     # Deployment-only public score/schedule; not serialized into neural HUD columns.
     ctx.public_match = blind_lock.public_meta(requests[-1])
     return ctx, {"format":"stage2_agent_data_v1", "context":ctx.state_dict(), "hand":hand, "seen":seen, "last":last, "known_showdown":known_showdown, "opp_shove_count":ctx.opp_shove_count}
@@ -354,14 +437,9 @@ def respond(agent, payload, safety=None):
     if not judge.judge_accepts(judge.reconstruct(request), response):
         raise ValueError("export selected judge-illegal response")
     # Our own chosen action is known even if it ends this hand before another request.
-    chips = 0 if action == 0 else min(snap.to_call, snap.me_stack) if action == 1 else snap.me_stack if action == 4 else response
-    kind = ("fold" if action == 0 else "all_in" if chips == snap.me_stack else "check" if chips == 0
-            else "call" if chips <= snap.to_call else "bet" if snap.to_call == 0 else "raise")
-    context.observe_action(ActionEvent(snap.street, snap.me_seat, snap.me_position, True, action, kind,
-        snap.pot, chips, chips / snap.pot, nearest_pot_fraction_bucket(chips / snap.pot),
-        snap.to_call, snap.me_stack, snap.legal_action_ids))
+    showdown = _commit_context_action(context, request, snap, response)
     data.update(context=context.state_dict(), seen=len(snap.events)+1, decision_key=decision_key,
-                response=int(response), known_showdown=action == 1 and (snap.street == 3 or snap.opp_stack == 0 or chips == snap.me_stack))
+                response=int(response), known_showdown=showdown)
     data["search_audit"] = agent.search_audit
     data["decision_guard"] = agent.last_guard
     if use_lock:

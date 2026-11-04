@@ -178,7 +178,7 @@ def pack_botzone_zip(destination, *, release_id=None):
 
 
 def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_guard=None, release_id=None,
-                           cfv_nets=None, evening_iterations=None, chance_samples=2):
+                           cfv_nets=None, evening_iterations=None, chance_samples=1, online_profile=None):
     """Frozen policy plus config. Release exports require Vn_MODEL.npz and matching source."""
     model, blob = load_checkpoint(checkpoint)
     from .deployment_guard import guard_config
@@ -205,7 +205,8 @@ def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_
             weights.update({"preflop_anchor." + k: v.detach().cpu().numpy() for k, v in anchor.items()})
         meta["cfv"] = manifest
         meta["settings"] = dict(meta["settings"], evening_v2=True, strict_search=True,
-                                evening_iterations=evening_iterations, evening_chance_samples=chance_samples)
+                                evening_iterations=evening_iterations, evening_chance_samples=chance_samples,
+                                evening_online=online_profile or {'iterations':{'1':4,'2':4,'3':8},'chance_samples':chance_samples})
         meta["cfv_schema"] = SCHEMA
         meta["search_contract"] = SCHEMA
         meta["value_network"] = "range_conditioned_residual_cfv"

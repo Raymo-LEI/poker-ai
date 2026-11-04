@@ -31,7 +31,7 @@ import numpy as np
 def _digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-def pack_evening(checkpoint, nets, destination_root, version=None, iterations=None, chance_samples=2, smoke=False):
+def pack_evening(checkpoint, nets, destination_root, version=None, iterations=None, chance_samples=1, smoke=False, online_profile=None):
     """Build a fresh versioned release; source and weights share the same pipeline.
 
     A smoke-trained model is explicitly marked in metadata and the one-page
@@ -44,22 +44,29 @@ def pack_evening(checkpoint, nets, destination_root, version=None, iterations=No
     if str(repo/'src') not in sys.path:sys.path.insert(0,str(repo/'src'))
     from alphanl.stage2.export import pack_botzone_zip,export_botzone_weights
     from alphanl.stage2 import cfv
+    import fcntl
     root=Path(destination_root)
-    versions=[int(m.group(1)) for p in root.glob('UPLOAD_V*') for m in [re.match(r'UPLOAD_V(\d+)_',p.name)] if m]
-    minimum=max([17]+versions)+1
-    version=minimum if version is None else int(version)
-    if version<minimum:raise ValueError('release version must be new and monotonically increasing')
+    root.mkdir(parents=True,exist_ok=True)
     day=datetime.now(timezone(timedelta(hours=9))).strftime('%Y%m%d')
-    release='V%d_EVENING_V2_%s%s'%(version,day,'_SMOKE' if smoke else '')
-    folder=root/('UPLOAD_V%d_EVENING_V2_%s'%(version,day))
-    if folder.exists():raise FileExistsError(str(folder))
+    # One persistent counter across runs; a failed allocation still consumes Vn.
+    with (root/'.evening_release.lock').open('a') as lock:
+        fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
+        counter=root/'EVENING_RELEASE_COUNTER.json'
+        previous=json.loads(counter.read_text()).get('last',21) if counter.exists() else 21
+        versions=[int(m.group(1)) for p in root.iterdir() for m in [re.match(r'(?:UPLOAD_)?V(\d+)(?:_|$)',p.name)] if m]
+        minimum=max([21,int(previous)]+versions)+1
+        version=minimum if version is None else int(version)
+        if version<minimum:raise ValueError('release version must be new and monotonically increasing')
+        release='V%d_EVENING_V2_%s%s'%(version,day,'_SMOKE' if smoke else '')
+        folder=root/('UPLOAD_V%d_EVENING_V2_%s'%(version,day))
+        folder.mkdir()
+        cfv.atomic_json(counter,dict(last=version,release=release))
     weights,_=cfv.load_nets(nets)
     cfv.validate_weights(weights)
-    folder.mkdir(parents=True)
     model=folder/('V%d_MODEL.npz'%version)
     source=folder/('V%d_SOURCE.zip'%version)
     export_botzone_weights(checkpoint,model,cfv_nets=nets,release_id=release,
-                            evening_iterations=iterations,chance_samples=chance_samples)
+                            evening_iterations=iterations,chance_samples=chance_samples,online_profile=online_profile)
     pack_botzone_zip(source,release_id=release)
     required={'stage2_runtime/deep_solver_v2.py','stage2_runtime/cfv.py','stage2_runtime/evening_strategy.py','stage2_runtime/wizard.py'}
     with zipfile.ZipFile(source) as archive:

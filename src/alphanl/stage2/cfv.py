@@ -12,13 +12,13 @@ from pathlib import Path
 
 import numpy as np
 
-SCHEMA = "public32-combo136-res3-bb-v2"
+SCHEMA = "public32-combo136-res3-bb-v3"
 BUCKETS = 32
 FEATURE_DIM = 136
 TAIL_NAMES = (
     "hero_stack_200bb", "opponent_stack_200bb", "effective_spr_20",
     "pot_200bb", "call_pot", "street_3", "board_count_5",
-    "effective_stack_200bb", "call_odds", "hero_acts_first",
+    "effective_stack_200bb", "call_odds", "hero_first_on_new_street",
     "paired_board", "trips_board", "max_suit_fraction", "unique_ranks_5",
     "highest_rank_14", "lowest_rank_14", "rank_span_12", "broadway_fraction",
     "hero_entropy_log32", "opponent_entropy_log32",
@@ -76,8 +76,13 @@ def spot_features(board, r_hero, r_opp, pot, call, stack, blind, street,
 
 
 def gelu(x):
-    # Same exact erf GELU as torch.nn.functional.gelu(approximate='none').
-    return .5 * x * (1 + np.frompyfunc(math.erf, 1, 1)(x / np.sqrt(2.)).astype(np.float64))
+    # Vectorized erf approximation (max erf error <1.5e-7), checked against
+    # Torch's exact GELU at export. Topology and BB output contract are unchanged.
+    y=x/np.sqrt(2.)
+    t=1./(1.+.3275911*np.abs(y))
+    poly=(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t
+    erf=np.sign(y)*(1.-poly*np.exp(-y*y))
+    return .5*x*(1.+erf)
 
 
 def validate_weights(weights, prefixes=("cfv_river.", "cfv_turn.")):

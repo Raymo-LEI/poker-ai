@@ -1,0 +1,260 @@
+{
+  "host": {
+    "platform": "macOS-26.6-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpu_count": 10
+  },
+  "schema": "public32-combo136-res3-bb-v3",
+  "regression": {
+    "passed": 118,
+    "skipped": 2,
+    "seconds": 183.49
+  },
+  "latency": {
+    "arch": {
+      "d_model": 192,
+      "dim_feedforward": 512,
+      "dropout": 0.1,
+      "max_seq_len": 64,
+      "nhead": 6,
+      "num_layers": 4
+    },
+    "by_board_size": {
+      "0": {
+        "mean_ms": 2.057313869954669,
+        "n": 128,
+        "p99_ms": 2.4033056932967156
+      },
+      "3": {
+        "mean_ms": 25.147716108222085,
+        "n": 128,
+        "p99_ms": 34.25586305791516
+      },
+      "4": {
+        "mean_ms": 25.234942384486203,
+        "n": 128,
+        "p99_ms": 33.06488672387788
+      },
+      "5": {
+        "mean_ms": 31.82743390880205,
+        "n": 128,
+        "p99_ms": 44.328281837515576
+      }
+    },
+    "cold_debug": [
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 153ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 154ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 159ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 129ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 154ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=28/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 157ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 159ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 131ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 154ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=28/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 152ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 173ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 130ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=24/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 154ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=26/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 154ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 165ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 129ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 153ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=28/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 165ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 167ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 128ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 152ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=28/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 153ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 160ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 127ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 160ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 154ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 155ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 129ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=28/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 157ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture 157ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture 165ms",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE source=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint 129ms"
+    ],
+    "cold_max_s": 0.19837383402045816,
+    "cold_samples": 32,
+    "cpu_affinity": null,
+    "debug": [
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=30/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=26/dim=136/reason=range_conditioned_cfv_leaves final=blueprint_dcfr_mixture",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=1/cfv=0/dim=136/reason=exact_river_terminals final=blueprint_dcfr_mixture",
+      "py3.11.17 np2.4.6 ok V999_MODEL.npz release=V999_INTERNAL_PRODUCTION_GATE wiz=v2/search=0/cfv=0/dim=136/reason=preflop_blueprint final=blueprint"
+    ],
+    "gate_passed": true,
+    "max_ms": 71.14625000394881,
+    "mean_ms": 21.06685156786625,
+    "model_sha256": "40e53c3c2583113e9bb7dc7039594f7185d91eeb17d17db7d5f8f0e15b8d7d95",
+    "numpy": "2.4.6",
+    "p99_ms": 36.23544842470435,
+    "python": "3.11.17",
+    "release": "V999_INTERNAL_PRODUCTION_GATE",
+    "samples": 512,
+    "settings": {
+      "alpha": 1.0,
+      "beta_kl": 0.05,
+      "botzone_native_allin_mask": {
+        "enabled": true,
+        "equity_samples": 64,
+        "equity_seed": 17,
+        "postflop_equity": 0.8,
+        "preflop_equity": 0.72,
+        "spr_above": 1.2
+      },
+      "context_fields": [
+        "hand_progress",
+        "bankroll_diff",
+        "vpip",
+        "pfr",
+        "three_bet",
+        "fold_to_preflop_raise",
+        "flop_aggression",
+        "turn_aggression",
+        "river_aggression",
+        "fold_to_postflop_bet",
+        "all_in_frequency",
+        "showdown_win",
+        "check_raise_freq",
+        "cbet_freq"
+      ],
+      "evening_chance_samples": 1,
+      "evening_iterations": null,
+      "evening_online": {
+        "blueprint_weight": {
+          "1": 0.5,
+          "2": 0.5,
+          "3": 0.3
+        },
+        "chance_samples": 1,
+        "contract": "hero-root-prior-convex-v1",
+        "iterations": {
+          "1": 4,
+          "2": 4,
+          "3": 8
+        }
+      },
+      "evening_v2": true,
+      "hidden": 64,
+      "late_beta_kl": 0.03,
+      "strict_search": true
+    },
+    "source_sha256": "98fb2fe2bd903cfc450ba030504ea481641bbb1cb99c2f414ce72ebd60040aae",
+    "threads": {
+      "MKL_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1"
+    }
+  },
+  "offline_single_process": {
+    "2": {
+      "chance_samples": 4,
+      "ideal_24_seconds_per_row": 0.014271905817925775,
+      "iterations": 32,
+      "mean_s": 0.3425257396302186,
+      "samples": 8
+    },
+    "3": {
+      "chance_samples": 4,
+      "ideal_24_seconds_per_row": 0.007997981653716124,
+      "iterations": 64,
+      "mean_s": 0.19195155968918698,
+      "samples": 16
+    }
+  },
+  "actual_generation_probe": {
+    "rows_per_generation": 128,
+    "epochs": 3,
+    "holdout_rows_per_split": 64,
+    "teacher_iterations": {
+      "1": 32,
+      "2": 32,
+      "3": 64
+    },
+    "chance_samples": 2,
+    "evolution": {
+      "g1": {
+        "changed": true,
+        "postflop_max_tv": 0.001962023551970265,
+        "postflop_mean_tv": 0.0008630246395928976,
+        "preflop_max_tv": 0.0
+      },
+      "g2": {
+        "changed": true,
+        "postflop_max_tv": 0.0016980330751772445,
+        "postflop_mean_tv": 0.0008870705446964947,
+        "preflop_max_tv": 0.0
+      }
+    },
+    "gates": {
+      "g1": {
+        "gate": {
+          "accepted": true,
+          "baseline": {
+            "ce": 1.1415355205535889,
+            "max_tv": 0.8535892367362976
+          },
+          "candidate": {
+            "ce": 1.1375820636749268,
+            "max_tv": 0.8511516451835632
+          },
+          "preflop_limit": 0.001,
+          "preflop_max_tv": 0.0
+        },
+        "final": {
+          "accepted": true,
+          "baseline": {
+            "ce": 1.2767045497894287,
+            "max_tv": 0.9957684278488159
+          },
+          "candidate": {
+            "ce": 1.2730624675750732,
+            "max_tv": 0.9957736134529114
+          },
+          "preflop_limit": 0.001,
+          "preflop_max_tv": 0.0
+        },
+        "rollback": []
+      },
+      "g2": {
+        "gate": {
+          "accepted": true,
+          "baseline": {
+            "ce": 1.092909336090088,
+            "max_tv": 0.9183156490325928
+          },
+          "candidate": {
+            "ce": 1.089184045791626,
+            "max_tv": 0.9169454574584961
+          },
+          "preflop_limit": 0.001,
+          "preflop_max_tv": 0.0
+        },
+        "final": {
+          "accepted": true,
+          "baseline": {
+            "ce": 1.3107142448425293,
+            "max_tv": 0.9841164350509644
+          },
+          "candidate": {
+            "ce": 1.3063262701034546,
+            "max_tv": 0.9840217232704163
+          },
+          "preflop_limit": 0.001,
+          "preflop_max_tv": 0.0
+        },
+        "rollback": []
+      }
+    },
+    "elapsed_s": 73.71572166599799
+  },
+  "cuda_production_run_executed": false,
+  "server_24_worker_throughput_measured": false,
+  "notes": [
+    "Actual 192-d 4-layer 6-head champion; small CFV heads only for local timing.",
+    "24-core figures are ideal projections, not measured server throughput.",
+    "No Python3.6/NumPy1.19 or Linux resource-cap certification from this macOS run."
+  ]
+}

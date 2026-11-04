@@ -131,7 +131,7 @@ class Agent:
             probs[1]+=probs[0];probs[0]=0.
             self.last_guard["opponent_lock_transfer"] = True
         changed=not np.allclose(before_guard,probs,atol=1e-14,rtol=0.)
-        base_output="blueprint_fallback" if self.search_audit.get("status")=="error_blueprint" else "dcfr_average"
+        base_output="blueprint_fallback" if self.search_audit.get("status")=="error_blueprint" else self.search_audit.get("output","dcfr_average")
         self.search_audit.update(final_output="empirical_guard_policy" if changed else base_output,
                                  guard_changed=changed)
         self.last_wizard += " final="+("empirical_guard" if changed else base_output)

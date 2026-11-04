@@ -233,6 +233,7 @@ def test_stats_budget_lock_and_rollback_gate():
     a,b=Model(),Model()
     monkey=pytest.MonkeyPatch()
     monkey.setattr(evening_cd,'_metrics',lambda m,r,t:{'ce':2 if m is a else 1,'max_tv':.02 if m is a else 0})
+    monkey.setattr(evening_cd,'_probabilities',lambda m,r:np.array([[1.,0,0,0,0]]) if m is a else np.array([[0.,1,0,0,0]]))
     assert not evening_cd.validation_gate(a,b,([{}],np.zeros((1,5))),([{}],np.zeros((1,5))))['accepted']
     monkey.undo()
 

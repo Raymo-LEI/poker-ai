@@ -74,11 +74,17 @@ def _fixture(name,path):
     return mod
 
 
-def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call'):
+def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call',keep_trace=True):
     judge=_fixture('_evening_judge_'+str(seed),REPO/'tests/fixtures/botzone_judge.py')
     judge.random=random.Random(seed)
     requests={0:[],1:[]};responses={0:[],1:[]};data={0:'',1:''}
     log=[];initdata=None;times=[];traces=[];counts={};score=None;complete=False
+    actor=None;opponent_hand=-1;cfv_calls=0
+    if opponent not in ('call','fold'):
+        from alphanl.cfr.evaluation import RuleActor
+        from ladder_actors import SlayerActor
+        actor=SlayerActor(opponent,seed=seed,equity_samples=16) if opponent in ('Bot17_Probe3Bet','NearShove_19949') else RuleActor(opponent,seed=seed,equity_samples=32)
+    random.seed(seed*2+hero_seat)
     while True:
         query={'log':log}
         if initdata is not None:query['initdata']=initdata
@@ -98,16 +104,40 @@ def play_judge(bundle,seed=0,hero_seat=0,max_hands=50,opponent='call'):
             trace=getattr(bundle.agent,'last_evening',{})
             street=len(request['public_cards'])
             counts[str(street)]=counts.get(str(street),0)+1
-            if trace.get('search') and len(traces)<12:traces.append(dict(trace,debug=bundle.debug()))
+            cfv_calls+=trace.get('cfv_calls',0)
+            if keep_trace and trace.get('search') and len(traces)<12:traces.append(dict(trace,debug=bundle.debug()))
         else:
             snap,options=bundle.runtime.request_snapshot(request)
             response=options[1] if 1 in options else -1
             if opponent=='fold' and snap.to_call>0:response=-1
+            if actor is not None:
+                if request['hand']!=opponent_hand:
+                    actor.begin_hand(snap.me_seat);opponent_hand=request['hand']
+                response=actor_response(bundle,snap,request,options,actor.act(snap))
         responses[seat].append(response)
         log.append({'output':output});log.append({str(seat):{'verdict':'OK','response':response}})
     return dict(hero_net_bb=score,complete=complete,hands=max_hands,hero_decisions=len(times),errors=0,
                 max_turn_s=max(times) if times else 0,mean_turn_s=float(np.mean(times)) if times else 0,
-                decisions_by_board_size=counts,traces=traces)
+                decisions_by_board_size=counts,traces=traces,cfv_calls=cfv_calls,turn_s=times)
+
+
+def actor_response(bundle,snap,request,options,decision):
+    from alphanl.transformer.actor_actions import PotFractionBet
+    if isinstance(decision,PotFractionBet):
+        desired=min(snap.me_stack,int(round(snap.to_call+decision.fraction*snap.pot)))
+        view=bundle.runtime.judge.reconstruct(request)
+        minimum=bundle.runtime.judge.min_raise_extra(view)
+        if desired>=snap.me_stack:return -2
+        if minimum is not None:
+            desired=max(desired,minimum)
+            if desired>snap.to_call and bundle.runtime.judge.judge_accepts(view,int(desired)):
+                return int(desired)
+        candidates={a:(snap.me_stack if r==-2 else min(snap.to_call,snap.me_stack) if a==1 else max(r,0)) for a,r in options.items()}
+        action=min(candidates,key=lambda a:abs(candidates[a]-desired))
+        return options[action]
+    action=int(decision)
+    if action not in options:raise ValueError('opponent selected unavailable judge button')
+    return options[action]
 
 
 def evaluate_bundle(source,model,out=None,match_pairs=1,max_hands=50,seed=880001):

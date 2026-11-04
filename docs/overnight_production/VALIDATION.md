@@ -5,6 +5,9 @@ Latest clean-architecture acceptance: **188 passed in 184.63s**, followed by
 preflop cases. The actual 200-complete-matches-per-mode study and its negative
 result are documented in [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md) and
 `CLEAN_LOCAL_VALIDATION.json`. Earlier audit-patch behavior below is historical.
+After aligning teacher rollout masks to the same authoritative legal-only
+domain, the affected suites passed **142 tests in 28.81s**, including the new
+rollout-domain assertion.
 
 The later V22/bot17 fixes are documented in [BOT17_REPAIR.md](BOT17_REPAIR.md)
 and `BOT17_LOCAL_VALIDATION.json`: **175 passed in 167.62s**, plus **39 passed

@@ -50,12 +50,9 @@ def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=N
     import torch
     from alphanl.transformer.hunl import HunlTable,HunlTokenizer
     from alphanl.stage2.context import MatchCtx
-    from alphanl.cfr.actions import CFRActionGuard
-    from alphanl.stage2.allin_mask import mask_snapshot
     rng=np.random.default_rng(seed)
     device=next(model.parameters()).device
     tokenizer=HunlTokenizer(model.config.model.max_seq_len,**model.config.tokenizer_kwargs())
-    guard=CFRActionGuard.from_config(model.config)
     table=HunlTable(seed=seed)
     if opponent is not None:
         from ladder_actors import SlayerActor
@@ -63,7 +60,7 @@ def trajectory(model,count,seed,street=None,teacher=False,nets=None,iterations=N
     contexts=[MatchCtx(),MatchCtx()]
     result=[];hands_seen=0;exhaustions=0
     def observe(snap,ctx):
-        snap=mask_snapshot(guard.apply(snap),model.settings.get('botzone_native_allin_mask'))
+        # Match the online legal-only domain, including voluntary all-ins.
         return snap,{**tokenizer.encode(snap),'match_ctx':ctx.tensor(model.context_fields)}
     while len(result)<count:
         hands_seen+=1

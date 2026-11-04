@@ -145,3 +145,14 @@ def test_200_match_paired_comparison_counts_and_uncertainty():
     assert r['matches_per_mode']==200 and r['duplicate_pairs']==100
     assert r['paired_ev_gain_mbb_per_hand']['mean']==pytest.approx(220.)
     assert r['paired_win_rate_gain']['mean']==1 and r['improvement_demonstrated']
+
+
+def test_rollout_uses_authoritative_legal_domain_without_native_shove_mask():
+    from overnight_data import trajectory
+    from evening_production import find_champion
+    from alphanl.stage2.train import load_checkpoint
+    model,_=load_checkpoint(find_champion())
+    items=trajectory(model,8,117333,preflop=True)
+    for item in items:
+        expected=np.zeros(5);expected[list(item['snapshot'].legal_action_ids)]=1
+        np.testing.assert_array_equal(item['row']['legal_mask'][0],expected)

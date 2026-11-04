@@ -334,6 +334,9 @@ def run(a):
 
 
 def main():
+    if '--server-profile' in sys.argv:
+        from overnight_server import main as server_main
+        return server_main([x for x in sys.argv[1:] if x!='--server-profile'])
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--hours',type=float,default=8.5);p.add_argument('--workers',type=int)
     p.add_argument('--champion',type=Path);p.add_argument('--expected-champion-sha256',default=EXPECTED_CHAMPION_SHA256)

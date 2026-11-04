@@ -115,7 +115,7 @@ def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None,c
         ref=model(x[:64]).cpu().numpy()
     error=float(np.max(np.abs(ref-cfv.predict_residual_cfv(weights,prefix,feats[:64]))))
     if not np.isfinite(error) or error > 1e-4: raise ValueError('Torch / portable residual mismatch')
-    stats={'loss':float(loss.detach()),'forward_max_error':error}
+    stats={'loss':float(loss.detach()),'forward_max_error':error,'epochs_completed':int(epochs),'lr_schedule':'cosine' if cosine else 'constant'}
     if valid is not None:
         vx,vy=valid
         errors=np.abs(cfv.predict_residual_cfv(weights,prefix,vx)-vy)

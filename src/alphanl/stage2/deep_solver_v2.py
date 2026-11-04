@@ -340,7 +340,7 @@ class PublicSolver:
     def __init__(self, snapshot, hero_range=None, opponent_range=None, weights=None,
                  iterations=None, chance_samples=2, seed=0, first_player=0,
                  amounts=None, utility=False, context=None, policy_only=False, root_prior=None, hero_at=None, check_raise=False,
-                 context_prior=True):
+                 context_prior=True, context_eta_max=.35, context_range_prior=True, prepared_priors=None):
         self.s = snapshot
         self.policy_only=bool(policy_only)
         self.board = tuple(sorted(_ev(c) for c in snapshot.board_cards))
@@ -360,12 +360,20 @@ class PublicSolver:
             if opponent_range is None:opponent_range=default_o
         self.rh = expand_range(hero_range,self.bins)
         self.ro = expand_range(opponent_range,self.bins)
-        from .solver_prior import profile, condition_range
+        from .solver_prior import prepare_context, SigmaPriors, condition_cached_range
         from .search_belief import _percentiles
         self.match_context = context
-        self.match_profile = profile(context, int(snapshot.street), snapshot) if context_prior else profile(None, int(snapshot.street), snapshot)
+        self.context_eta_max = float(context_eta_max)
+        self.prior_cache=prepared_priors or prepare_context(context if context_prior else None,int(snapshot.street),snapshot,self.context_eta_max)
+        binding=(int(snapshot.street),float(snapshot.pot),float(snapshot.to_call),float(snapshot.big_blind),self.context_eta_max)
+        if self.prior_cache.binding!=binding:raise ValueError('prepared public priors belong to a different root')
+        if not context_prior and self.prior_cache.eta:raise ValueError('HUD prior supplied to a HUD-free resolve')
+        self.match_profile=dict(self.prior_cache.profile)
         self.match_strength = _percentiles(self.rank)
-        self.ro = condition_range(snapshot, context, self.ro, self.match_strength, self.match_profile)
+        self.sigma_prior=SigmaPriors(self.prior_cache,self.match_strength)
+        if context_range_prior:
+            self.ro=condition_cached_range(snapshot,self.ro,self.match_strength,self.prior_cache)
+        self.cached_opponent_range=self.ro
         self.weights = weights
         self.iterations = iterations or (RIVER_ITERS if len(self.board)==5 else TURN_ITERS)
         self.chance_samples,self.seed = int(chance_samples),int(seed)
@@ -397,22 +405,21 @@ class PublicSolver:
                 if sigma>0 and -self.match['opponent_budget']<=x<=self.match['own_budget'] else 0.)
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
                       "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise),"range_audit":range_audit,
+                      "iterations":self.iterations,"prior_precomputations":1,"sigma_prior_cache":"readonly_numpy_per_resolve",
                       "terminal_match_utility":bool(utility),"utility_model":"normal_residual_score_with_blind_lock_boundaries" if utility else "linear_root_bb",
                       "cfv_continuation":"first_order_root_tangent_not_U_of_mean" if utility else "linear_root_bb"}
         self.trace['match_prior'] = dict(self.match_profile, model='bounded-public-match-v1',
-                                       response='restricted_nash_mixture', range='history_context_size_mixture')
+                                       response='restricted_nash_mixture', eta_max=self.context_eta_max,
+                                       range='history_context_size_mixture' if context_range_prior else 'explicit_public_range_no_second_conditioning')
         self._chance_cache = {}
 
     def _init_match_prior(self, node):
         if node.player is None:
             return
-        if node.player == 1 and self.match_profile['eta'] > 0:
-            from .solver_prior import response_prior, profile
-            node.match_prior = response_prior(node.labels, self.match_strength, self.match_profile,
-                                              self.match_context, getattr(node, 'facing_fraction', None))
-            risk_state = SimpleNamespace(pot=getattr(node, 'risk_pot', self.s.pot),
-                                         to_call=0., big_blind=self.s.big_blind)
-            eta = min(self.match_profile['eta'], profile(self.match_context, int(self.s.street), risk_state)['eta'])
+        if node.player == 1 and self.prior_cache.eta > 0:
+            node.match_prior=self.sigma_prior.at(node.labels,getattr(node,'facing_fraction',None))
+            risk_bb=float(getattr(node,'risk_pot',self.s.pot))/self.s.big_blind
+            eta=self.prior_cache.node_eta(risk_bb)
             node.match_eta = eta
             node.strategy = (1. - eta) * node.strategy + eta * node.match_prior
             node.fallback = node.strategy.copy()

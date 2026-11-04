@@ -246,6 +246,7 @@ def phase_b(source,out,plan,workers,device,smoke=False):
             cfv.publish(net_path if net_path else out/'cfv_river.npz',w,len(x),plan['net_epochs'],'river_net',dict(tree=TREE,validation=s))
     cfv.publish(out/'cfv_nets.npz',weights,plan['river_n']+plan['turn_n'],plan['net_epochs'],'nets',
         dict(tree=TREE,river_samples=plan['river_n'],turn_samples=plan['turn_n'],validation=stats,
-             mixture='50% current-blueprint on-policy PBS / 50% Dirichlet',particles=PARTICLES))
+             mixture='50% current-blueprint on-policy PBS / 50% Dirichlet',particles=PARTICLES,
+             smoke=bool(smoke),fixture=bool(smoke),production=bool(not smoke and plan['net_epochs']==50),offline_hud_prior=False))
     cfv.atomic_json(out/'validation.json',stats)
     return stats

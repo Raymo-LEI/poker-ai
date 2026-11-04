@@ -1,5 +1,10 @@
 # Production controller: fixed source, measured budgets, real champion
 
+The subsequent 8.5-hour phase-two controller is documented in
+[overnight production](../overnight_production/PRODUCTION.md), with separate
+[local validation](../overnight_production/VALIDATION.md). This page records
+the unchanged evening controller's scope and historical measurements.
+
 Both #80 and #81 are merged ancestors of the production branch. This controller
 keeps their canonical `respond → Agent.policy → wizard` entry and math tests.
 Server operators fetch the locked commit and run one command; the controller

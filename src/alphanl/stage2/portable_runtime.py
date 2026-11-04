@@ -125,7 +125,14 @@ class Agent:
                 and 1 in snapshot.legal_action_ids and 0<probs[4]<.05):
             probs[1]+=probs[4];probs[4]=0.
         before_guard=probs.copy()
-        probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
+        guard_mode=self.settings.get('evening_online',{}).get('guard_mode','full')
+        if guard_mode not in ('full','slim'):raise ValueError('invalid postflop guard mode')
+        if snapshot.street>0 and guard_mode=='slim':
+            # Blind lock ran above. PublicState and the final executable-domain
+            # check retain stack/all-in legality; empirical edits are ablated.
+            self.last_guard={'postflop_guard_mode':'slim'}
+        else:
+            probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
         self.last_guard.update(audit)
         if mode == "opponent_confirmed" and 1 in amounts:
             probs[1]+=probs[0];probs[0]=0.

@@ -73,7 +73,7 @@ def _predict(weights,feat,prefix='cfv_river.'):
     return cfv.predict_residual_cfv(weights,prefix,feat)
 
 
-def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None):
+def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None,cosine=False):
     import torch
     from torch import nn
     torch.manual_seed(seed)
@@ -95,6 +95,7 @@ def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None):
     x=torch.as_tensor(feats,device=device)
     y=torch.as_tensor(targets,device=device)
     opt=torch.optim.Adam(model.parameters(),lr=1e-3)
+    scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(opt,T_max=epochs,eta_min=1e-5) if cosine else None
     for epoch in range(epochs):
         order=torch.randperm(len(x),device=device)
         for ids in order.split(256):
@@ -104,6 +105,7 @@ def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None):
             loss.backward()
             opt.step()
         print('CFV_EPOCH',prefix,epoch+1,'/',epochs,'last_batch_loss',float(loss.detach()),flush=True)
+        if scheduler is not None:scheduler.step()
     layers=[model.inp]+list(model.blocks)+[model.out]
     weights={'cfv_schema':np.frombuffer(cfv.SCHEMA.encode(),dtype=np.uint8)}
     for i,layer in enumerate(layers):

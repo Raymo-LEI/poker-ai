@@ -1,0 +1,97 @@
+{
+  "base_commit": "531281544d96f8d49ce910444e5d383fe4823c5d",
+  "environment": {
+    "python": "3.11.17",
+    "platform": "macOS-26.6-arm64-arm-64bit",
+    "torch": "2.14.1",
+    "numpy": "2.4.6"
+  },
+  "regression": {
+    "tests": 145,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 167.627
+  },
+  "portable_python36_syntax_modules": 24,
+  "diff_check": true,
+  "champion_sha256": "f298ab7a44956f92f2fa02c914ec4a68749a1381be2e2952159f989cc53c48fe",
+  "development_smoke": {
+    "status": "COMPLETE",
+    "allow_dirty": true,
+    "elapsed_s": 114.13519258401357,
+    "policy_evolution": {
+      "g3": {
+        "accepted": true,
+        "blueprint_max_tv": 0.019175216102033876,
+        "postflop_max_tv": 0.10195474616354239,
+        "postflop_mean_tv": 0.006334229892308674,
+        "preflop_max_tv": 0.0
+      },
+      "g4": {
+        "accepted": true,
+        "blueprint_max_tv": 0.019561304279406777,
+        "postflop_max_tv": 0.1008694504899545,
+        "postflop_mean_tv": 0.006829712943207163,
+        "preflop_max_tv": 0.0
+      },
+      "g5": {
+        "accepted": false,
+        "blueprint_max_tv": 0.0,
+        "postflop_max_tv": 0.0,
+        "postflop_mean_tv": 0.0,
+        "preflop_max_tv": 0.0
+      }
+    },
+    "runtime_ms": {
+      "historical": {
+        "mean": 22.400541832001373,
+        "n": 302,
+        "p99": 67.082182232989
+      },
+      "independent_holdout": {
+        "mean": 20.99794759432729,
+        "n": 264,
+        "p99": 77.91985351010226
+      }
+    },
+    "astra_candidates": {
+      "g3": 18,
+      "g4": 18,
+      "g5": 18
+    },
+    "rollback": {
+      "g3": [
+        "surgery"
+      ],
+      "g4": [
+        "surgery"
+      ],
+      "g5": [
+        "surgery",
+        "final_holdout"
+      ]
+    }
+  },
+  "tested_code_sha256": {
+    "scripts/sprint24/overnight_production.py": "aa43ecce7a350b73fe1906807cf83bb42c4e1ab10a8e2eae50e7f377a7f83116",
+    "scripts/sprint24/overnight_data.py": "0c4491dc82f1b7b097627fef942b017d7cae08b57b8a3a641803254192ed3311",
+    "scripts/sprint24/overnight_distill.py": "71089bcc3e5bd6a06742e45c6674e884d17316948e3e54d8277636cb1ca8cca1",
+    "scripts/sprint24/evening_pipeline.py": "6574cde2ea05235536cf1f86c8ee48b046568aacf3eff70549c500f42c48c9fa",
+    "scripts/sprint24/evening_production_eval.py": "1413ce88061e35cfc2144c63f9aa4ad886a404e91af52caa8db05d67b59ed637",
+    "scripts/sprint24/pack_wizard.py": "9cc6fe638deedcd22571e6a4e87af84956a9f50aafcb71f37e71f478f7fff1d2",
+    "scripts/sprint24/surgery.py": "118056507fdc5ec86a23902ee3976baddfc2202e935c9bf9c0e701fdc3df0ea9",
+    "src/alphanl/stage2/deep_solver_v2.py": "04c3d41e99e74f597f42ca75605fcf0d55b518468d5a95c6132dab07f29ee295",
+    "src/alphanl/stage2/evening_strategy.py": "efd85e7dd0ebbec0c76f2bbe141055ea0470c4d5eaa19dd777939a25f5b7ee7c",
+    "src/alphanl/stage2/portable_runtime.py": "2b3332d11477b08c7b723bfc058cc220f4f73b6034b7318b00935b9ce4a34179",
+    "src/alphanl/stage2/train.py": "9d27ece2459ee8c8b212f5fba6a14390787700a7862e62794aab9335b474d7ee",
+    "tests/test_overnight_production.py": "6925f43988c44e21a9f75918599ba40eb292d02e2dfd66cd07c83827f04ac2ad"
+  },
+  "limitations": [
+    "No RTX 5090 production run was launched locally.",
+    "PBS is finite-particle current-blueprint engine self-play, not recorded online games or the deployed search-mixture stationary distribution.",
+    "Surgery significance measures solver-policy CE fidelity, not a demonstrated match-score gain.",
+    "Smoke matches are partial two-hand protocol checks.",
+    "Production CFV quality, full match matrices and target runtime gates execute on the server."
+  ]
+}

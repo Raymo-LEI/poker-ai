@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-sys.path.insert(0, "/root/autodl-tmp/stage2_botzone_native_code_20261030/src")
+_REPO_SRC=str(Path(__file__).resolve().parents[2]/'src')
+if _REPO_SRC not in sys.path:sys.path.insert(0,_REPO_SRC)
 
 from alphanl.cfr.evaluation import RuleActor
 from alphanl.stage2.evaluation import play_match, summarize_match_pairs

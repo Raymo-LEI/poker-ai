@@ -1,0 +1,87 @@
+{
+  "C200": {
+    "V8_R8": {
+      "mbb_per_hand": -324.9,
+      "win_rate": 0.24,
+      "matches": 200
+    },
+    "V9_R9_GEN2": {
+      "mbb_per_hand": -120.7,
+      "win_rate": 0.27,
+      "matches": 200
+    },
+    "V9.5_SURGICAL": {
+      "mbb_per_hand": -201.9,
+      "win_rate": 0.3,
+      "matches": 200
+    },
+    "V11_REBEL": {
+      "mbb_per_hand": -153.1,
+      "win_rate": 0.25,
+      "matches": 200
+    },
+    "V12_LADDER_SLAYER": {
+      "mbb_per_hand": -183.9,
+      "win_rate": 0.27,
+      "matches": 200
+    }
+  },
+  "V8_R8": {
+    "V9_R9_GEN2": {
+      "mbb_per_hand": -83.4,
+      "win_rate": 0.19,
+      "matches": 200
+    },
+    "V9.5_SURGICAL": {
+      "mbb_per_hand": -71.4,
+      "win_rate": 0.2,
+      "matches": 200
+    },
+    "V11_REBEL": {
+      "mbb_per_hand": -64.5,
+      "win_rate": 0.21,
+      "matches": 200
+    },
+    "V12_LADDER_SLAYER": {
+      "mbb_per_hand": 55.8,
+      "win_rate": 0.27,
+      "matches": 200
+    }
+  },
+  "V9_R9_GEN2": {
+    "V9.5_SURGICAL": {
+      "mbb_per_hand": -78.5,
+      "win_rate": 0.18,
+      "matches": 200
+    },
+    "V11_REBEL": {
+      "mbb_per_hand": -21.9,
+      "win_rate": 0.2,
+      "matches": 200
+    },
+    "V12_LADDER_SLAYER": {
+      "mbb_per_hand": -0.5,
+      "win_rate": 0.26,
+      "matches": 200
+    }
+  },
+  "V9.5_SURGICAL": {
+    "V11_REBEL": {
+      "mbb_per_hand": 30.1,
+      "win_rate": 0.24,
+      "matches": 200
+    },
+    "V12_LADDER_SLAYER": {
+      "mbb_per_hand": 67.3,
+      "win_rate": 0.24,
+      "matches": 200
+    }
+  },
+  "V11_REBEL": {
+    "V12_LADDER_SLAYER": {
+      "mbb_per_hand": 65.4,
+      "win_rate": 0.31,
+      "matches": 200
+    }
+  }
+}

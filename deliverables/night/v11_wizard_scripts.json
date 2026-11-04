@@ -1,0 +1,27 @@
+{
+  "Bot17_Probe3Bet": {
+    "mbb_per_hand": 351.0,
+    "win_rate": 0.71,
+    "matches": 200
+  },
+  "TAG_Pro": {
+    "mbb_per_hand": -30.6,
+    "win_rate": 0.51,
+    "matches": 200
+  },
+  "Trapper_CR": {
+    "mbb_per_hand": 115.1,
+    "win_rate": 0.56,
+    "matches": 200
+  },
+  "equity": {
+    "mbb_per_hand": 520.7,
+    "win_rate": 0.73,
+    "matches": 200
+  },
+  "NearShove_19949": {
+    "mbb_per_hand": 1343.1,
+    "win_rate": 0.66,
+    "matches": 200
+  }
+}

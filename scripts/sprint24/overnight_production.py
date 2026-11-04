@@ -22,7 +22,8 @@ from evening_production import EXPECTED_CHAMPION_SHA256,find_champion,git,latenc
 
 HARD_SECONDS=9.*3600
 ONLINE=dict(iterations={'1':4,'2':4,'3':16},chance_samples=1,blueprint_weight={'1':.5,'2':.5,'3':.3},
-            check_raise=True,contract='hero-root-prior-convex-checkraise-v1')
+            check_raise=True,contract='slim-rnr-terminal-match-v1',guard_mode='slim',legal_only=True,
+            rnr_eta=.5,terminal_match_utility=True,mathematical_locks=True)
 OFFLINE=dict(river_iterations=64,turn_iterations=32,chance_samples=4,
              teacher_iterations={'1':32,'2':32,'3':64},teacher_chance_samples=2)
 ROLES=('baseline','g3','g4','g5')
@@ -128,11 +129,11 @@ def run(a):
     from alphanl.stage2 import cfv
     from alphanl.stage2.train import load_checkpoint,save_checkpoint
     from alphanl.stage2.export import export_botzone_weights,pack_botzone_zip
-    from alphanl.stage2.deployment_guard import V10_GUARD
+    from alphanl.stage2.deployment_guard import V102_R7_GUARD
     from evening_parallel import default_workers
     from evening_d import Bundle,play_judge
     from evening_latency import cases
-    from evening_production_eval import evaluate
+    from evening_production_eval import evaluate,compare_guards
     from overnight_data import mixed_dataset,phase_b,collect_teacher,TREE
     from overnight_distill import bind_champion,expand,fit,one_generation
     from pack_wizard import pack_evening
@@ -172,7 +173,7 @@ def run(a):
         if name!='COMPLETE' and time.monotonic()-start>a.hours*3600:raise TimeoutError('8.5-hour target exhausted; refusing to start another stage')
         cfv.atomic_json(out/'progress.json',dict(stage=name,elapsed_s=time.monotonic()-start,**fields))
         print('OVERNIGHT_STAGE',name,json.dumps(fields),flush=True)
-    full_guard=dict(V10_GUARD,enabled=True,victory_blind_lock_enabled=True)
+    full_guard=dict(V102_R7_GUARD,enabled=True,victory_blind_lock_enabled=True)
     def internal(cp,nets,role,profile):
         if cfv.load_nets(nets)[1].get('tree')!=TREE:raise ValueError('overnight CFVs must use the expanded check-raise tree')
         folder=out/'internal_packages'/role;folder.mkdir(parents=True,exist_ok=True)
@@ -195,7 +196,7 @@ def run(a):
         pilot_latency={};profiles=[]
         for iterations in ({'1':4,'2':4,'3':16},{'1':4,'2':4,'3':12},{'1':4,'2':4,'3':8},
                            {'1':3,'2':3,'3':6},{'1':2,'2':2,'3':4}):
-            profile=dict(ONLINE,iterations=iterations,guard_mode='full')
+            profile=dict(ONLINE,iterations=iterations)
             fixture=internal(wide_path,nets_path,'pilot_'+str(len(profiles)),profile)
             try:
                 passed=latency_gate(fixture,out/('pilot_latency_'+str(len(profiles))+'.json'),64 if a.smoke else 256,4 if a.smoke else 12)
@@ -224,8 +225,8 @@ def run(a):
         bundle=Bundle(timing['source'],timing['model']);t=time.monotonic()
         play_judge(bundle,1700000000,0,2 if a.smoke else 50,'TAG_Pro',keep_trace=False)
         match_s=time.monotonic()-t
-        # Two final suites + 2 guard modes on tuning and confirmation for 4 roles.
-        matches=2*len(ROLES)*(3*50+5*10)*2+len(ROLES)*2*2*5*4*2
+        # Two full suites + 200 paired/seat-swapped matches per guard per role.
+        matches=2*len(ROLES)*(3*50+5*10)*2+len(ROLES)*2*5*20*2
         eval_seconds=matches*match_s/workers
         plan=plan_counts(rates,a.hours,eval_seconds,time.monotonic()-start,workers,a.smoke)
         plan.update(online=online,offline=OFFLINE,eval_matches=matches,match_seconds=match_s,
@@ -241,30 +242,21 @@ def run(a):
             distillation[generation]=one_generation(previous,dest,champion,nets_path,seed,plan,workers,device,a.smoke)
             checkpoints[generation]=dest;previous=dest
         stage('independent_empirical_guard_ablation')
-        variants={role+'_'+mode:internal(cp,nets_path,role+'_'+mode,dict(online,guard_mode=mode))
-                  for role,cp in checkpoints.items() for mode in ('full','slim')}
+        variants={role+'_'+mode:internal(cp,nets_path,role+'_'+mode,
+                  dict(online,guard_mode=mode,comparison_only=mode=='legacy_full'))
+                  for role,cp in checkpoints.items() for mode in ('slim','legacy_full')}
         ablation={}
         for name,release in variants.items():
             latency_gate(release,out/(name+'_latency.json'),64 if a.smoke else 256,4 if a.smoke else 12)
-        for phase,seed in (('tuning',GUARD_TUNE_SEED),('confirmation',GUARD_CONFIRM_SEED)):
-            ablation[phase]=evaluate(variants,out/('guard_'+phase),workers,0,1 if a.smoke else 4,2 if a.smoke else 50,seed_base=seed)
-        def guard_score(report,name):
-            cells=report['results'][name]['tournament']
-            if a.smoke:return sum(float(np.mean(c['net_bb'])) for c in cells.values())/len(cells)
-            return sum(c['mbb_per_hand'] for c in cells.values())/len(cells)
-        selected={};guard_selection={}
-        for role in checkpoints:
-            tune={m:guard_score(ablation['tuning'],role+'_'+m) for m in ('full','slim')}
-            confirm={m:guard_score(ablation['confirmation'],role+'_'+m) for m in ('full','slim')}
-            # Slim must beat full on a second independent set, never final seeds.
-            mode='slim' if tune['slim']>tune['full'] and confirm['slim']>confirm['full'] else 'full'
-            selected[role]=variants[role+'_'+mode]
-            guard_selection[role]=dict(mode=mode,tuning=tune,confirmation=confirm)
+        ablation=evaluate(variants,out/'guard_200_match_comparison',workers,0,1 if a.smoke else 20,2 if a.smoke else 50,seed_base=GUARD_TUNE_SEED)
+        comparisons=compare_guards(ablation,ROLES)
+        selected={role:variants[role+'_slim'] for role in checkpoints}
+        # Architectural safety is mandatory; a score cannot re-enable old rules.
+        guard_selection={role:dict(mode='slim',legacy_comparison=comparisons[role]) for role in checkpoints}
         cfv.atomic_json(out/'guard_selection.json',guard_selection)
         stage('actual_runtime_preflop_and_generation_gate')
-        # Hold guard mode fixed so guard selection cannot masquerade as learned TV.
-        bundles={name:Bundle(variants[name+'_full']['source'],variants[name+'_full']['model']) for name in ROLES}
-        original_package=internal(champion,nets_path,'original_preflop_reference',dict(online,guard_mode='full'))
+        bundles={name:Bundle(variants[name+'_slim']['source'],variants[name+'_slim']['model']) for name in ROLES}
+        original_package=internal(champion,nets_path,'original_preflop_reference',online)
         bundles['original_champion']=Bundle(original_package['source'],original_package['model'])
         evolution={};outputs={k:[] for k in bundles};pre={k:[] for k in bundles};blueprint={k:[] for k in bundles}
         for payload in cases(32 if a.smoke else 128,1931000000):
@@ -301,12 +293,17 @@ def run(a):
             evaluation[label]=report
         stage('immutable_publication')
         if cfv.digest(champion)!=champion_sha or cfv.digest(source)!=handoff_sha:raise RuntimeError('source checkpoint changed')
-        chosen=None if a.smoke else max(ROLES,key=lambda role:score_cells(evaluation['independent_holdout']['results'][role]))
+        eligible=[role for role in ROLES if comparisons[role]['improvement_demonstrated']]
+        chosen=None if a.smoke or not eligible else max(eligible,key=lambda role:score_cells(evaluation['independent_holdout']['results'][role]))
         result=dict(status='COMPLETE',identity=identity,handoff=handoff,plan=plan,cfv=stats,distillation=distillation,
             guard_ablation=ablation,guard_selection=guard_selection,policy_evolution=evolution,evaluation=evaluation,
             checkpoints={k:dict(path=str(v),sha256=cfv.digest(v)) for k,v in checkpoints.items()},releases=releases,
-            final_latency=gates,recommended_role=chosen,elapsed_s=time.monotonic()-start,smoke=a.smoke)
+            final_latency=gates,recommended_role=chosen,guard_improvement_gate=dict(passed=bool(eligible),eligible_roles=eligible),
+            elapsed_s=time.monotonic()-start,smoke=a.smoke)
         source_lock()
+        cfv.atomic_json(out/'QUALITY_REPORT.json',result)
+        if not a.smoke and not eligible:
+            raise RuntimeError('GUARD_PAIRED_IMPROVEMENT_GATE_FAILED: no slim candidate beats legacy EV and win rate at paired 95% confidence; see QUALITY_REPORT.json')
         cfv.atomic_json(out/'OVERNIGHT_FINAL_REPORT.json',result)
         if not a.smoke:
             cfv.atomic_json(deliver/('OVERNIGHT_FINAL_REPORT_'+timestamp+'.json'),result)

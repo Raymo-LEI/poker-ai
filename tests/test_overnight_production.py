@@ -166,7 +166,7 @@ def test_exported_expanded_route_and_full_slim_guards(champion_model,tmp_path):
     source_model=copy.deepcopy(champion_model);expanded=expand(bind_champion(copy.deepcopy(source_model),source_model))
     with torch.no_grad():expanded.delta_head.bias.add_(.1)
     paths={};bundles={}
-    for name,model,mode in (('original',source_model,'full'),('full',expanded,'full'),('slim',expanded,'slim')):
+    for name,model,mode in (('original',source_model,'slim'),('full',expanded,'slim'),('slim',expanded,'slim')):
         folder=tmp_path/name;folder.mkdir();cp=folder/'checkpoint.pt';save_checkpoint(cp,model)
         release='V999_TEST_'+name.upper();zip_path=folder/'V999_SOURCE.zip';npz=folder/'V999_MODEL.npz'
         export_botzone_weights(cp,npz,release_id=release,cfv_nets=nets,online_profile=dict(ONLINE,guard_mode=mode),

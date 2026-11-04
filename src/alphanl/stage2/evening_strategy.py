@@ -27,8 +27,8 @@ def locked_action(snapshot,context):
     return None
 
 
-def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,chance_samples=2,online=False,blueprint_weight=None,check_raise=False,ranges=None):
-    cfv.validate_weights(weights)
+def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,chance_samples=2,online=False,blueprint_weight=None,check_raise=False,ranges=None,rnr_eta=.5,terminal_match_utility=True):
+    if 0<int(snapshot.street)<3:cfv.validate_weights(weights)
     prior=np.asarray(prior,dtype=np.float64)
     mask=np.zeros(5)
     for a in snapshot.legal_action_ids:mask[a]=1
@@ -42,14 +42,15 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
         return out,{'search':False,'reason':'current_hand_guaranteed_lock','cfv_calls':0}
     from .search_belief import history_combo_ranges
     range_audit=None
-    if ranges is None:(rh,ro),range_audit=history_combo_ranges(snapshot,return_audit=True)
+    if ranges is None:(rh,ro),range_audit=history_combo_ranges(snapshot,return_audit=True,eta=rnr_eta)
     else:rh,ro=ranges
     hero=frozenset(cfv.card(c) for c in snapshot.hole_cards)
     hands=solver._public(tuple(sorted(cfv.card(c) for c in snapshot.board_cards)))[0]
     at=next(i for i,h in enumerate(hands) if frozenset(h)==hero)
+    utility=bool(online and terminal_match_utility and context is not None)
     sol=solver.solve_public_subgame(snapshot,rh,ro,weights=weights,amounts=amounts,
                                     iterations=iterations,chance_samples=chance_samples,
-                                    utility=False,context=context,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
+                                    utility=utility,context=context,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
     out=np.zeros(5)
     for i,a in enumerate(sol.tree.labels):out[a]=sol.average[at,i]
     out*=mask
@@ -65,12 +66,14 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
     trace.update(search=True,reason='exact_river_terminals' if len(snapshot.board_cards)==5 else 'range_conditioned_cfv_leaves',
                  target='blueprint_dcfr_mixture' if online else 'dcfr_average',feature_dim=136,
                  blueprint_weight=mix if online else 0.,initial_strategy='hero_root_blueprint' if online else 'uniform',
-                 dcfr_average=average.tolist(),blueprint=prior.tolist() if online else None,root_value_bb=float(sol.state[at]),range_audit=range_audit)
+                 dcfr_average=average.tolist(),blueprint=prior.tolist() if online else None,
+                 root_value_bb=None if utility else float(sol.state[at]),
+                 root_match_equity=float(sol.state[at])+.5 if utility else None,range_audit=range_audit)
     return out,trace
 
 
 def fuse(agent,snapshot,context,probs,amounts):
-    weights=cfv.validate_weights(agent.weights)
+    weights=agent.weights
     online=agent.settings.get('evening_online',{})
     iterations=agent.settings.get('evening_iterations')
     if iterations is None:
@@ -78,10 +81,13 @@ def fuse(agent,snapshot,context,probs,amounts):
     samples=online.get('chance_samples',agent.settings.get('evening_chance_samples',1))
     out,trace=search_policy(snapshot,context,probs,weights,amounts,iterations,samples,online=True,
                             blueprint_weight=online.get('blueprint_weight',{'1':.5,'2':.5,'3':.3}).get(str(int(snapshot.street)),.5),
-                            check_raise=online.get('check_raise',False))
+                            check_raise=online.get('check_raise',False),rnr_eta=online.get('rnr_eta',.5),
+                            terminal_match_utility=online.get('terminal_match_utility',True))
     agent.search_audit=dict(status='active' if trace['search'] else 'skipped',
                             solver=cfv.SCHEMA,reason=trace['reason'],output=trace.get('target','blueprint'),
-                            cfv_calls=trace['cfv_calls'],feature_dim=136)
+                            cfv_calls=trace['cfv_calls'],feature_dim=136,
+                            river_full_combo=bool(snapshot.street==3 and trace['search']),
+                            terminal_match_utility=trace.get('terminal_match_utility',False))
     agent.last_evening=trace
     agent.last_wizard='wiz=v2/search=%d/cfv=%d/dim=136/reason=%s' % (trace['search'],trace['cfv_calls'],trace['reason'])
     if trace.get('range_audit'):

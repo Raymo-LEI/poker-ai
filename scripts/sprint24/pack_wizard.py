@@ -45,6 +45,8 @@ def pack_evening(checkpoint, nets, destination_root, version=None, iterations=No
     from alphanl.stage2.export import pack_botzone_zip,export_botzone_weights
     from alphanl.stage2 import cfv
     import fcntl
+    if release_label.startswith('OVERNIGHT') and (not online_profile or online_profile.get('guard_mode')!='slim' or online_profile.get('comparison_only')):
+        raise ValueError('formal overnight releases require slim safety; legacy guards are comparison-only')
     root=Path(destination_root)
     root.mkdir(parents=True,exist_ok=True)
     day=datetime.now(timezone(timedelta(hours=9))).strftime('%Y%m%d')

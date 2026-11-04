@@ -1,5 +1,11 @@
 # Local validation
 
+Latest clean-architecture acceptance: **188 passed in 184.63s**, followed by
+**65 passed in 6.43s** including the two added own/opponent-lock and legal-only
+preflop cases. The actual 200-complete-matches-per-mode study and its negative
+result are documented in [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md) and
+`CLEAN_LOCAL_VALIDATION.json`. Earlier audit-patch behavior below is historical.
+
 The later V22/bot17 fixes are documented in [BOT17_REPAIR.md](BOT17_REPAIR.md)
 and `BOT17_LOCAL_VALIDATION.json`: **175 passed in 167.62s**, plus **39 passed
 in 2.91s** after the final short-call refund refinement. The new suite contains

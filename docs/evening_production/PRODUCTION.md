@@ -27,6 +27,15 @@ Production requires an actual RTX 5090 CUDA kernel/backward probe, not merely
 NumPy, PokerKit and phevaluator dependencies. CPU execution is restricted to
 `--smoke`. No CUDA/5090 production run was performed on the local Mac.
 
+## Position/value schema and terminal checks
+
+Production uses `public32-combo136-res3-bb-v3`: still 136 features and three
+residual blocks, with feature 125 explicitly identifying the first actor on a
+new street. Facing-bet labels retain independent future position. Fresh IP
+views are generated with the opponent first; live IP Check-after-Check closes
+the street immediately. A real PokerKit successor test covers this boundary.
+Previous v2 networks/labels must be regenerated, not retagged or reused.
+
 ## Online prior and mixture contract
 
 Offline CFV labels and distillation teachers remain pure signed DCFR averages.
@@ -85,9 +94,9 @@ river 8,192–300,000; turn 4,096–200,000; each distillation generation
 precision reduction. Thus final counts are intentionally machine-calibrated,
 not a fabricated fixed promise based on an unmeasured server.
 
-Local single-process measurements were 0.19584s per 64-iteration river label
-(16 boards) and 0.35149s per 32-iteration/4-chance turn label (8 boards).
-Ideal division by 24 gives 0.00816s / 0.01465s per row; these are projections,
+Local single-process measurements were 0.19195s per 64-iteration river label
+(16 boards) and 0.34253s per 32-iteration/4-chance turn label (8 boards).
+Ideal division by 24 gives 0.00800s / 0.01427s per row; these are projections,
 not measured RTX-server throughput. The actual server pool calibration replaces
 these projections. A process-group watchdog stops only this run and its workers
 at 3.5 hours. This is a deadline, not a guarantee that training or quality gates
@@ -128,17 +137,16 @@ forcing an unsafe update. No training method guarantees playing-strength gains.
 
 [LOCAL_VALIDATION.json](LOCAL_VALIDATION.json) contains the measured data.
 With the actual 192-d champion, the full online prior/mix and production
-4/4/8 budgets, 512 changing requests gave mean 19.25ms, p99 35.05ms;
-32 fresh ZIP processes had maximum wall time 0.1785s. Each board-size group
+4/4/8 budgets, 512 changing requests gave mean 21.07ms, p99 36.24ms;
+32 fresh ZIP processes had maximum wall time 0.1984s. Each board-size group
 also passed. These are actual packaged runtime calls, not solver-only timings.
 The CFV heads were small trained fixtures; production rechecks each final model.
 
 A real two-generation CPU probe used 128 teacher rows, three epochs and fresh
 64-row validation/holdout splits per generation. Both were accepted. Maximum
-postflop TV was 0.002139 (G1 vs baseline) and 0.002690 (G2 vs G1); both preflop
+postflop TV was 0.001962 (G1 vs baseline) and 0.001698 (G2 vs G1); both preflop
 TVs were exactly zero. This demonstrates actual train-to-runtime influence,
-not a claim of improved online strength. The probe used 32 teacher iterations;
-the production river teacher budget is increased to 64.
+not a claim of improved online strength. The probe used the same 32 flop/turn and 64 river teacher budgets as production.
 
 The local complete controller smoke uses the actual champion and two spawn
 workers, builds internal-only packages, runs both generations and all five
@@ -153,3 +161,8 @@ parent or its pool. Local timings do not certify Python 3.6/NumPy 1.19,
 Botzone memory limits, a busy future machine or unmeasured server throughput.
 Production repeats the hard mean<40ms, p99<120ms, cold<0.5s gates and aborts if
 any final package fails. It does not upload or deploy a bot automatically.
+
+Final expanded regression: **118 passed, 2 conditional platform tests skipped**
+in 183.49s, including both audit repair suites, exact vector-evaluator checks,
+parallel/serial label identity, real engine terminal/ledger checks, teacher
+purity, private-root prior/fallback/mixture checks and persistent version reservation.

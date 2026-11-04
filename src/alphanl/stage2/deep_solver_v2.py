@@ -14,7 +14,7 @@ from functools import lru_cache
 from types import SimpleNamespace
 
 import numpy as np
-from .cfv import (BUCKETS, FEATURE_DIM, DECK, CARD_ID, card as _ev,
+from .cfv import (SCHEMA, BUCKETS, FEATURE_DIM, DECK, CARD_ID, card as _ev,
                   normalize_range, spot_features, predict_residual_cfv)
 
 RIVER_ITERS = 40
@@ -234,12 +234,12 @@ class Node:
                 child.init(width)
 
 
-def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0):
+def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, check_closes=False):
     """One street, capped at one all-in re-raise. Leaves record root investments."""
     if first_player == 1:
         if owed:
             raise ValueError("owed only defined for the first actor")
-        tree = betting_tree(pot,0,opp,me,legal,amounts,0)
+        tree = betting_tree(pot,0,opp,me,legal,amounts,0,False)
         def swap(n):
             if n.player is not None:
                 n.player = 1 - n.player
@@ -284,7 +284,7 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0):
             if owed <= 0: continue
             child = leaf("fold0",0,0)
         elif a == 1:
-            child = showdown(min(me,owed),0) if owed else after_check()
+            child = showdown(min(me,owed),0) if owed else showdown(0,0) if check_closes else after_check()
         else:
             h = float(amounts[a]) if amounts is not None and a in amounts else (me if a==4 else min(me,max(owed*2,.5*pot if a==2 else pot)))
             h = min(me,h)
@@ -320,7 +320,9 @@ class PublicSolver:
         self.iterations = iterations or (RIVER_ITERS if len(self.board)==5 else TURN_ITERS)
         self.chance_samples,self.seed = int(chance_samples),int(seed)
         self.tree = betting_tree(float(snapshot.pot),float(snapshot.to_call),float(snapshot.me_stack),float(snapshot.opp_stack),
-                                 getattr(snapshot,'legal_action_ids',None),amounts,first_player)
+                                 getattr(snapshot,'legal_action_ids',None),amounts,first_player,
+                                 check_closes=first_player==0 and float(snapshot.to_call)==0 and
+                                     getattr(snapshot,'me_seat',0)!=getattr(snapshot,'postflop_first_seat',0))
         self.tree.init(self.width)
         if root_prior is not None:
             if first_player!=0 or hero_at is None:raise ValueError('blueprint prior requires the acting hero root information set')
@@ -335,7 +337,7 @@ class PublicSolver:
         self.rootmass = (self.mass(self.ro),self.mass(self.rh))
         self.utility,self.context = utility,context
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
-                      "game":"check-bet-fold-call-jam-reraise-call", "schema":"public32-combo136-res3-bb-v2"}
+                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA}
         self._chance_cache = {}
 
     def mass(self,w):

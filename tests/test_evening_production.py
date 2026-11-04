@@ -134,3 +134,21 @@ def test_offline_teacher_selects_full_street_budget_without_online_prior(monkeyp
     evening_cd.search_label(snap(),None,np.ones(5)/5,{},iterations={'1':32,'2':32,'3':64})
     assert seen==[64]
     assert evening_cd.search_label.last_trace['target']=='dcfr_average'
+
+
+def test_in_position_check_is_real_street_end_and_future_position_is_preserved():
+    from alphanl.transformer.hunl import HunlTable
+    from evening_pipeline import sample_spot
+    table=HunlTable(seed=71);table.reset()
+    while table.street<3:table.step(1)
+    table.step(1)  # OOP checks; IP's Check must immediately terminate.
+    hero=table.current_player();s=table.snapshot(hero)
+    assert hero==1 and s.to_call==0
+    amounts={a:table.action_chips(a) for a in s.legal_action_ids}
+    sol=v.PublicSolver(s,amounts=amounts,iterations=2)
+    check=sol.tree.children[sol.tree.labels.index(1)]
+    assert check.player is None and check.leaf[0]=='show'
+    branch=table.clone();branch.step(1);assert branch.is_over()
+    for seed in range(100,120):
+        spot,rh,ro=sample_spot(seed,2)
+        if spot.to_call==0:assert spot.me_seat==spot.first_player

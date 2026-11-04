@@ -12,13 +12,13 @@ from pathlib import Path
 
 import numpy as np
 
-SCHEMA = "public32-combo136-res3-bb-v2"
+SCHEMA = "public32-combo136-res3-bb-v3"
 BUCKETS = 32
 FEATURE_DIM = 136
 TAIL_NAMES = (
     "hero_stack_200bb", "opponent_stack_200bb", "effective_spr_20",
     "pot_200bb", "call_pot", "street_3", "board_count_5",
-    "effective_stack_200bb", "call_odds", "hero_acts_first",
+    "effective_stack_200bb", "call_odds", "hero_first_on_new_street",
     "paired_board", "trips_board", "max_suit_fraction", "unique_ranks_5",
     "highest_rank_14", "lowest_rank_14", "rank_span_12", "broadway_fraction",
     "hero_entropy_log32", "opponent_entropy_log32",

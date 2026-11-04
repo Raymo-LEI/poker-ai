@@ -39,6 +39,7 @@ def sample_spot(seed, street):
     rh, ro = rng.dirichlet(np.full(32,.7)), rng.dirichlet(np.full(32,.7))
     snap=_snap(hero,board,pot,call,stack,street,opp)
     snap.first_player=0 if call else int(rng.randint(2))
+    snap.me_seat=int(rng.randint(2)) if call else snap.first_player
     return snap,rh,ro
 
 
@@ -50,7 +51,8 @@ def label_spot(snap, rh, ro, weights=None, iterations=None, chance_samples=2, se
     assert all(bucket_map[h] == b for h,b in zip(sol.hands,sol.bins))
     target = v2.bucket_values(sol.state, sol.rh*sol.rootmass[0], sol.bins)
     feat = cfv.spot_features(snap.board_cards,rh,ro,snap.pot,snap.to_call,snap.me_stack,
-                            snap.big_blind,snap.street,snap.opp_stack,getattr(snap,"first_player",0))
+                            snap.big_blind,snap.street,snap.opp_stack,
+                            0 if getattr(snap,"me_seat",0)==getattr(snap,"postflop_first_seat",0) else 1)
     return feat.astype(np.float32),target.astype(np.float32),sol
 
 

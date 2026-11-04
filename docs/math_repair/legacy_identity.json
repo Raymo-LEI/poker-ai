@@ -1,0 +1,42 @@
+{
+  "identities": [
+    {
+      "path": "UPLOAD_V13_R13_EXACT_RIVER_20261104/V13_SOURCE.zip",
+      "sha256": "c23d55343842113e74c50344681a446082109feb7bdb53c8b6d4d24cc7d7caf0",
+      "match": true
+    },
+    {
+      "path": "UPLOAD_V13_R13_EXACT_RIVER_20261104/V13_MODEL.npz",
+      "sha256": "95851390a35af5cd4bdcde7a7572dec899f87f129a1c5b7d03acbc121dfd404a",
+      "match": true
+    },
+    {
+      "path": "UPLOAD_V14_R14_SURGICAL_SEARCH_20261104/V14_SOURCE.zip",
+      "sha256": "5cf3af107369b88bf5cf488a5636e07b40bf3cff203b5669031d7ffee4413734",
+      "match": true
+    },
+    {
+      "path": "UPLOAD_V14_R14_SURGICAL_SEARCH_20261104/V14_MODEL.npz",
+      "sha256": "846c313c446ea726f086b68fc723e4e2a140ca8436996c0846c7f3f245625262",
+      "match": true
+    },
+    {
+      "path": "UPLOAD_V15_R15_DEEP_REBEL_20261104/V15_SOURCE.zip",
+      "sha256": "b8b59a7fd4486199ff13099338204ab3ac31e0984df156134c8f00b19f8c24e2",
+      "match": true
+    },
+    {
+      "path": "UPLOAD_V15_R15_DEEP_REBEL_20261104/V15_MODEL.npz",
+      "sha256": "59e436f18b4dfd636a6bdbedf4da83025233f2d966d22cf3fca130449e63ce63",
+      "match": true
+    }
+  ],
+  "old_straight_high_card": [
+    70,
+    973972
+  ],
+  "old_forced_10bb": [
+    0.0004516507836141096,
+    0.0004516507836141096
+  ]
+}

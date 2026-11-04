@@ -58,6 +58,8 @@ def cat(values, dim=0):
     sources["tokenizer"] = (transformer / "tokenizer.py").read_text().replace("import torch", "from . import arraytorch as torch")
     sources["tables"] = 'from .schema import SUITS, RANKS\ndef standard_deck():\n    return tuple(s+r for s in SUITS for r in RANKS)\n'
     sources["portable_evaluator"] = (base / "stage2/portable_evaluator.py").read_text()
+    sources["blind_lock"] = (base / "stage2/blind_lock.py").read_text()
+    sources["shove_threat"] = (base / "stage2/shove_threat.py").read_text()
     sources["deployment_guard"] = (base / "stage2/deployment_guard.py").read_text()
     equity = (transformer / "equity.py").read_text()
     equity = equity.replace('from phevaluator import evaluate_cards', 'from .portable_evaluator import evaluate_cards')
@@ -95,6 +97,8 @@ def cat(values, dim=0):
         # einsum product that avoids NumPy 1.19 GEMM crashes under a 256MB cap.
         forward = forward.replace('return np.einsum("...mk,...kn->...mn", left, right, optimize=False)', 'return np.matmul(left, right)')
     sources["forward"] = forward + '\n' + feature_function
+    for module in ("search_math", "search_game", "search_belief", "search_values"):
+        sources[module] = (base / ("stage2/" + module + ".py")).read_text()
     sources["wizard"] = (base / "stage2/wizard.py").read_text()
     if botzone:
         # Botzone python3 is 3.6: postponed annotations do not exist there.
@@ -134,7 +138,7 @@ sys.modules[_package.__name__] = _package
             "runtime": "numpy_only_embedded_weights", "safety_intervention": safety}
 
 
-def pack_botzone_zip(destination):
+def pack_botzone_zip(destination, *, release_id=None):
     """Checkpoint-independent Botzone source zip; ``__main__.py`` at the root."""
     base = ROOT / "alphanl"
     sources = _sources(None, botzone=True)
@@ -149,6 +153,18 @@ def pack_botzone_zip(destination):
     # Fixed timestamps keep the committed zip reproducible.
     entries = [(name, (BOTZONE_ENTRY / name).read_text())
                for name in ("__main__.py", "botzone_entry.py", "dataclasses_compat.py")]
+    if release_id is not None:
+        if destination.exists():
+            raise FileExistsError("versioned source must not be overwritten")
+        if not re.fullmatch(r"V[1-9][0-9]*_.+",release_id):
+            raise ValueError("release must start with a unique increasing Vn_")
+        version=release_id.split("_",1)[0]
+        if destination.name != version+"_SOURCE.zip":
+            raise ValueError("release source must be named Vn_SOURCE.zip")
+        entries=[(name,text.replace('WEIGHTS_NAME = "stage2_model.npz"',
+                                   'WEIGHTS_NAME = '+repr(version+"_MODEL.npz"))
+                           .replace('RELEASE_ID = "development_unreleased"','RELEASE_ID = '+repr(release_id)))
+                 for name,text in entries]
     entries.append((BOTZONE_PACKAGE + "/__init__.py", ""))
     entries += [("%s/%s.py" % (BOTZONE_PACKAGE, name), text) for name, text in sorted(sources.items())]
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -160,8 +176,8 @@ def pack_botzone_zip(destination):
     return {"path": str(destination), "bytes": destination.stat().st_size, "files": [n for n, _ in entries]}
 
 
-def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_guard=None):
-    """Weights plus config for ``data/stage2_model.npz`` in Botzone user storage."""
+def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_guard=None, release_id=None):
+    """Frozen policy plus config. Release exports require Vn_MODEL.npz and matching source."""
     model, blob = load_checkpoint(checkpoint)
     from .deployment_guard import guard_config
     deployment_guard = guard_config(deployment_guard)
@@ -169,12 +185,20 @@ def export_botzone_weights(checkpoint, destination, *, safety=False, deployment_
     meta = {"format": BOTZONE_FORMAT, "config": config.to_dict(), "settings": model.settings,
             "numeric_version": config.numeric_version, "safety": bool(safety), "deployment_guard": deployment_guard,
             "source": {"checkpoint": str(checkpoint), "update": blob.get("update")}}
+    if release_id is not None:
+        if not re.fullmatch(r"V[1-9][0-9]*_.+",release_id):
+            raise ValueError("release must start with a unique increasing Vn_")
+        if Path(destination).name != release_id.split("_",1)[0]+"_MODEL.npz":
+            raise ValueError("release weights must be named Vn_MODEL.npz")
+        meta["deployment_release"]=release_id
+        meta["search_contract"]="public_tree_dcfr_v1"
+        meta["value_network"]="unavailable_exact_or_checkdown"
     weights = _weights(model)
     if "meta_json" in weights:
         raise ValueError("weight key collides with meta_json")
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("wb") as handle:
+    with destination.open("xb" if release_id is not None else "wb") as handle:
         np.savez(handle, meta_json=np.frombuffer(json.dumps(meta).encode("utf-8"), dtype=np.uint8),
                  **{k: np.ascontiguousarray(v) for k, v in weights.items()})
     return {"path": str(destination), "bytes": destination.stat().st_size,

@@ -29,6 +29,15 @@ def gates(mean_ms,p99_ms,max_ms,cold_start_s):
                 hard_limits=dict(p99_ms=120.,max_ms=300.,cold_start_s=.5),soft_limit_mean_ms=65.)
 
 
+
+def full_power_gates(mean_ms,p99_ms,max_ms,cold_start_s,rss_mb):
+    hard=bool(np.isfinite([mean_ms,p99_ms,max_ms,cold_start_s,rss_mb]).all() and
+              p99_ms<600. and max_ms<1500. and cold_start_s<3. and rss_mb<220.)
+    return dict(hard_passed=hard,soft_mean_passed=bool(mean_ms<160.),
+                warning=None if mean_ms<160. else 'MEAN_LATENCY_SOFT_WARNING',
+                hard_limits=dict(p99_ms=600.,max_ms=1500.,cold_start_s=3.,rss_mb=220.),soft_limit_mean_ms=160.)
+
+
 def collect_corpus(source,model,path,seed=2026110500,max_matches=12):
     """Actual judge deals/actions and their full cumulative request/data payloads."""
     bundle=Bundle(source,model);by_street={0:[],3:[],4:[],5:[]};seen=set()
@@ -111,6 +120,64 @@ def benchmark(source,model,corpus,core,warmup=32,count=512,cold=12,diagnostic=Fa
     return result
 
 
+
+def full_power_benchmark(source,model,corpus,core,warmup=32,count=512,cold=12,diagnostic=False):
+    from server_service import Service
+    import tempfile
+    import re
+    if not diagnostic and (warmup!=32 or count<500 or cold<1):raise ValueError('32 warmups and >=500 real-state measurements required')
+    times=[];rss=[];by={};ids=[];river=0;hud=0;budgets={}
+    with Service(dict(source=str(source),model=str(model)),core) as service:
+        metadata=service.meta()['meta'];info=service.info
+        profile=metadata['settings']['evening_online']
+        if profile.get('server_arena_release') and profile.get('iterations')!={'1':8,'2':8,'3':16}:
+            raise AssertionError('production iteration budget must be 8/8/16')
+        for i,row in enumerate(sample_states(corpus,warmup,404)):service.infer(row['payload'],404000+i)
+        for i,row in enumerate(sample_states(corpus,count,505)):
+            result=service.infer(row['payload'],505000+i);d=result['diagnostics'];trace=d['trace']
+            n=len(row['payload']['requests'][-1]['public_cards']);ms=d['engine_s']*1000
+            times.append(ms);rss.append(d['rss_mb']);by.setdefault(str(n),[]).append(ms);ids.append(row['id'])
+            if d['search_audit'].get('status')=='active':
+                if n==5:
+                    if trace.get('support')!=1081:raise AssertionError('river support is not 1081')
+                    river+=1
+                if trace.get('match_prior',{}).get('eta',0)>0:hud+=1
+                if trace.get('iterations') is not None:
+                    budgets.setdefault(str(n),set()).add(trace['iterations'])
+                    street={3:'1',4:'2',5:'3'}.get(n)
+                    if profile.get('server_arena_release') and trace['iterations']!=profile['iterations'][street]:
+                        raise AssertionError('runtime silently changed its fixed iteration budget')
+        rss.append(service.meta()['rss_mb'])
+    env=dict(os.environ,POKER_STAGE2_WEIGHTS=str(Path(model).resolve()))
+    cold_times=[];cold_rss=[];debug=[]
+    with tempfile.TemporaryDirectory(prefix='s24-memory-') as temp:
+        for i,row in enumerate(sample_states(corpus,cold,606)):
+            memory=Path(temp)/('%d.txt'%i)
+            command=['/usr/bin/time','-v','-o',str(memory),sys.executable,str(Path(source).resolve())]
+            started=time.perf_counter()
+            proc=subprocess.run(command,input=json.dumps(row['payload'])+'\n',capture_output=True,text=True,env=env,timeout=15,
+                                preexec_fn=lambda:os.sched_setaffinity(0,{core}))
+            cold_times.append(time.perf_counter()-started)
+            if proc.returncode:raise RuntimeError('cold entry failed: '+proc.stderr[-2000:])
+            text=memory.read_text();match=re.search(r'Maximum resident set size \(kbytes\):\s*(\d+)',text)
+            if not match:raise RuntimeError('cold RSS measurement missing')
+            cold_rss.append(int(match.group(1))/1024.)
+            body=json.loads(proc.stdout);note=body.get('debug','');debug.append(note)
+            if not note.startswith('py') or ' ok ' not in note or 'error_blueprint' in note or 'fallback' in note:
+                raise RuntimeError('cold entry rejected: '+note)
+    mean=float(np.mean(times));p99=float(np.percentile(times,99));maximum=max(times)
+    cm=max(cold_times);peak=max(rss+cold_rss)
+    result=dict(samples=count,warmup_requests=warmup,mean_ms=mean,p50_ms=float(np.median(times)),p99_ms=p99,max_ms=maximum,
+                cold_start_s=cm,rss_mb=peak,rss_units='MiB (peak resident set)',warm_rss_peak_mb=max(rss),cold_rss_peak_mb=max(cold_rss),
+                cold_samples=cold,cold_debug=debug,timed_ms=times,timed_state_ids=ids,cold_start_samples_s=cold_times,cold_rss_samples_mb=cold_rss,
+                gate=full_power_gates(mean,p99,maximum,cm,peak),inference_process=info,cpu_affinity=[core],
+                corpus_unique_states=len(corpus['states']),timed_unique_states=len(set(ids)),corpus_counts=corpus['by_board_size'],
+                by_board_size={k:dict(n=len(v),mean_ms=float(np.mean(v)),p99_ms=float(np.percentile(v,99)),max_ms=max(v)) for k,v in by.items()},
+                river_full_combo_calls=river,hud_active_calls=hud,observed_iterations={k:sorted(v) for k,v in budgets.items()},
+                source_sha256=cfv.digest(source),model_sha256=cfv.digest(model),profile=profile,diagnostic=diagnostic)
+    if river==0:result['gate']['hard_passed']=False
+    return result
+
 def main(argv=None):
     p=argparse.ArgumentParser();p.add_argument('--zip',required=True);p.add_argument('--model',required=True)
     p.add_argument('--corpus',required=True,type=Path);p.add_argument('--out',required=True,type=Path)
@@ -120,9 +187,9 @@ def main(argv=None):
     a=p.parse_args(argv);pin([a.core])
     if a.collect and not a.corpus.exists():collect_corpus(a.zip,a.model,a.corpus)
     corpus=json.loads(a.corpus.read_text())
-    r=benchmark(a.zip,a.model,corpus,a.core,a.warmup,a.samples,a.cold,a.diagnostic)
+    r=full_power_benchmark(a.zip,a.model,corpus,a.core,a.warmup,a.samples,a.cold,a.diagnostic)
     cfv.atomic_json(a.out,r)
-    print(json.dumps({k:r[k] for k in ('mean_ms','p50_ms','p99_ms','max_ms','cold_start_s','gate','river_full_combo_calls','hud_active_calls')}),flush=True)
+    print(json.dumps({k:r[k] for k in ('mean_ms','p50_ms','p99_ms','max_ms','cold_start_s','rss_mb','gate','river_full_combo_calls','hud_active_calls')}),flush=True)
     return 0 if r['gate']['hard_passed'] else 2
 
 if __name__=='__main__':raise SystemExit(main())

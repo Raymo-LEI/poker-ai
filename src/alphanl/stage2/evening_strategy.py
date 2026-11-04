@@ -42,9 +42,9 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
         return out,{'search':False,'reason':'current_hand_guaranteed_lock','cfv_calls':0}
     from .search_belief import history_combo_ranges
     range_audit=None
-    if online and size_risk_decay:
-        from .solver_prior import profile
-        rnr_eta=min(rnr_eta,profile(context,int(snapshot.street),snapshot,context_eta_max)['eta'])
+    from .solver_prior import prepare_context
+    prepared=prepare_context(context if online and context_prior else None,int(snapshot.street),snapshot,context_eta_max)
+    if online and size_risk_decay:rnr_eta=min(rnr_eta,prepared.eta)
     if ranges is None:(rh,ro),range_audit=history_combo_ranges(snapshot,return_audit=True,eta=rnr_eta)
     else:rh,ro=ranges
     hero=frozenset(cfv.card(c) for c in snapshot.hole_cards)
@@ -53,7 +53,7 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
     utility=bool(online and terminal_match_utility and context is not None)
     sol=solver.solve_public_subgame(snapshot,rh,ro,weights=weights,amounts=amounts,
                                     iterations=iterations,chance_samples=chance_samples,
-                                    utility=utility,context=context,context_prior=bool(online and context_prior),context_eta_max=context_eta_max,context_range_prior=context_range_prior,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
+                                    utility=utility,context=context,context_prior=bool(online and context_prior),context_eta_max=context_eta_max,context_range_prior=context_range_prior,prepared_priors=prepared,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
 
     out=np.zeros(5)
     for i,a in enumerate(sol.tree.labels):out[a]=sol.average[at,i]

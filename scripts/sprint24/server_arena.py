@@ -18,6 +18,7 @@ from overnight_production import ONLINE
 from overnight_data import TREE
 from server_resources import pin
 
+SERVER_ITERATIONS={'1':8,'2':8,'3':16}
 ARM_ORDER=('A','C','D','B')  # B is the first optional arm, never the baseline.
 
 
@@ -25,7 +26,9 @@ def profiles(iterations=None):
     base=dict(ONLINE,contract='server-arena-v1',rnr_eta=0.,context_prior=False,
               context_eta_max=.25,context_range_prior=False,size_risk_decay=False,
               server_arena_release=True,comparison_only=False)
-    if iterations is not None:base['iterations']=iterations
+    if iterations is not None and iterations!=SERVER_ITERATIONS:raise ValueError('server iterations are locked to 8/8/16')
+    base['iterations']=dict(SERVER_ITERATIONS)
+    base['chance_samples']=2
     return {name:dict(base,guard_mode=mode,context_prior=name=='D',rnr_eta=.25 if name=='D' else 0.,
                       size_risk_decay=name=='D') for name,mode in
             (('A','legacy_full'),('B','slim'),('C','surgical'),('D','surgical'))}
@@ -97,9 +100,9 @@ class RPCBundle:
         self.runtime=local.runtime;self.meta=local.meta
         self.agent=SimpleNamespace(last_evening={},last_guard={},search_audit={})
         self.requests,self.reply,self.slot=requests,reply,slot
-        self.seed=0;self.counter=0;self.engine_s=[];self.roundtrip_s=[];self._debug=''
+        self.seed=0;self.counter=0;self.engine_s=[];self.roundtrip_s=[];self.rss=[];self._debug=''
     def reset(self,seed,seat):
-        self.seed=seed*1000000+seat*100000;self.counter=0;self.engine_s=[];self.roundtrip_s=[]
+        self.seed=seed*1000000+seat*100000;self.counter=0;self.engine_s=[];self.roundtrip_s=[];self.rss=[]
     def respond(self,payload):
         self.counter+=1;started=time.perf_counter()
         self.requests.put((self.slot,payload,self.seed+self.counter))
@@ -107,6 +110,7 @@ class RPCBundle:
         self.roundtrip_s.append(time.perf_counter()-started)
         if 'error' in result:raise RuntimeError(result['error'])
         d=result['diagnostics'];self.engine_s.append(d['engine_s'])
+        if 'rss_mb' in d:self.rss.append(d['rss_mb'])
         self.agent.last_guard=d['guard'];self.agent.guard_before=np.array(d['before']);self.agent.guard_after=np.array(d['after'])
         self.agent.last_evening=d['trace'];self.agent.search_audit=d['search_audit'];self._debug=d['debug']
         return result['body']
@@ -123,6 +127,30 @@ def _init_worker(release,requests,replies,slots,cpus):
     _RPC=RPCBundle(release,requests,replies[slot],slot)
 
 
+
+class SocketRequests:
+    def __init__(self,connection):self.connection=connection
+    def put(self,message):
+        slot,payload,seed=message
+        self.connection.send(dict(command='infer',payload=payload,seed=seed))
+
+
+class SocketReplies:
+    def __init__(self,connection):self.connection=connection
+    def get(self,timeout=120):
+        if not self.connection.poll(timeout):raise TimeoutError('inference socket stalled')
+        return self.connection.recv()
+
+
+def _init_socket_worker(release,address,cpus):
+    global _RPC
+    from multiprocessing.connection import Client
+    os.environ['CUDA_VISIBLE_DEVICES']='';pin(cpus)
+    import torch
+    torch.set_num_threads(1);torch.set_num_interop_threads(1)
+    connection=Client(address,family='AF_UNIX')
+    _RPC=RPCBundle(release,SocketRequests(connection),SocketReplies(connection),0)
+
 def _arena_job(job):
     _RPC.reset(job['seed'],job['seat'])
     result=play_judge(_RPC,job['seed'],job['seat'],50,job['opponent'],keep_trace=True)
@@ -130,6 +158,7 @@ def _arena_job(job):
         raise RuntimeError('arena requires complete 50-hand judge matches')
     result['turn_s']=_RPC.engine_s
     result['request_roundtrip_s']=_RPC.roundtrip_s
+    result['rss_mb']=max(_RPC.rss) if _RPC.rss else float('inf')
     for row in result['losing_hands']:row.update({k:job[k] for k in ('arm','opponent','pair','seat','seed')})
     result['worker_affinity']=sorted(os.sched_getaffinity(0));result['worker_pid']=os.getpid()
     return job,result
@@ -158,15 +187,11 @@ def run_arm(arm,release,nets,out,resources,workers=24,seed_base=2026110600):
         else:pending.append(job)
     service_info=None
     if pending:
-        ctx=mp.get_context('spawn');requests=ctx.Queue();replies=[ctx.Queue() for _ in range(workers)]
-        slots=ctx.Queue()
-        for slot in range(workers):slots.put(slot)
-        ready=ctx.Queue();service=ctx.Process(target=_serve,args=(release,resources['inference_core'],requests,replies,ready))
-        service.start()
-        try:
-            service_info=ready.get(timeout=120)
-            if 'error' in service_info:raise RuntimeError(service_info['error'])
-            with ctx.Pool(workers,initializer=_init_worker,initargs=(release,requests,replies,slots,resources['worker_cpus'])) as pool:
+        from server_service import Service
+        ctx=mp.get_context('spawn')
+        with Service(release,resources['inference_core'],out) as service:
+            service_info=service.info
+            with ctx.Pool(workers,initializer=_init_socket_worker,initargs=(release,service.address,resources['worker_cpus'])) as pool:
                 iterator=pool.imap_unordered(_arena_job,pending,chunksize=1)
                 for index in range(len(pending)):
                     job,result=iterator.next(600)
@@ -174,11 +199,6 @@ def run_arm(arm,release,nets,out,resources,workers=24,seed_base=2026110600):
                     cfv.atomic_json(out/(key+'.json'),dict(identity=dict(job,**binding),result=result,result_sha256=_digest_json(result)))
                     records[key]=dict(job=job,result=result)
                     if (index+1)%10==0:print('SERVER_ARENA',arm,len(records),'/ 200',flush=True)
-        finally:
-            requests.put(None);service.join(timeout=5)
-            if service.is_alive():service.terminate();service.join(timeout=5)
-            if service.is_alive():service.kill();service.join(timeout=5)
-            for queue in [requests,slots,ready]+replies:queue.close()
     result=summarize_records(arm,list(records.values()))
     result.update(binding=binding,qualification=qualification,inference_service=service_info,
                   resources=resources,resumed_matches=200-len(pending))
@@ -206,7 +226,7 @@ def summarize_records(arm,records):
     cells={name:np.array([[scores[(name,p,seat)] for seat in (0,1)] for p in range(20)]) for name in TOURNAMENT}
     all_scores=np.concatenate(list(cells.values()))
     runtime=dict(mean_ms=float(np.mean(engine))*1000,p99_ms=float(np.percentile(engine,99))*1000,
-                 max_ms=float(max(engine))*1000,n=len(engine))
+                 max_ms=float(max(engine))*1000,n=len(engine),rss_mb=max(row['result'].get('rss_mb',float('inf')) for row in records))
     return dict(arm=arm,matches=200,duplicate_pairs=100,hands=10000,net_bb_pairs={k:v.tolist() for k,v in cells.items()},
                 match_win_rate=float((all_scores>0).mean()),match_tie_rate=float((all_scores==0).mean()),
                 mbb_per_hand=float(all_scores.mean()/50*1000),absolute_ev_ci95=interval(all_scores.mean(1)/50*1000),

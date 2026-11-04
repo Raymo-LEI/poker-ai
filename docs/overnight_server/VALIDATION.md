@@ -38,3 +38,15 @@ runtime bottleneck, not playing strength or final-arena acceptance. Production
 50-epoch CFVs, all 200-match arms, confidence intervals and V26-28 packages
 must be generated and checked by the locked remote production run. No fixture
 result is used to promote or rank a formal package.
+
+## Final handoff status (user-requested validation delegation)
+
+The prior locked revision completed 839 tests with 8 unchanged environment
+skips. The final addendum adds entry-only NumPy HUD/sigma caches, a separate
+NumPy-only inference service with RSS measurement, fixed 8/8/16 iterations and
+2 chance samples, and 600/1500ms/3s/220MiB hard limits (160ms mean warning).
+These final changes have NOT completed regression or server acceptance.
+At the user's request, further testing and final Arm D verification are
+delegated to the remote server agent. Do not treat earlier measurements as
+acceptance of the final deeper configuration. Existing tests remain intact;
+new addendum cases are in test_full_power_server.py.

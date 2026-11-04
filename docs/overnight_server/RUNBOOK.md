@@ -1,3 +1,24 @@
+# Final addendum - authoritative production contract
+
+All production arms now use **Flop/Turn 8 iterations, 2 chance samples; River
+16 iterations**, on full public combo domains **1176 / 1128 / 1081**. There is
+no iteration downgrade path. Hard gates: p99<600ms, max<1500ms, cold<3s,
+peak inference RSS<220MiB. Mean<160ms is warning-only. Historical gate helpers
+remain solely for compatibility with existing tests; the server profile uses
+full_power_gates throughout.
+
+MatchCtx is snapshotted once at resolver entry; size-bucket sigma priors are
+read-only contiguous NumPy arrays. Tree initialization and DCFR iterations
+read these arrays without live MatchCtx dictionary parsing. The inference
+service runs through server_numpy_runtime.py in a separate NumPy-only process,
+not a spawned Torch image. RSS includes its resident-set high-water mark plus
+fresh ZIP cold-process peaks. Parent/controller memory is not mistaken for
+Botzone inference memory.
+
+Final regression and Arm D server acceptance are delegated to Grok at the
+user's explicit request. Earlier test results and PR85 timing measurements
+are historical. **Do not claim Arm D accepted until the new gates are measured.**
+
 # Xeon + RTX 5090 server profile
 
 Run `scripts/sprint24/overnight_production.py --server-profile` from a clean,
@@ -23,15 +44,15 @@ Each benchmark has exactly 32 warmup requests, 512 timed requests and 12 fresh
 process launches. It reports mean/p50/p99/max, per-street statistics, all timed
 samples, cold samples, full-combo river calls and nonzero-HUD calls.
 
-The server hard policy is **p99 <120ms, max <300ms, cold max <0.5s**. Mean
-**<65ms** is a warning only. Equality fails the corresponding strict limit.
+The final server policy is **p99 <600ms, max <1500ms, cold max <3s, RSS <220MiB**. Mean
+**<160ms** is a warning only. Equality fails the corresponding strict limit.
 The preliminary frozen server measurements in `pr85_benchmark/` used a
 compact current-request/real-data corpus and showed approximately
 59.5/60.4ms mean, but 178.5/180.6ms p99 without/with HUD, so 16 river iterations
 are not assumed deployable. The mandatory startup stage repeats the frozen
 measurement with the complete cumulative payloads before calibration.
-The controller benchmarks iteration budgets
-16/12/8/6/4, retaining full 1,081-combo river solving and the expanded tree.
+The controller measures fixed 8/8/16 iterations with 2 chance samples,
+retaining the complete combo domains and expanded tree.
 It does not change thresholds to accommodate an arm.
 
 Inference uses one allowed logical CPU other than CPU0. All its SMT siblings

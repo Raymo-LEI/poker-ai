@@ -19,8 +19,8 @@ from evening_production import git,find_champion,EXPECTED_CHAMPION_SHA256
 from overnight_production import select_handoff,plan_counts,group_stop,ONLINE,OFFLINE
 from server_resources import core_plan,pin
 from server_checkpoint import Checkpoints
-from server_arena import profiles,ARM_ORDER,assert_production_cfv,run_arm,compare_arms,rank_arms
-from server_benchmark import gates
+from server_arena import profiles,ARM_ORDER,assert_production_cfv,run_arm,compare_arms,rank_arms,SERVER_ITERATIONS
+from server_benchmark import gates,full_power_gates
 from server_pr85 import PR85_SHA,build as build_pr85
 from server_packaging import reserve,package_one
 
@@ -75,7 +75,7 @@ def choose_plan(rates,hours,match_seconds,benchmark_seconds,elapsed,workers):
 
 
 
-def arena_phase(releases,nets,corpus,resources,workers,stage,update):
+def arena_phase(releases,nets,corpus,resources,workers,stage,update,gate_function=gates):
     arenas={};exclusions={};latencies={}
     for arm in ARM_ORDER:
         if arm not in releases:continue
@@ -89,7 +89,9 @@ def arena_phase(releases,nets,corpus,resources,workers,stage,update):
             update(arenas,exclusions,latencies);continue
         arenas[arm]=result
         runtime=result['runtime']
-        combined=gates(runtime['mean_ms'],runtime['p99_ms'],runtime['max_ms'],latency.get('cold_start_s',float('inf')))
+        parameters=(runtime['mean_ms'],runtime['p99_ms'],runtime['max_ms'],latency.get('cold_start_s',float('inf')))
+        combined=(gate_function(*parameters,max(runtime.get('rss_mb',float('inf')),latency.get('rss_mb',float('inf'))))
+                  if gate_function is full_power_gates else gate_function(*parameters))
         if not combined['hard_passed']:exclusions[arm]='hard arena inference latency gate'
         result['arena_latency_gate']=combined
         update(arenas,exclusions,latencies)
@@ -160,8 +162,8 @@ def _execute(a):
         def original_benchmark(folder):
             releases=build_pr85(REPO,source,folder/'frozen_pr85',resources['worker_cpus'])
             corpus=folder/'real_match_states.json'
-            # HUD-enabled frozen PR85 is deliberately measured before adapting
-            # iteration budgets or applying the server policy to any candidate.
+            # Frozen PR85 is a historical 16-river-iteration control. Production
+            # arms always use the locked 8/8/16 budget; no fallback is allowed.
             results={}
             for name in ('with_hud','as_built'):
                 results[name]=measure(releases[name],folder/(name+'.json'),corpus,resources,a.smoke,collect=name=='with_hud')
@@ -172,20 +174,12 @@ def _execute(a):
         def runtime_calibration(folder):
             phase_b(baseline,folder/'pilot',dict(river_n=8,turn_n=8,holdout_n=4,net_epochs=1),min(workers,2),device,True)
             model,_=load_checkpoint(baseline,device='cpu');wide=folder/'wide.pt';save_checkpoint(wide,expand(model))
-            pilot=folder/'pilot/cfv_nets.npz';probes=[];selected=None
-            for iterations in ({'1':4,'2':4,'3':16},{'1':4,'2':4,'3':12},{'1':4,'2':4,'3':8},
-                               {'1':3,'2':3,'3':6},{'1':2,'2':2,'3':4}):
-                profile=profiles(iterations)['D'];label='calibrate_%d'%len(probes)
-                release=internal(wide,pilot,folder/label,profile,label)
-                result=measure(release,folder/(label+'.json'),corpus,resources,a.smoke)
-                probes.append(dict(iterations=iterations,result=result))
-                selected=iterations
-                if result['gate']['hard_passed']:break
-            all_profiles=profiles(selected);arm_gates={}
+            pilot=folder/'pilot/cfv_nets.npz';selected=dict(SERVER_ITERATIONS)
+            all_profiles=profiles();arm_gates={}
             for arm in ARM_ORDER:
                 release=internal(wide,pilot,folder/('arm_'+arm),all_profiles[arm],'pilot_'+arm)
                 arm_gates[arm]=measure(release,folder/('arm_'+arm+'.json'),corpus,resources,a.smoke)
-            return dict(iterations=selected,probes=probes,pilot_gates=arm_gates,nets=str(pilot),wide=str(wide),
+            return dict(iterations=selected,iteration_budget_locked=True,pilot_gates=arm_gates,nets=str(pilot),wide=str(wide),
                         profiles=all_profiles,note='Calibration fixture only; never eligible for the final arena or upload.')
         calibration=stage('runtime_calibration',runtime_calibration)
         summary['gates']['calibration']=calibration;publish()
@@ -264,7 +258,7 @@ def _execute(a):
         def arm_update(arenas,exclusions,latencies):
             summary.update(arena=arenas,exclusions=exclusions)
             summary['gates']['trained_arms']=latencies;publish()
-        arenas,exclusions,latencies=arena_phase(releases,nets,corpus,resources,workers,stage,arm_update)
+        arenas,exclusions,latencies=arena_phase(releases,nets,corpus,resources,workers,stage,arm_update,gate_function=full_power_gates)
         if 'A' not in arenas:
             summary['status']='FAILED_NO_PAIRED_BASELINE';summary['packaging_reason']='No valid paired A results; no unsupported promotion or unsafe fallback is published.'
             return 1

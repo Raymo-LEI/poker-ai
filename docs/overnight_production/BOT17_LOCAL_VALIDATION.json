@@ -1,0 +1,219 @@
+{
+  "base_commit": "4e9b0e05c7c0f85b22b4f569e8a69f3b69972575",
+  "online_audit_actual_release": "V22_SEARCH_LOCK_20261104",
+  "fixture_sha256": "0940796c971a18236aefc6a24d57200d9c949bd10faccda8eeb72554fce5801d",
+  "regression": {
+    "tests": 175,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 167.615
+  },
+  "final_refund_followup": {
+    "passed": 39,
+    "seconds": 2.91
+  },
+  "portable_python36_grammar_modules": 24,
+  "public_request_regressions": {
+    "match2_h7_s1_c101": {
+      "input": [
+        0.853,
+        0.123,
+        0.015,
+        0.009,
+        0.0
+      ],
+      "output": [
+        0.853,
+        0.123,
+        0.015,
+        0.009,
+        0.0
+      ],
+      "guard": {
+        "search_policy_preserved": true,
+        "pruned": [],
+        "active_cap": false,
+        "call_fuse": null
+      }
+    },
+    "match2_h9_s3_c295": {
+      "online_mixture": [
+        0.1892947860962567,
+        0.5873881272232707,
+        0.15139846502634627,
+        0.07191862165412635,
+        0.0
+      ],
+      "final": [
+        0.1892947860962567,
+        0.5873881272232707,
+        0.15139846502634627,
+        0.07191862165412635,
+        0.0
+      ],
+      "offline40_root": [
+        0.00021834100345164749,
+        0.7535188688077149,
+        0.17194746859996277,
+        0.07430628816520309,
+        9.03342366757001e-06
+      ],
+      "root_labels": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "range_audit": {
+        "model": "public-combo-size-bayes-v1",
+        "support": 1081,
+        "conditioned_actions": [
+          6,
+          3
+        ],
+        "opponent_entropy": 6.970713584648298,
+        "opponent_max_mass": 0.001249211952826689
+      },
+      "zero_sum_error": 3.552713678800501e-15,
+      "guard": {
+        "search_policy_preserved": true,
+        "pruned": [],
+        "active_cap": false,
+        "call_fuse": null
+      }
+    },
+    "match2_h22_s1_c192": {
+      "input": [
+        0.8471528471528472,
+        0.10689310689310691,
+        0.025974025974025976,
+        0.019980019980019983,
+        0.0
+      ],
+      "output": [
+        0.847152847152847,
+        0.10689310689310688,
+        0.02597402597402597,
+        0.01998001998001998,
+        0.0
+      ],
+      "guard": {
+        "search_policy_preserved": true,
+        "pruned": [],
+        "active_cap": false,
+        "call_fuse": null
+      }
+    },
+    "match2_h36_s0_c241": {
+      "input": [
+        0.4854854854854855,
+        0.4614614614614615,
+        0.01701701701701702,
+        0.036036036036036036,
+        0.0
+      ],
+      "output": [
+        0.48548548548548554,
+        0.46146146146146155,
+        0.017017017017017022,
+        0.03603603603603604,
+        0.0
+      ],
+      "guard": {
+        "search_policy_preserved": true,
+        "pruned": [],
+        "active_cap": false,
+        "call_fuse": null,
+        "large_open_blueprint_preserved": true
+      }
+    },
+    "match3_h17_s3_c16112": {
+      "online_mixture": [
+        0.7091470588235294,
+        0.2908529411764706,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "final": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "offline40_root": [
+        0.999977416440831,
+        2.2583559168925024e-05
+      ],
+      "root_labels": [
+        0,
+        1
+      ],
+      "range_audit": {
+        "model": "public-combo-size-bayes-v1",
+        "support": 1081,
+        "conditioned_actions": [
+          5,
+          3
+        ],
+        "opponent_entropy": 2.843846781420406,
+        "opponent_max_mass": 0.13155510841617546
+      },
+      "zero_sum_error": -1.4210854715202004e-14,
+      "guard": {
+        "search_policy_preserved": false,
+        "pruned": [],
+        "active_cap": false,
+        "call_fuse": "history_posterior_giant_allin",
+        "posterior_equity": 0.0013549458756569014,
+        "pot_odds": 0.4028
+      }
+    }
+  },
+  "development_smoke": {
+    "status": "COMPLETE",
+    "seconds": 110.54773133306298,
+    "allow_dirty": true,
+    "preflop_max_tv": {
+      "g3": 0.0,
+      "g4": 0.0,
+      "g5": 0.0
+    },
+    "pilot_latency": {
+      "mean_ms": 25.93122011057858,
+      "p99_ms": 54.59920861176215,
+      "cold_max_s": 0.20320483308751136
+    },
+    "runtime_ms": {
+      "historical": {
+        "mean": 26.959184471353648,
+        "n": 278,
+        "p99": 117.36918532289565
+      },
+      "independent_holdout": {
+        "mean": 27.259248082692785,
+        "n": 296,
+        "p99": 119.88389770267531
+      }
+    }
+  },
+  "tested_code_sha256": {
+    "scripts/sprint24/overnight_production.py": "35372d01c7dc6a751f1dbcd99963b2d9e3fe6abc21921ec68120b7a3fb236ff6",
+    "scripts/sprint24/overnight_data.py": "7af1f6cec60ccc35690458da44f9e428c592c1f3872e303ea464f722726452da",
+    "scripts/sprint24/overnight_distill.py": "d0cd9bc30d0149656b9265d9993ab8bd03b4700e7e94902497b75ca91adb2d68",
+    "scripts/sprint24/ladder_actors.py": "12fb1489dae3f373a126acb162e1df734672b2e6ff24d865ff39e9f9dcd83d00",
+    "src/alphanl/stage2/deep_solver_v2.py": "1eedc474e1a773ae0e890f2e9f511dd7a0201af43f6711969e656a22638d12ba",
+    "src/alphanl/stage2/search_belief.py": "445b6d97cf4f8a341986cb24b4232bdb9874ee297eba5502d2e0317e7a086d76",
+    "src/alphanl/stage2/evening_strategy.py": "9a3ebe79bd1e116eba5785cebb76d4afe4c8a4b01ab39f3f1ea3099bf6bdcd0b",
+    "src/alphanl/stage2/deployment_guard.py": "55ddaab966746fca9532390a6ea8ace38ca6478bfa0b01b6b073beeb9f53d6c9",
+    "src/alphanl/stage2/portable_runtime.py": "a6887d07b1b410c7a99678bbeb6b7f6141cff60d1669ad745114bff7c74b4f5a",
+    "tests/test_overnight_bot17_repair.py": "104a86b1d6c5f6b40b22d8e0830d90ac3e293e662596b6d05d26ee379762a847"
+  },
+  "limitations": [
+    "History likelihoods and bot17 replica are public observation approximations from a small audit sample.",
+    "Flop regression probabilities are supplied audit inputs to guard tests, not claimed production CFV predictions.",
+    "Smoke uses one-epoch fixtures and partial matches, not production training or demonstrated online strength."
+  ]
+}

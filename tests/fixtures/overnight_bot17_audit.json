@@ -1,0 +1,546 @@
+[
+  {
+    "case": "match2_h7_s1_c0",
+    "match_id": "6aeb32e34b9c2802454aa136",
+    "hand": 7,
+    "street": 1,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 1,
+      "my_id": 0,
+      "my_chips": 19800,
+      "my_cards": [
+        44,
+        32
+      ],
+      "public_cards": [
+        24,
+        6,
+        13
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 150,
+          "action_type": "raise"
+        },
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 0,
+          "action_type": "call"
+        }
+      ],
+      "hand": 6,
+      "max_hand": 50,
+      "total_win_chips": [
+        23,
+        -23
+      ],
+      "total_win_games": [
+        3,
+        3
+      ]
+    }
+  },
+  {
+    "case": "match2_h7_s1_c101",
+    "match_id": "6aeb32e34b9c2802454aa136",
+    "hand": 7,
+    "street": 1,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 1,
+      "my_id": 0,
+      "my_chips": 19800,
+      "my_cards": [
+        44,
+        32
+      ],
+      "public_cards": [
+        24,
+        6,
+        13
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 150,
+          "action_type": "raise"
+        },
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 1,
+          "action": 101,
+          "action_type": "raise"
+        }
+      ],
+      "hand": 6,
+      "max_hand": 50,
+      "total_win_chips": [
+        23,
+        -23
+      ],
+      "total_win_games": [
+        3,
+        3
+      ]
+    }
+  },
+  {
+    "case": "match2_h9_s3_c0",
+    "match_id": "6aeb32e34b9c2802454aa136",
+    "hand": 9,
+    "street": 3,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 1,
+      "my_id": 0,
+      "my_chips": 19541,
+      "my_cards": [
+        12,
+        49
+      ],
+      "public_cards": [
+        16,
+        46,
+        35,
+        5,
+        23
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 150,
+          "action_type": "raise"
+        },
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 1,
+          "action": 102,
+          "action_type": "raise"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 2,
+          "player_id": 1,
+          "action": 157,
+          "action_type": "raise"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        }
+      ],
+      "hand": 8,
+      "max_hand": 50,
+      "total_win_chips": [
+        556,
+        -556
+      ],
+      "total_win_games": [
+        4,
+        4
+      ]
+    }
+  },
+  {
+    "case": "match2_h9_s3_c295",
+    "match_id": "6aeb32e34b9c2802454aa136",
+    "hand": 9,
+    "street": 3,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 1,
+      "my_id": 0,
+      "my_chips": 19541,
+      "my_cards": [
+        12,
+        49
+      ],
+      "public_cards": [
+        16,
+        46,
+        35,
+        5,
+        23
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 150,
+          "action_type": "raise"
+        },
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 1,
+          "action": 102,
+          "action_type": "raise"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 2,
+          "player_id": 1,
+          "action": 157,
+          "action_type": "raise"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 3,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 3,
+          "player_id": 1,
+          "action": 295,
+          "action_type": "raise"
+        }
+      ],
+      "hand": 8,
+      "max_hand": 50,
+      "total_win_chips": [
+        556,
+        -556
+      ],
+      "total_win_games": [
+        4,
+        4
+      ]
+    }
+  },
+  {
+    "case": "match2_h22_s1_c192",
+    "match_id": "6aeb32e34b9c2802454aa136",
+    "hand": 22,
+    "street": 1,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 0,
+      "my_id": 0,
+      "my_chips": 19715,
+      "my_cards": [
+        37,
+        44
+      ],
+      "public_cards": [
+        8,
+        40,
+        1
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 235,
+          "action_type": "raise"
+        },
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 1,
+          "player_id": 1,
+          "action": 192,
+          "action_type": "raise"
+        }
+      ],
+      "hand": 21,
+      "max_hand": 50,
+      "total_win_chips": [
+        715,
+        -715
+      ],
+      "total_win_games": [
+        9,
+        12
+      ]
+    }
+  },
+  {
+    "case": "match2_h36_s0_c241",
+    "match_id": "6aeb32e34b9c2802454aa136",
+    "hand": 36,
+    "street": 0,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 0,
+      "my_id": 0,
+      "my_chips": 19900,
+      "my_cards": [
+        48,
+        4
+      ],
+      "public_cards": [],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 291,
+          "action_type": "raise"
+        }
+      ],
+      "hand": 35,
+      "max_hand": 50,
+      "total_win_chips": [
+        -818,
+        818
+      ],
+      "total_win_games": [
+        12,
+        23
+      ]
+    }
+  },
+  {
+    "case": "match3_h17_s3_c0",
+    "match_id": "6aeb32a74b9c2802454aa119",
+    "hand": 17,
+    "street": 3,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 1,
+      "my_id": 0,
+      "my_chips": 18056,
+      "my_cards": [
+        40,
+        2
+      ],
+      "public_cards": [
+        1,
+        22,
+        15,
+        3,
+        17
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 1,
+          "action": 100,
+          "action_type": "raise"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 400,
+          "action_type": "raise"
+        },
+        {
+          "round": 2,
+          "player_id": 1,
+          "action": 1744,
+          "action_type": "raise"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        }
+      ],
+      "hand": 16,
+      "max_hand": 50,
+      "total_win_chips": [
+        911,
+        -911
+      ],
+      "total_win_games": [
+        6,
+        10
+      ]
+    }
+  },
+  {
+    "case": "match3_h17_s3_c16112",
+    "match_id": "6aeb32a74b9c2802454aa119",
+    "hand": 17,
+    "street": 3,
+    "request": {
+      "num_players": 2,
+      "dealer_id": 1,
+      "my_id": 0,
+      "my_chips": 16112,
+      "my_cards": [
+        40,
+        2
+      ],
+      "public_cards": [
+        1,
+        22,
+        15,
+        3,
+        17
+      ],
+      "history": [
+        {
+          "round": 0,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 0,
+          "player_id": 1,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "check"
+        },
+        {
+          "round": 1,
+          "player_id": 1,
+          "action": 100,
+          "action_type": "raise"
+        },
+        {
+          "round": 1,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 400,
+          "action_type": "raise"
+        },
+        {
+          "round": 2,
+          "player_id": 1,
+          "action": 1744,
+          "action_type": "raise"
+        },
+        {
+          "round": 2,
+          "player_id": 0,
+          "action": 0,
+          "action_type": "call"
+        },
+        {
+          "round": 3,
+          "player_id": 0,
+          "action": 1944,
+          "action_type": "raise"
+        },
+        {
+          "round": 3,
+          "player_id": 1,
+          "action": -2,
+          "action_type": "allin"
+        }
+      ],
+      "hand": 16,
+      "max_hand": 50,
+      "total_win_chips": [
+        911,
+        -911
+      ],
+      "total_win_games": [
+        6,
+        10
+      ]
+    }
+  }
+]

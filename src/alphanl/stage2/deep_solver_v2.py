@@ -115,6 +115,11 @@ def _select(board, hero):
 
 
 def expand_range(ranges, bins):
+    if np.asarray(ranges).shape == (len(bins),):
+        values = np.asarray(ranges,dtype=np.float64)
+        if not np.isfinite(values).all() or np.any(values<0) or values.sum()<=0:
+            raise ValueError('invalid full-combo public range')
+        return values/values.sum()
     ranges = normalize_range(ranges)
     count = np.bincount(bins, minlength=32)
     return ranges[bins] / count[bins]
@@ -234,12 +239,12 @@ class Node:
                 child.init(width)
 
 
-def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, check_closes=False):
+def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, check_closes=False, check_raise=False):
     """One street, capped at one all-in re-raise. Leaves record root investments."""
     if first_player == 1:
         if owed:
             raise ValueError("owed only defined for the first actor")
-        tree = betting_tree(pot,0,opp,me,legal,amounts,0,False)
+        tree = betting_tree(pot,0,opp,me,legal,amounts,0,False,check_raise)
         def swap(n):
             if n.player is not None:
                 n.player = 1 - n.player
@@ -272,7 +277,16 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, c
         children, labels = [showdown(0,0)], ["check"]
         for bet in sorted(set(min(opp,x) for x in (.5*pot,pot,opp))):
             if bet <= 0: continue
-            children.append(Node(0,[leaf("fold0",0,0),showdown(min(me,bet),bet)],labels=["fold","call"]))
+            replies = [leaf("fold0",0,0),showdown(min(me,bet),bet)]
+            names = ["fold","call"]
+            if check_raise and opp > bet and me > bet:
+                # Raise-to after calling: call B plus a pot-sized raise P+2B.
+                # The second size is a stack jam. Only jam can be a short raise.
+                for raise_to in sorted(set((min(me,pot+3*bet),me))):
+                    if raise_to <= bet or (raise_to < 2*bet and raise_to != me):continue
+                    replies.append(Node(1,[leaf("fold1",0,bet),showdown(raise_to,min(opp,raise_to))],labels=["fold","call"]))
+                    names.append("check_raise_to_%g" % raise_to)
+            children.append(Node(0,replies,labels=names))
             labels.append(bet)
         return Node(1,children,labels=labels)
     legal = list(legal if legal is not None else ((0,1,2,3,4) if owed else (1,2,3,4)))
@@ -300,7 +314,7 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0, c
 class PublicSolver:
     def __init__(self, snapshot, hero_range=None, opponent_range=None, weights=None,
                  iterations=None, chance_samples=2, seed=0, first_player=0,
-                 amounts=None, utility=False, context=None, policy_only=False, root_prior=None, hero_at=None):
+                 amounts=None, utility=False, context=None, policy_only=False, root_prior=None, hero_at=None, check_raise=False):
         self.s = snapshot
         self.policy_only=bool(policy_only)
         self.board = tuple(sorted(_ev(c) for c in snapshot.board_cards))
@@ -314,15 +328,21 @@ class PublicSolver:
         self.c2 = np.array([CARD_ID[h[1]] for h in self.hands])
         self.groups = _groups(self.rank)
         self.width = len(self.hands)
-        self.rh = expand_range(np.full(32,1/32.) if hero_range is None else hero_range,self.bins)
-        self.ro = expand_range(np.full(32,1/32.) if opponent_range is None else opponent_range,self.bins)
+        range_audit = None
+        if hero_range is None or opponent_range is None:
+            from .search_belief import history_combo_ranges
+            (default_h,default_o),range_audit=history_combo_ranges(snapshot,return_audit=True)
+            if hero_range is None:hero_range=default_h
+            if opponent_range is None:opponent_range=default_o
+        self.rh = expand_range(hero_range,self.bins)
+        self.ro = expand_range(opponent_range,self.bins)
         self.weights = weights
         self.iterations = iterations or (RIVER_ITERS if len(self.board)==5 else TURN_ITERS)
         self.chance_samples,self.seed = int(chance_samples),int(seed)
         self.tree = betting_tree(float(snapshot.pot),float(snapshot.to_call),float(snapshot.me_stack),float(snapshot.opp_stack),
                                  getattr(snapshot,'legal_action_ids',None),amounts,first_player,
                                  check_closes=first_player==0 and float(snapshot.to_call)==0 and
-                                     getattr(snapshot,'me_seat',0)!=getattr(snapshot,'postflop_first_seat',0))
+                                     getattr(snapshot,'me_seat',0)!=getattr(snapshot,'postflop_first_seat',0),check_raise=check_raise)
         self.tree.init(self.width)
         if root_prior is not None:
             if first_player!=0 or hero_at is None:raise ValueError('blueprint prior requires the acting hero root information set')
@@ -337,7 +357,7 @@ class PublicSolver:
         self.rootmass = (self.mass(self.ro),self.mass(self.rh))
         self.utility,self.context = utility,context
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
-                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA}
+                      "game":"check-bet-fold-call-jam-reraise-call", "schema":SCHEMA,"check_raise":bool(check_raise),"range_audit":range_audit}
         self._chance_cache = {}
 
     def mass(self,w):

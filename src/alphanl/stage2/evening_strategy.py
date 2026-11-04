@@ -5,27 +5,9 @@ from . import deep_solver_v2 as solver
 
 
 def public_ranges(snapshot):
-    """Public history likelihood approximation, uniformly distributed within buckets.
-
-    This is a declared belief model, not an exact reconstruction of hidden hands.
-    The real hero cards are not used to define the public combo support.
-    """
-    hands,rank,bins=solver._public(tuple(sorted(cfv.card(c) for c in snapshot.board_cards)))
-    order=np.argsort(rank,kind='mergesort')
-    strength=np.empty(len(rank));strength[order]=(np.arange(len(rank))+.5)/len(rank)
-    weights=[np.ones(len(rank)),np.ones(len(rank))]
-    for e in getattr(snapshot,'events',()):
-        if e.street<=0:continue
-        player=0 if e.actor_is_me else 1
-        if e.action_type in ('bet','raise','all_in'):
-            likelihood=.12+.88*strength**(1+min(float(e.pot_fraction),3.))
-        elif e.action_type=='call':
-            likelihood=.3+.7*strength
-        elif e.action_type=='check':
-            likelihood=1.-.5*strength
-        else:continue
-        weights[player]*=likelihood
-    return tuple(solver.compress_range(w,bins) for w in weights)
+    """Full-combo public history posterior; never round it through 32 buckets."""
+    from .search_belief import history_combo_ranges
+    return history_combo_ranges(snapshot)
 
 
 def locked_action(snapshot,context):
@@ -45,7 +27,7 @@ def locked_action(snapshot,context):
     return None
 
 
-def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,chance_samples=2,online=False,blueprint_weight=None):
+def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,chance_samples=2,online=False,blueprint_weight=None,check_raise=False,ranges=None):
     cfv.validate_weights(weights)
     prior=np.asarray(prior,dtype=np.float64)
     mask=np.zeros(5)
@@ -58,13 +40,16 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
     if lock is not None:
         out=np.zeros(5);out[lock]=1
         return out,{'search':False,'reason':'current_hand_guaranteed_lock','cfv_calls':0}
-    rh,ro=public_ranges(snapshot)
+    from .search_belief import history_combo_ranges
+    range_audit=None
+    if ranges is None:(rh,ro),range_audit=history_combo_ranges(snapshot,return_audit=True)
+    else:rh,ro=ranges
     hero=frozenset(cfv.card(c) for c in snapshot.hole_cards)
     hands=solver._public(tuple(sorted(cfv.card(c) for c in snapshot.board_cards)))[0]
     at=next(i for i,h in enumerate(hands) if frozenset(h)==hero)
     sol=solver.solve_public_subgame(snapshot,rh,ro,weights=weights,amounts=amounts,
                                     iterations=iterations,chance_samples=chance_samples,
-                                    utility=False,context=context,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at)
+                                    utility=False,context=context,seed=0,policy_only=True,root_prior=prior if online else None,hero_at=at,check_raise=check_raise)
     out=np.zeros(5)
     for i,a in enumerate(sol.tree.labels):out[a]=sol.average[at,i]
     out*=mask
@@ -80,7 +65,7 @@ def search_policy(snapshot,context,prior,weights,amounts=None,iterations=None,ch
     trace.update(search=True,reason='exact_river_terminals' if len(snapshot.board_cards)==5 else 'range_conditioned_cfv_leaves',
                  target='blueprint_dcfr_mixture' if online else 'dcfr_average',feature_dim=136,
                  blueprint_weight=mix if online else 0.,initial_strategy='hero_root_blueprint' if online else 'uniform',
-                 dcfr_average=average.tolist(),blueprint=prior.tolist() if online else None)
+                 dcfr_average=average.tolist(),blueprint=prior.tolist() if online else None,root_value_bb=float(sol.state[at]),range_audit=range_audit)
     return out,trace
 
 
@@ -92,10 +77,15 @@ def fuse(agent,snapshot,context,probs,amounts):
         iterations=online.get('iterations',{'1':4,'2':4,'3':8}).get(str(int(snapshot.street)),4)
     samples=online.get('chance_samples',agent.settings.get('evening_chance_samples',1))
     out,trace=search_policy(snapshot,context,probs,weights,amounts,iterations,samples,online=True,
-                            blueprint_weight=online.get('blueprint_weight',{'1':.5,'2':.5,'3':.3}).get(str(int(snapshot.street)),.5))
+                            blueprint_weight=online.get('blueprint_weight',{'1':.5,'2':.5,'3':.3}).get(str(int(snapshot.street)),.5),
+                            check_raise=online.get('check_raise',False))
     agent.search_audit=dict(status='active' if trace['search'] else 'skipped',
                             solver=cfv.SCHEMA,reason=trace['reason'],output=trace.get('target','blueprint'),
                             cfv_calls=trace['cfv_calls'],feature_dim=136)
     agent.last_evening=trace
     agent.last_wizard='wiz=v2/search=%d/cfv=%d/dim=136/reason=%s' % (trace['search'],trace['cfv_calls'],trace['reason'])
+    if trace.get('range_audit'):
+        agent.search_audit['range_model']=trace['range_audit']['model']
+        agent.search_audit['range_support']=trace['range_audit']['support']
+        agent.last_wizard+=' range='+trace['range_audit']['model']
     return out

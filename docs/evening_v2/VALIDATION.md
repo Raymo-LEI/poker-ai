@@ -2,6 +2,12 @@
 
 # Evening V2 repair and validation
 
+The later [overnight phase-two controller](../overnight_production/PRODUCTION.md)
+adds opt-in check-raises, trajectory PBS mixtures, expanded joint policy/value
+distillation and actual gated Astra candidate searches. Its
+[validation](../overnight_production/VALIDATION.md) is separate from the
+historical V21 smoke evidence below.
+
 This PR integrates the second Evening audit repair onto main after #80
 (`5851d88`). The existing `Agent.policy()` / `respond()` pipeline, authoritative
 judge state, final guard ordering, decision cache identity and old search path

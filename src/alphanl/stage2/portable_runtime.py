@@ -103,7 +103,7 @@ class Agent:
                 history=list(snapshot.events),public_cards=list(snapshot.board_cards),my_chips=int(snapshot.me_stack))
         mode,audit = blind_lock.choice(request,snapshot,lock_state) if (
             self.deployment_guard["enabled"] and self.deployment_guard["victory_blind_lock_enabled"]) else (None,{})
-        if mode == "own" or (mode == "opponent_probe" and 1 in amounts):
+        if mode == "own" or (mode == "opponent_probe" and snapshot.street==0 and 1 in amounts):
             action = 0 if mode == "own" else 1
             probs=np.zeros(5);probs[action]=1.
             self.last_guard=audit
@@ -121,13 +121,25 @@ class Agent:
             self.last_wizard="search=error_blueprint error="+type(exc).__name__+":"+str(exc)
             if self.settings.get("strict_search",False):
                 raise
-        if (safety and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot)>3.
+        active_evening=(self.settings.get('evening_v2',False) and snapshot.street>0 and
+                        (self.search_audit.get('status')=='active' or self.search_audit.get('reason')=='current_hand_guaranteed_lock'))
+        if (safety and not active_evening and not self.deployment_guard["enabled"] and CFRActionGuard.all_in_pot_ratio(snapshot)>3.
                 and 1 in snapshot.legal_action_ids and 0<probs[4]<.05):
             probs[1]+=probs[4];probs[4]=0.
         before_guard=probs.copy()
-        probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
+        guard_mode=self.settings.get('evening_online',{}).get('guard_mode','full')
+        if guard_mode not in ('full','slim'):raise ValueError('invalid postflop guard mode')
+        if active_evening:
+            probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context,search_active=True)
+            self.last_guard['postflop_guard_mode']=guard_mode
+        elif snapshot.street>0 and guard_mode=='slim':
+            # Blind lock ran above. PublicState and the final executable-domain
+            # check retain stack/all-in legality; empirical edits are ablated.
+            self.last_guard={'postflop_guard_mode':'slim'}
+        else:
+            probs,self.last_guard=apply_guard(snapshot,probs,self.deployment_guard,estimated_equity,amounts,context=context)
         self.last_guard.update(audit)
-        if mode == "opponent_confirmed" and 1 in amounts:
+        if mode == "opponent_confirmed" and snapshot.street==0 and 1 in amounts:
             probs[1]+=probs[0];probs[0]=0.
             self.last_guard["opponent_lock_transfer"] = True
         changed=not np.allclose(before_guard,probs,atol=1e-14,rtol=0.)

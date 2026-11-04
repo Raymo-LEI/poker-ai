@@ -31,7 +31,7 @@ import numpy as np
 def _digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-def pack_evening(checkpoint, nets, destination_root, version=None, iterations=None, chance_samples=1, smoke=False, online_profile=None):
+def pack_evening(checkpoint, nets, destination_root, version=None, iterations=None, chance_samples=1, smoke=False, online_profile=None, deployment_guard=None, release_label='EVENING_V2'):
     """Build a fresh versioned release; source and weights share the same pipeline.
 
     A smoke-trained model is explicitly marked in metadata and the one-page
@@ -57,8 +57,9 @@ def pack_evening(checkpoint, nets, destination_root, version=None, iterations=No
         minimum=max([21,int(previous)]+versions)+1
         version=minimum if version is None else int(version)
         if version<minimum:raise ValueError('release version must be new and monotonically increasing')
-        release='V%d_EVENING_V2_%s%s'%(version,day,'_SMOKE' if smoke else '')
-        folder=root/('UPLOAD_V%d_EVENING_V2_%s'%(version,day))
+        if not re.fullmatch('[A-Z0-9_]+',release_label):raise ValueError('invalid release label')
+        release='V%d_%s_%s%s'%(version,release_label,day,'_SMOKE' if smoke else '')
+        folder=root/('UPLOAD_V%d_%s_%s'%(version,release_label,day))
         folder.mkdir()
         cfv.atomic_json(counter,dict(last=version,release=release))
     weights,_=cfv.load_nets(nets)
@@ -66,7 +67,7 @@ def pack_evening(checkpoint, nets, destination_root, version=None, iterations=No
     model=folder/('V%d_MODEL.npz'%version)
     source=folder/('V%d_SOURCE.zip'%version)
     export_botzone_weights(checkpoint,model,cfv_nets=nets,release_id=release,
-                            evening_iterations=iterations,chance_samples=chance_samples,online_profile=online_profile)
+                            evening_iterations=iterations,chance_samples=chance_samples,online_profile=online_profile,deployment_guard=deployment_guard)
     pack_botzone_zip(source,release_id=release)
     required={'stage2_runtime/deep_solver_v2.py','stage2_runtime/cfv.py','stage2_runtime/evening_strategy.py','stage2_runtime/wizard.py'}
     with zipfile.ZipFile(source) as archive:

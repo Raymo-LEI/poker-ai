@@ -173,8 +173,12 @@ def load_checkpoint(path, *, device="cpu"):
     anchor = blob.get("metadata", {}).get("preflop_anchor")
     if anchor is not None:
         expected = {k for k in model.state_dict() if k.startswith(("context_encoder.", "fusion.", "delta_head."))}
+        ah=anchor.get('delta_head.weight',torch.empty(0,0)).shape[-1]
+        shapes={'context_encoder.0.weight':(ah,len(model.context_fields)), 'context_encoder.0.bias':(ah,),
+                'fusion.0.weight':(ah,model.config.model.d_model+ah),'fusion.0.bias':(ah,),
+                'delta_head.weight':(5,ah),'delta_head.bias':(5,)}
         if (set(anchor) != expected or any(not isinstance(v, torch.Tensor) or
-                v.shape != model.state_dict()[k].shape or not torch.isfinite(v).all() for k, v in anchor.items())):
+                v.shape != shapes[k] or not torch.isfinite(v).all() for k, v in anchor.items())):
             raise ValueError("invalid frozen preflop anchor")
         model._evening_preflop_anchor = {k: v.detach().cpu().clone() for k, v in anchor.items()}
     return model.to(device).eval(), blob

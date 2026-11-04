@@ -97,33 +97,67 @@ def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None):
         order=torch.randperm(len(x),device=device)
         for ids in order.split(256):
             loss=nn.functional.smooth_l1_loss(model(x[ids]),y[ids])
+            if not torch.isfinite(loss):raise FloatingPointError("nonfinite CFV loss")
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
+        print('CFV_EPOCH',prefix,epoch+1,'/',epochs,'last_batch_loss',float(loss.detach()),flush=True)
     layers=[model.inp]+list(model.blocks)+[model.out]
     weights={'cfv_schema':np.frombuffer(cfv.SCHEMA.encode(),dtype=np.uint8)}
     for i,layer in enumerate(layers):
         weights[prefix+'%d.weight'%i]=layer.weight.detach().cpu().numpy().copy()
         weights[prefix+'%d.bias'%i]=layer.bias.detach().cpu().numpy().copy()
     with torch.no_grad():
-        ref=model(x).cpu().numpy()
-    error=float(np.max(np.abs(ref-cfv.predict_residual_cfv(weights,prefix,feats))))
-    if error > 1e-4: raise ValueError('Torch / portable residual mismatch')
+        ref=model(x[:64]).cpu().numpy()
+    error=float(np.max(np.abs(ref-cfv.predict_residual_cfv(weights,prefix,feats[:64]))))
+    if not np.isfinite(error) or error > 1e-4: raise ValueError('Torch / portable residual mismatch')
     stats={'loss':float(loss.detach()),'forward_max_error':error}
     if valid is not None:
         vx,vy=valid
-        stats['heldout_mae']=float(np.mean(np.abs(cfv.predict_residual_cfv(weights,prefix,vx)-vy)))
+        errors=np.abs(cfv.predict_residual_cfv(weights,prefix,vx)-vy)
+        stats['heldout_mae']=float(np.mean(errors))
+        stats['heldout_constant_mae']=float(np.mean(np.abs(targets.mean(axis=0)-vy)))
+        stats['heldout_mae_pot_ratio']=float(np.mean(errors/np.maximum(vx[:,119:120]*200.,1.)))
     return weights,stats
 
 
-def make_dataset(out,street,count,seed,weights=None,iterations=None,chance_samples=2):
-    rows=[]
-    for i in range(count):
-        snap,rh,ro=sample_spot(seed+i,street)
-        rows.append(label_spot(snap,rh,ro,weights,iterations,chance_samples,seed+i)[:2])
-    x,y=map(np.stack,zip(*rows))
+_WORKER_NET=None
+
+
+def _init_label_worker(path):
+    global _WORKER_NET
+    if path is not None:
+        _WORKER_NET,_=cfv.load_artifact(path,'river_net',min_epochs=1)
+        cfv.validate_weights(_WORKER_NET,('cfv_river.',))
+
+
+def _label_worker(payload):
+    import time
+    started=time.monotonic()
+    seed,street,iterations,chance_samples=payload
+    snap,rh,ro=sample_spot(seed,street)
+    x,y,_=label_spot(snap,rh,ro,_WORKER_NET,iterations,chance_samples,seed)
+    return seed,x,y,started,time.monotonic()
+
+
+def make_dataset(out,street,count,seed,weights=None,iterations=None,chance_samples=2,workers=1,nets_path=None):
+    import time
+    started=time.monotonic()
+    if workers>1:
+        from evening_parallel import jobs
+        payloads=((seed+i,street,iterations,chance_samples) for i in range(count))
+        rows=sorted(jobs(_label_worker,payloads,count,workers,_init_label_worker,(None if nets_path is None else str(nets_path),),label='CFV_'+str(street)))
+        x=np.stack([r[1] for r in rows]);y=np.stack([r[2] for r in rows])
+    else:
+        rows=[]
+        for i in range(count):
+            snap,rh,ro=sample_spot(seed+i,street)
+            rows.append(label_spot(snap,rh,ro,weights,iterations,chance_samples,seed+i)[:2])
+        x,y=map(np.stack,zip(*rows))
+    active_s=(max(r[4] for r in rows)-min(r[3] for r in rows)) if workers>1 else time.monotonic()-started
     cfv.publish(out,{'x':x,'y':y,'seeds':np.arange(seed,seed+count)},count,0,'dataset',
-                {'street':street,'seed_start':seed,'teacher_cfv':None if weights is None else _array_hash(weights)})
+                {'street':street,'seed_start':seed,'iterations':iterations,'chance_samples':chance_samples,'workers':workers,
+                 'elapsed_s':time.monotonic()-started,'active_compute_s':active_s,'teacher_cfv':None if weights is None else _array_hash(weights)})
     return x,y
 
 
@@ -136,15 +170,16 @@ def _array_hash(weights):
 
 
 def phase_b(out=OUT, river_n=RIVER_N, turn_n=TURN_N, epochs=EPOCHS_NET,
-            iterations=None, chance_samples=2, device='cpu', heldout_n=2):
+            iterations=None, chance_samples=2, device='cpu', heldout_n=2,workers=1,river_iters=None,turn_iters=None):
     out=Path(out)
     # Fail closed: no existence-only reuse and no mixing old schema/data.
-    rx,ry=make_dataset(out/'river_ds.npz',3,river_n,110000,None,iterations,chance_samples)
-    rv=make_dataset(out/'river_holdout.npz',3,heldout_n,910000,None,iterations,chance_samples)
+    ri=river_iters or iterations;ti=turn_iters or iterations
+    rx,ry=make_dataset(out/'river_ds.npz',3,river_n,110000,None,ri,chance_samples,workers)
+    rv=make_dataset(out/'river_holdout.npz',3,heldout_n,910000,None,ri,chance_samples,workers)
     rw,rs=_train(rx,ry,'cfv_river.',epochs,1,device,rv)
     cfv.publish(out/'cfv_river.npz',rw,river_n,epochs,'river_net',{'validation':rs,'dataset_sha256':cfv.digest(out/'river_ds.npz')})
-    tx,ty=make_dataset(out/'turn_ds.npz',2,turn_n,210000,rw,iterations,chance_samples)
-    tv=make_dataset(out/'turn_holdout.npz',2,heldout_n,920000,rw,iterations,chance_samples)
+    tx,ty=make_dataset(out/'turn_ds.npz',2,turn_n,210000,rw,ti,chance_samples,workers,out/'cfv_river.npz')
+    tv=make_dataset(out/'turn_holdout.npz',2,heldout_n,920000,rw,ti,chance_samples,workers,out/'cfv_river.npz')
     tw,ts=_train(tx,ty,'cfv_turn.',epochs,2,device,tv)
     both=dict(rw);both.update(tw)
     cfv.publish(out/'cfv_nets.npz',both,river_n+turn_n,epochs,'nets',

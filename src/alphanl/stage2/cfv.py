@@ -76,8 +76,13 @@ def spot_features(board, r_hero, r_opp, pot, call, stack, blind, street,
 
 
 def gelu(x):
-    # Same exact erf GELU as torch.nn.functional.gelu(approximate='none').
-    return .5 * x * (1 + np.frompyfunc(math.erf, 1, 1)(x / np.sqrt(2.)).astype(np.float64))
+    # Vectorized erf approximation (max erf error <1.5e-7), checked against
+    # Torch's exact GELU at export. Topology and BB output contract are unchanged.
+    y=x/np.sqrt(2.)
+    t=1./(1.+.3275911*np.abs(y))
+    poly=(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t
+    erf=np.sign(y)*(1.-poly*np.exp(-y*y))
+    return .5*x*(1.+erf)
 
 
 def validate_weights(weights, prefixes=("cfv_river.", "cfv_turn.")):

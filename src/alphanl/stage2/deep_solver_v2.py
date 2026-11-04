@@ -46,11 +46,53 @@ def _pack(cards):
     return packed
 
 
+def pack_many(hands, board):
+    """Vectorized exact 5–7-card rank, identical to padded portable strength.
+
+    Numeric IDs are not phevaluator IDs; ordering and ties are identical.
+    This avoids thousands of Python Counter/evaluator calls per public board.
+    """
+    n=len(hands)
+    holes=np.array([[CARD_ID[_ev(c)] for c in h] for h in hands],dtype=np.int16)
+    public=np.array([CARD_ID[_ev(c)] for c in board],dtype=np.int16)
+    ids=np.concatenate((holes,np.broadcast_to(public,(n,len(public)))),axis=1)
+    ranks=ids%13+2;suits=ids//13
+    counts=np.zeros((n,15),dtype=np.int8)
+    sc=np.zeros((n,4),dtype=np.int8)
+    rows=np.arange(n)[:,None]
+    np.add.at(counts,(rows,ranks),1);np.add.at(sc,(rows,suits),1)
+    rank_axis=np.arange(15)[None,:]
+    def top(mask,k):
+        return np.sort(np.where(mask,rank_axis,0),axis=1)[:,-k:][:,::-1]
+    def straight(present):
+        out=np.zeros(n,dtype=np.int64)
+        out[np.all(present[:,2:6],axis=1)&present[:,14]]=5
+        for high in range(6,15):out[np.all(present[:,high-4:high+1],axis=1)]=high
+        return out
+    present=counts>0
+    key=np.zeros((n,6),dtype=np.int64);key[:,1:]=top(present,5)
+    pairs=top(counts>=2,2);trips=top(counts>=3,1)[:,0];quads=top(counts==4,1)[:,0]
+    mask=pairs[:,0]>0;key[mask,0]=1;key[mask,1]=pairs[mask,0]
+    kick=top(present&(rank_axis!=pairs[:,:1]),3);key[mask,2:5]=kick[mask];key[mask,5]=0
+    mask=pairs[:,1]>0;key[mask,0]=2;key[mask,1:3]=pairs[mask];key[mask,3]=top(present&(rank_axis!=pairs[:,:1])&(rank_axis!=pairs[:,1:2]),1)[mask,0];key[mask,4:]=0
+    mask=trips>0;key[mask,0]=3;key[mask,1]=trips[mask];key[mask,2:4]=top(present&(rank_axis!=trips[:,None]),2)[mask];key[mask,4:]=0
+    run=straight(present);mask=run>0;key[mask]=0;key[mask,0]=4;key[mask,1]=run[mask]
+    fs=sc.argmax(axis=1);flush=sc.max(axis=1)>=5
+    fc=np.zeros((n,15),dtype=np.int8)
+    np.add.at(fc,(rows,ranks),(suits==fs[:,None]).astype(np.int8))
+    key[flush,0]=5;key[flush,1:]=top(fc>0,5)[flush]
+    partner=top((counts>=2)&(rank_axis!=trips[:,None]),1)[:,0]
+    mask=(trips>0)&(partner>0);key[mask]=0;key[mask,0]=6;key[mask,1]=trips[mask];key[mask,2]=partner[mask]
+    mask=quads>0;key[mask]=0;key[mask,0]=7;key[mask,1]=quads[mask];key[mask,2]=top(present&(rank_axis!=quads[:,None]),1)[mask,0]
+    sf=straight(fc>0);mask=flush&(sf>0);key[mask]=0;key[mask,0]=8;key[mask,1]=sf[mask]
+    return key @ (16**np.arange(5,-1,-1,dtype=np.int64))
+
+
 @lru_cache(maxsize=64)
 def _public(board):
     pool = [c for c in DECK if c not in board]
     hands = tuple(itertools.combinations(pool, 2))
-    rank = np.array([_pack(list(h) + list(board)) for h in hands], dtype=np.int64)
+    rank = pack_many(hands, board)
     # Public static made-hand rank, ties broken by canonical combo identity.
     # Independent of ranges, chips, solver output and the real hero hand.
     order = np.argsort(rank, kind="mergesort")
@@ -187,6 +229,7 @@ class Node:
             self.regret = np.zeros((width,a))
             self.total = np.zeros((width,a))
             self.strategy = np.full((width,a), 1./a)
+            self.fallback = self.strategy.copy()
             for child in self.children:
                 child.init(width)
 
@@ -257,8 +300,9 @@ def betting_tree(pot, owed, me, opp, legal=None, amounts=None, first_player=0):
 class PublicSolver:
     def __init__(self, snapshot, hero_range=None, opponent_range=None, weights=None,
                  iterations=None, chance_samples=2, seed=0, first_player=0,
-                 amounts=None, utility=False, context=None):
+                 amounts=None, utility=False, context=None, policy_only=False, root_prior=None, hero_at=None):
         self.s = snapshot
+        self.policy_only=bool(policy_only)
         self.board = tuple(sorted(_ev(c) for c in snapshot.board_cards))
         if utility and len(self.board)<5:
             raise ValueError("match utility requires terminal outcome distributions; expected chip CFVs cannot provide them")
@@ -278,6 +322,16 @@ class PublicSolver:
         self.tree = betting_tree(float(snapshot.pot),float(snapshot.to_call),float(snapshot.me_stack),float(snapshot.opp_stack),
                                  getattr(snapshot,'legal_action_ids',None),amounts,first_player)
         self.tree.init(self.width)
+        if root_prior is not None:
+            if first_player!=0 or hero_at is None:raise ValueError('blueprint prior requires the acting hero root information set')
+            prior=np.asarray(root_prior,dtype=np.float64)
+            if prior.shape!=(5,) or not np.isfinite(prior).all() or np.any(prior<0):raise ValueError('invalid root blueprint prior')
+            projected=prior[np.asarray(self.tree.labels,dtype=np.int64)]
+            if projected.sum()<=0:raise ValueError('empty executable blueprint prior')
+            self.tree.strategy[int(hero_at)]=projected/projected.sum()
+            # Only this known private information set gets a network prior.
+            # Unknown private hands and continuation infosets remain uniform.
+            self.tree.fallback=self.tree.strategy.copy()
         self.rootmass = (self.mass(self.ro),self.mass(self.rh))
         self.utility,self.context = utility,context
         self.trace = {"cfv_calls":0,"chance_branches":0,"leaf_states":[],"support":self.width,
@@ -357,10 +411,10 @@ class PublicSolver:
         oldboard,oldrank,oldgroups=self.board,self.rank,self.groups
         try:
             for run in selected:
-                valid=np.array([not set(run).intersection(hand) for hand in self.hands])
+                valid=~(np.isin(self.c1,[CARD_ID[c] for c in run])|np.isin(self.c2,[CARD_ID[c] for c in run]))
                 key=('allin',run)
                 if key not in self._chance_cache:
-                    rank=np.array([_pack(list(hand)+list(oldboard)+list(run)) if valid[i] else 0 for i,hand in enumerate(self.hands)])
+                    rank=np.where(valid,pack_many(self.hands,oldboard+run),0)
                     self._chance_cache[key]=(rank,_groups(rank))
                 self.rank,self.groups=self._chance_cache[key]
                 self.board=oldboard+run
@@ -391,8 +445,10 @@ class PublicSolver:
             if cachekey not in self._chance_cache:
                 board=tuple(sorted(self.board+(draw,)))
                 hands,rank,bins=_public(board)
-                lookup={frozenset(pair):i for i,pair in enumerate(hands)}
-                idx=np.array([lookup.get(frozenset(pair),-1) for pair in self.hands])
+                lookup=np.full(52*52,-1,dtype=np.int64)
+                keys=np.array([CARD_ID[pair[0]]*52+CARD_ID[pair[1]] for pair in hands])
+                lookup[keys]=np.arange(len(hands))
+                idx=lookup[self.c1*52+self.c2]
                 self._chance_cache[cachekey]=(board,bins,idx)
             board,bins,idx=self._chance_cache[cachekey]
             valid=idx>=0
@@ -453,7 +509,7 @@ class PublicSolver:
         if node.player is None:return
         positive=np.maximum(node.regret,0.)
         den=positive.sum(axis=1,keepdims=True)
-        node.strategy=np.divide(positive,den,out=np.full_like(positive,1./len(node.children)),where=den>0)
+        node.strategy=np.divide(positive,den,out=node.fallback.copy(),where=den>0)
         for child in node.children:self.update_strategies(child)
 
     def solve(self):
@@ -465,6 +521,9 @@ class PublicSolver:
         self.opp_state=np.divide(ov,self.rootmass[1],out=np.zeros(self.width),where=self.rootmass[1]>0)
         den=self.tree.total.sum(axis=1,keepdims=True)
         self.average=np.divide(self.tree.total,den,out=np.full_like(self.tree.total,1./len(self.tree.children)),where=den>0)
+        if getattr(self,'policy_only',False):
+            self.trace['zero_sum_residual']=float(np.dot(self.rh,hv)+np.dot(self.ro,ov))
+            return self
         self.action_values=np.zeros((self.width,len(self.tree.children)))
         for a,child in enumerate(self.tree.children):
             values=self.walk(child,self.rh*self.average[:,a] if self.tree.player==0 else self.rh,self.ro,1,False,True)[0]

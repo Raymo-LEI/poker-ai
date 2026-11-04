@@ -332,3 +332,23 @@ def test_d_ranges_condition_once_and_subnode_hud_eta_is_bounded(bundle):
         if hasattr(node,'match_eta'):assert 0<=node.match_eta<=.25
         for child in node.children or ():check(child)
     check(sol.tree)
+
+
+def test_benchmark_repeated_states_never_mutate_the_public_hud_corpus(monkeypatch):
+    """Reconciliation may consume nested dictionaries: every call owns a copy."""
+    import server_benchmark as b
+    calls=[]
+    class Stub:
+        def __init__(self,*args):
+            self.meta={'settings':{'evening_online':{}},'config':{},'deployment_release':'unit'}
+            self.agent=SimpleNamespace(last_evening={'search':True,'support':1081},search_audit={'status':'active'})
+        def respond(self,payload):
+            calls.append(payload['data']['counter']);payload['data']['counter']+=1
+            return {'response':0}
+    states=[dict(id=str(i),payload={'requests':[{'public_cards':list(range(n))}],'data':{'counter':0}}) for i,n in enumerate((0,3,4,5))]
+    corpus={'states':states,'by_board_size':{str(n):1 for n in (0,3,4,5)}};original=copy.deepcopy(corpus)
+    monkeypatch.setattr(b,'Bundle',Stub);monkeypatch.setattr(b,'pin',lambda cpus:cpus)
+    monkeypatch.setattr(b.cfv,'digest',lambda path:'unit')
+    monkeypatch.setattr(b.subprocess,'run',lambda *a,**kw:SimpleNamespace(returncode=0,stdout=json.dumps({'debug':'py unit ok model'})))
+    b.benchmark('source','model',corpus,1,warmup=2,count=8,cold=1,diagnostic=True)
+    assert corpus==original and calls==[0]*10

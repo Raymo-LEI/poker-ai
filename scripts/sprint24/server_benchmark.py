@@ -37,7 +37,7 @@ def collect_corpus(source,model,path,seed=2026110500,max_matches=12):
         # Keep the genuine cumulative requests/responses and previous data.
         # No opponent hole cards or future cards enter the payload.
         snapshot,_=bundle.runtime.request_snapshot(request)
-        ctx,_=bundle.runtime.context_from_payload(payload)
+        ctx,_=bundle.runtime.context_from_payload(copy.deepcopy(payload))
         state=bundle.modules['blind_lock'].state_from_payload(payload)
         mode,_=bundle.modules['blind_lock'].choice(request,snapshot,state)
         if mode=='own' or bundle.modules['evening_strategy'].locked_action(snapshot,ctx) is not None:return
@@ -72,10 +72,11 @@ def benchmark(source,model,corpus,core,warmup=32,count=512,cold=12,diagnostic=Fa
     if not diagnostic and (warmup!=32 or count<500 or cold<1):
         raise ValueError('server benchmark requires 32 warmups, >=500 timed real requests and cold starts')
     affinity=pin([core]);bundle=Bundle(source,model)
-    for row in sample_states(corpus,warmup,404):bundle.respond(row['payload'])
+    for row in sample_states(corpus,warmup,404):bundle.respond(copy.deepcopy(row['payload']))
     elapsed=[];by={};identities=[];river=0;hud=0;errors=[]
     for row in sample_states(corpus,count,505):
-        started=time.perf_counter();bundle.respond(row['payload']);seconds=time.perf_counter()-started
+        payload=copy.deepcopy(row['payload'])  # fresh parsed request ownership; clone is outside respond timing
+        started=time.perf_counter();bundle.respond(payload);seconds=time.perf_counter()-started
         elapsed.append(seconds*1000);n=len(row['payload']['requests'][-1]['public_cards'])
         by.setdefault(str(n),[]).append(seconds*1000);identities.append(row['id'])
         trace=getattr(bundle.agent,'last_evening',{})

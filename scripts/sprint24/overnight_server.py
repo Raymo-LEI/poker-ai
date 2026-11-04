@@ -254,7 +254,7 @@ def _execute(a):
                 if request['public_cards']:continue
                 probabilities={}
                 for name,bundle in bundles.items():
-                    snapshot,_=bundle.runtime.request_snapshot(request);ctx,_=bundle.runtime.context_from_payload(payload)
+                    snapshot,_=bundle.runtime.request_snapshot(request);ctx,_=bundle.runtime.context_from_payload(copy.deepcopy(payload))
                     logits=bundle.agent.logits(bundle.agent.observation(snapshot,ctx))[0].astype(float)
                     p=np.exp(logits-logits.max());probabilities[name]=p/p.sum()
                 for name in checkpoints:drifts[name]=max(drifts[name],float(.5*np.abs(probabilities[name]-probabilities['champion']).sum()))

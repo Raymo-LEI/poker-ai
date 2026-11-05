@@ -37,11 +37,14 @@ def reserve(root,out,run_id,ranking):
         return receipt
 
 
-def package_one(checkpoint,nets,root,out,reservation,version,arm,profile,promoted,gate):
+def package_one(checkpoint,nets,root,out,reservation,version,arm,profile,promoted,gate,preview=None):
     assert_production_cfv(nets)
     root=Path(root);out=Path(out)
     release='V%d_SERVER_ARENA_%s_%s'%(version,arm,reservation['day'])
     name='UPLOAD_V%d_SERVER_ARENA_%s_%s'%(version,arm,reservation['day'])
+    if preview:
+        release+='_PREVIEW_'+preview
+        name+='_PREVIEW_'+preview
     target=root/name;receipt=out/('V%d_PUBLISHED.json'%version)
     excluded=out/('V%d_EXCLUDED.json'%version)
     if excluded.exists():
@@ -89,7 +92,7 @@ def package_one(checkpoint,nets,root,out,reservation,version,arm,profile,promote
         saved=dict(run_id=reservation['run_id'],version=version,arm=arm,excluded=True,reason='hard latency gate on exact released bytes',latency=latency)
         cfv.atomic_json(excluded,saved)
         return saved
-    label='promoted' if promoted else 'not promoted'
+    label='provisional candidate' if preview else 'promoted' if promoted else 'not promoted'
     source_sha=cfv.digest(source);model_sha=cfv.digest(model)
     verify=Path(__file__).resolve().with_name('verify_evening_release.py')
     note=('版本：V%d（内部 R1），release=%s\n\n状态：%s\n评测臂：%s\n建议 Bot 名称：V%d (%s)\n\n'
@@ -97,6 +100,8 @@ def package_one(checkpoint,nets,root,out,reservation,version,arm,profile,promote
           '上线 debug 应以 py 开头，并包含：ok V%d_MODEL.npz release=%s wiz=v2/\n\n'
           '核验命令：python3 "%s" --url "比赛URL" --expected "%s"\n')%(version,release,label,arm,version,label,
           version,version,source_sha,model_sha,version,release,verify,release)
+    if preview:
+        note=note.replace('上传 V', '候选文件 V',1)+'\n阶段快照，仅供复核。正式上传请使用最终定稿目录。\n'
     (staging/'UPLOAD_README.zh.md').write_text(note)
     saved=dict(run_id=reservation['run_id'],version=version,arm=arm,release=release,status=label,promoted=promoted,
                folder=str(target),source=str(target/source.name),model=str(target/model.name),

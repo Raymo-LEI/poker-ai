@@ -19,6 +19,7 @@ from evening_pipeline import _snap, _train
 from overnight_data import TREE, label, mixed_dataset, holdout_gate
 
 FLOORS={'river':80000,'turn':50000}
+FULL_PRECISION_COUNTS={'river':108800,'turn':72192}
 NEW_SAMPLES={'river':8192,'turn':4096}
 OLD_COMMIT='5cbf1db67d6b5f34c855c56b7aeddfbc7b8bb001'
 OLD_ROOT='/root/autodl-tmp/sprint24/evening_production/20261104T142449Z_5cbf1db6'
@@ -190,7 +191,7 @@ def relabel(x,seeds,it,chance,workers,nets=None):
     return xx,yy,dict(wall_s=wall,cpu_s=cpu,labels_per_second=len(xx)/wall,labels_per_cpu_second=len(xx)/max(cpu,1e-9))
 
 
-def benchmark_labels(audit,out,workers):
+def benchmark_labels(audit,out,workers,full_precision=False):
     """Choose offline-only depth using train states, never the final holdout.
 
     Reference 64/32 x4 remains the quality anchor. Online is untouched 8/8/16.
@@ -211,7 +212,8 @@ def benchmark_labels(audit,out,workers):
         net=None if name=='river' else reference_net;reference=64 if name=='river' else 32
         _,ref,ref_rate=relabel(x,seeds,reference,4,workers,net)
         options=[dict(iterations=reference,chance_samples=4,quality_passed=True,pot_mae_vs_reference=0.,**ref_rate)]
-        for it in ((16,32) if name=='river' else (8,16)):
+        alternatives=() if full_precision else (16,32) if name=='river' else (8,16)
+        for it in alternatives:
             _,y,rate=relabel(x,seeds,it,4,workers,net)
             errors=np.abs(y-ref)/np.maximum(x[:,119:120]*200.,1.)
             options.append(dict(iterations=it,chance_samples=4,quality_passed=bool(errors.mean()<=.02 and np.quantile(errors.mean(1),.99)<=.08),
@@ -227,16 +229,25 @@ def benchmark_labels(audit,out,workers):
     return result
 
 
-def choose_plan(audit,benchmark,rates,hours,elapsed,match_s,bench_s,workers):
+def choose_plan(audit,benchmark,rates,hours,elapsed,match_s,bench_s,workers,full_precision=False):
     """Price all labels/epochs/three generations/serial arena; never fit below floors."""
     if any(not math.isfinite(float(x)) or x<=0 for x in rates.values()):raise ValueError('invalid measured rates')
     counts={name:audit['datasets'][name]['samples']+NEW_SAMPLES[name] for name in FLOORS}
     require_floor(counts)
+    if full_precision:
+        if any(counts[name]<n for name,n in FULL_PRECISION_COUNTS.items()):
+            raise ValueError('Full precision requires the compatible V23 public-state reservoir')
+        for name,iterations in (('river',64),('turn',32)):
+            selected=benchmark[name]['selected']
+            if (selected['iterations'],selected['chance_samples'])!=(iterations,4):
+                raise ValueError('Full precision requires offline 64/32 iterations with four chance samples')
     attempts=[]
     # Keep the complete recovered reservoir whenever possible. Drop optional B
     # before downsampling states. Fail closed if even the minimum cannot fit.
-    for target in (counts,FLOORS):
-        for arms in (['A','C','D','B'],['A','C','D']):
+    targets=(FULL_PRECISION_COUNTS,) if full_precision else (counts,FLOORS)
+    arm_options=(['A','C','D','B'],) if full_precision else (['A','C','D','B'],['A','C','D'])
+    for target in targets:
+        for arms in arm_options:
             reused={name:target[name]-NEW_SAMPLES[name] for name in FLOORS}
             # Board-disjoint validation is rejection-sampled. Price its pool
             # above 2048 (especially turn, with many historical boards).
@@ -247,11 +258,11 @@ def choose_plan(audit,benchmark,rates,hours,elapsed,match_s,bench_s,workers):
             # Same 3-generation pricing as the original controller, including
             # its disjoint tuning/acceptance sets and preflop anchors.
             generations=3*(4096*(rates['rebel']+12*rates['policy_epoch'])+2048*(5*rates['rebel']+rates['anchor']))
-            arena=200*len(arms)*match_s;bench=(len(arms)+3)*bench_s
+            arena=200*len(arms)*match_s;bench=(len(arms)+3+(6 if full_precision else 0))*bench_s
             reserve=1800+hours*3600*.08
             predicted=elapsed+1.25*(labels+training+generations+arena+bench)+reserve
             attempts.append(dict(counts=dict(target),arms=arms,predicted_seconds=predicted))
-            if predicted>hours*3600:continue
+            if predicted>hours*3600 and not full_precision:continue
             return dict(river_n=target['river'],turn_n=target['turn'],reused_rows=reused,new_rows=NEW_SAMPLES,
                 holdout_n=2048,net_epochs=50,policy_epochs=12,rebel_n=4096,workers=workers,hours=hours,
                 arms=arms,dropped_arms=[] if 'B' in arms else ['B'],generations=['g3','g4','g5'],
@@ -259,7 +270,8 @@ def choose_plan(audit,benchmark,rates,hours,elapsed,match_s,bench_s,workers):
                 estimated_label_seconds=labels,estimated_train_seconds=training,
                 estimated_serial_arena_seconds=arena,estimated_benchmark_seconds=bench,
                 offline={name:{k:benchmark[name]['selected'][k] for k in ('iterations','chance_samples')} for name in FLOORS},
-                recovery=RECOVERY,minimum_samples=FLOORS,estimated_holdout_pool=holdout_pool)
+                recovery=RECOVERY,minimum_samples=FLOORS,estimated_holdout_pool=holdout_pool,
+                full_precision=full_precision,forecast_exceeds_target=predicted>hours*3600)
     raise RecoveryStop('INSUFFICIENT_LABEL_BUDGET: cannot fit 80000 river / 50000 turn and required arena; '+json.dumps(attempts))
 
 
@@ -353,6 +365,7 @@ def phase_b(source,out,plan,workers,device,audit,deadline=None):
     stats={};weights={}
     for name,street,prefix in (('river',3,'cfv_river.'),('turn',2,'cfv_turn.')):
         if deadline is not None and time.monotonic()>=deadline:
+            if plan.get('full_precision'):raise TimeoutError('target deadline reached before '+name)
             raise RecoveryStop('INSUFFICIENT_LABEL_BUDGET: target deadline reached before '+name)
         net=None if street==3 else out/'cfv_river.npz';config=plan['offline'][name]
         receipt=out/(name+'_TRAINED.json');dest=out/('cfv_river.npz' if street==3 else 'cfv_turn.npz')
@@ -374,7 +387,9 @@ def phase_b(source,out,plan,workers,device,audit,deadline=None):
         cfv.publish(out/(name+'_ds.npz'),dict(x=x,y=y),len(x),0,'dataset',dict(tree=TREE,
                     reused_states=len(reused['x']),new_on_policy=nm['on_policy_n'],new_dirichlet=nm['dirichlet_n'],
                     source_sha256=cfv.digest(source),leakage_check=leak))
-        if deadline is not None and time.monotonic()+50*len(x)*plan['rates']['cfv_epoch']>=deadline:
+        if deadline is not None and plan.get('full_precision') and time.monotonic()>=deadline:
+            raise TimeoutError('target deadline reached before fitting '+name)
+        if deadline is not None and not plan.get('full_precision') and time.monotonic()+50*len(x)*plan['rates']['cfv_epoch']>=deadline:
             raise RecoveryStop('INSUFFICIENT_LABEL_BUDGET: labels saved but 50 epochs cannot fit for '+name)
         w,s=_train(x,y,prefix,50,street,device,(vx,vy),cosine=True,initial_weights=warm)
         gate=holdout_gate(w,prefix,y,(vx,vy),clusters);s['CFV_HOLDOUT_GATE']=gate

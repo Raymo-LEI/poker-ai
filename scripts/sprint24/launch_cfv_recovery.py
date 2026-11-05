@@ -21,7 +21,7 @@ import time
 REPO=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(REPO/'src'),str(REPO/'scripts/sprint24')]
 from alphanl.stage2 import cfv
-from server_resources import core_plan
+from server_resources import core_plan,SERVER_TARGET_HOURS,SERVER_WATCHDOG_SECONDS
 from cfv_recovery import OLD_ROOT,OLD_SOURCE
 
 
@@ -69,7 +69,9 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--expected-commit',required=True)
     p.add_argument('--out',type=Path,required=True)
-    p.add_argument('--hours',type=float,default=8.5)
+    p.add_argument('--hours',type=float,default=SERVER_TARGET_HOURS)
+    p.add_argument('--skip-pytest',action='store_true',help='use only the 10-second CUDA smoke check')
+    p.add_argument('--full-precision',action='store_true',help='lock offline 64/32 x4, full V23 recovery counts and all four arms')
     p.add_argument('--workers',type=int,default=24)
     p.add_argument('--inference-core',type=int,default=1)
     p.add_argument('--resume',action='store_true',help='require an existing production checkpoint; identity must match')
@@ -78,6 +80,7 @@ def main(argv=None):
     p.add_argument('--reuse-evening-run',type=Path,default=Path(OLD_ROOT))
     p.add_argument('--reuse-source',type=Path,default=Path(OLD_SOURCE))
     a=p.parse_args(argv);out=a.out.resolve()
+    if not 0<a.hours<=SERVER_TARGET_HOURS:p.error('hours must be >0 and <=14.5')
     def lock_source():
         head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip()
         dirty=subprocess.check_output(['git','status','--porcelain'],cwd=REPO,text=True)
@@ -144,28 +147,36 @@ def main(argv=None):
     cfv.atomic_json(archive/'ARCHIVE_SHA256.json',{str(f.relative_to(archive)):cfv.digest(f) for f in archive.rglob('*') if f.is_file() and f.name!='ARCHIVE_SHA256.json'})
     probe=[sys.executable,'-u','-c',CUDA_PROBE]
     status('REMOTE_CUDA_PROBE',command=probe)
-    rc=run(probe,out/'remote_cuda_probe.log',45)
+    probe_started=time.monotonic()
+    rc=run(probe,out/'remote_cuda_probe.log',10 if a.skip_pytest else 45)
     if rc:return final_failure('STOPPED_REMOTE_CUDA',f'RTX 5090 compute probe exited {rc}; see remote_cuda_probe.log.')
-    status('REMOTE_PREFLIGHT',command=command)
-    receipt=json.loads(validation.read_text()) if validation.exists() else None
-    if receipt is not None and receipt.get('returncode')!=124:
-        if receipt.get('commit')!=a.expected_commit or receipt.get('returncode')!=0:
-            return final_failure('STOPPED_REMOTE_TESTS','Prior full pytest failed or belongs to a different commit; no skip or identical retry.')
+    if a.skip_pytest:
+        validation=out/'REMOTE_SELF_CHECK.json'
+        cfv.atomic_json(validation,dict(commit=a.expected_commit,pytest_skipped=True,
+            cuda_probe_returncode=rc,seconds=time.monotonic()-probe_started))
     else:
-        start=time.monotonic();rc=run(command,out/'remote_pytest.log',7200)
-        cfv.atomic_json(validation,dict(commit=a.expected_commit,returncode=rc,command=command,seconds=time.monotonic()-start))
-        if rc:return final_failure('STOPPED_REMOTE_TESTS','Full pytest failed; see remote_pytest.log. Existing tests were not filtered or changed.')
+        status('REMOTE_PREFLIGHT',command=command)
+        receipt=json.loads(validation.read_text()) if validation.exists() else None
+        if receipt is not None and receipt.get('commit')!=a.expected_commit:
+            return final_failure('STOPPED_REMOTE_TESTS','Prior pytest receipt belongs to a different commit.')
+        if receipt is None or receipt.get('returncode')==124:
+            start=time.monotonic();rc=run(command,out/'remote_pytest.log',7200)
+            cfv.atomic_json(validation,dict(commit=a.expected_commit,returncode=rc,command=command,seconds=time.monotonic()-start))
+            if rc:return final_failure('STOPPED_REMOTE_TESTS','Full pytest failed; see remote_pytest.log.')
+        elif receipt.get('returncode')!=0:
+            return final_failure('STOPPED_REMOTE_TESTS','Prior full pytest failed; see remote_pytest.log.')
     lock_source()
     command=[sys.executable,str(REPO/'scripts/sprint24/overnight_production.py'),'--server-profile','--cfv-data-recovery',
         '--expected-commit',a.expected_commit,'--out',str(out),'--hours',str(a.hours),'--workers',str(a.workers),
         '--inference-core',str(a.inference_core),'--champion',str(a.champion),'--deliver',str(a.deliver),
         '--reuse-evening-run',str(a.reuse_evening_run),'--reuse-source',str(a.reuse_source)]
+    if a.full_precision:command.append('--full-precision')
     # Do NOT taskset the controller to worker CPUs: it must first discover and
     # reserve inference CPU1 before pinning its own training/judge descendants.
     for attempt in range(3):
         arguments=command+(['--resume'] if (out/'CHECKPOINTS.json').exists() else [])
         status('PRODUCTION_RUNNING',command=arguments)
-        rc=run(arguments,out/'production.log',9*3600+60,isolated=False)
+        rc=run(arguments,out/'production.log',SERVER_WATCHDOG_SECONDS+60,isolated=False)
         report_path=out/'OVERNIGHT_FINAL_REPORT.json'
         report=json.loads(report_path.read_text()) if report_path.exists() else {}
         report['remote_validation']=json.loads(validation.read_text());report['launcher_attempt']=attempt+1

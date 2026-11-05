@@ -133,10 +133,14 @@ def _execute(a):
                   handoff_sha256=cfv.digest(source),handoff=handoff,workers=workers,resources=resources,
                   hours=a.hours,smoke=a.smoke,deliver=str(a.deliver.resolve()),server_profile='xeon-four-arm-v1',
                   runtime=dict(torch=torch.__version__,cuda=torch.version.cuda,numpy=np.__version__))
+    if a.cfv_data_recovery:
+        identity['cfv_recovery']=dict(root=str(a.reuse_evening_run.resolve()),source=str(a.reuse_source.resolve()))
     store=Checkpoints(out,identity,a.resume)
     summary=dict(status='RUNNING',identity=identity,gates={},arena={},packages={},exclusions={},checkpoint=str(store.path),
                  report=str(out/'OVERNIGHT_FINAL_REPORT.json'),output=str(out),started_utc=store.state['started_utc'])
-    def publish():cfv.atomic_json(out/'OVERNIGHT_FINAL_REPORT.json',summary)
+    def publish():
+        cfv.atomic_json(out/'OVERNIGHT_FINAL_REPORT.json',summary)
+        cfv.atomic_json(out/'FINAL_REPORT.json',summary)
     def stage(name,fn,clean=True):
         source_lock(a.expected_commit)
         if store.age()>=a.hours*3600:raise TimeoutError('target budget exhausted before '+name)
@@ -185,14 +189,27 @@ def _execute(a):
         summary['gates']['calibration']=calibration;publish()
         if a.benchmark_only:
             summary['status']='BENCHMARK_COMPLETE';return 0
+        audit=None;offline_benchmark=None
+        if a.cfv_data_recovery:
+            if a.smoke:raise ValueError('production recovery cannot use smoke fixtures')
+            from cfv_recovery import inspect_history,benchmark_labels
+            audit=stage('historical_cfv_compatibility',lambda folder:inspect_history(a.reuse_evening_run,a.reuse_source,folder))
+            summary['historical_cfv_compatibility']=audit;publish()
+            offline_benchmark=stage('offline_label_quality_throughput',lambda folder:benchmark_labels(
+                audit,folder,workers))
+            summary['offline_label_benchmark']=offline_benchmark;publish()
         def compute_plan(folder):
             if a.smoke:
                 return dict(river_n=8,turn_n=8,rebel_n=8,holdout_n=4,net_epochs=50,policy_epochs=1,arms=list(ARM_ORDER),
                             smoke=True,note='Development only; final arena is intentionally forbidden.')
             rates={};n=max(64,workers*32)
             for street,name in ((3,'river'),(2,'turn')):
+                config=(offline_benchmark[name]['selected'] if a.cfv_data_recovery else
+                        dict(iterations=OFFLINE[name+'_iterations'],chance_samples=4))
+                teacher=(offline_benchmark['turn']['reference_teacher'] if a.cfv_data_recovery else
+                         str(Path(calibration['nets']).with_name('cfv_river.npz')))
                 x,y,meta=mixed_dataset(folder/(name+'.npz'),baseline,street,n,31000000000+street*10000000000,workers,
-                    OFFLINE[name+'_iterations'],4,None if street==3 else str(Path(calibration['nets']).with_name('cfv_river.npz')))
+                    config['iterations'],config['chance_samples'],None if street==3 else teacher)
                 rates[name]=meta['active_compute_s']/n*1.35
             teachers=collect_teacher(baseline,n,71000000000,calibration['nets'],workers,OFFLINE['teacher_iterations'],2)
             rates['rebel']=collect_teacher.last_seconds/n*1.35
@@ -212,14 +229,23 @@ def _execute(a):
             subprocess.run(command,check=True,timeout=1800)
             probe=json.loads((folder/'match_seconds.json').read_text())
             bench=max((r.get('mean_ms',100.) for r in calibration['pilot_gates'].values()))/1000*512+12*.5+10.
+            if a.cfv_data_recovery:
+                from cfv_recovery import choose_plan as recovery_plan
+                plan=recovery_plan(audit,offline_benchmark,rates,a.hours,store.age(),probe['seconds'],bench,workers)
+                cfv.atomic_json(folder/'RECOVERY_PLAN.json',plan)
+                return plan
             return choose_plan(rates,a.hours,probe['seconds'],bench,store.age(),workers)
         plan=stage('production_plan',compute_plan);summary['plan']=plan;publish()
         def cfv_training(folder):
-            stats=phase_b(baseline,folder,plan,workers,device,a.smoke)
+            if a.cfv_data_recovery:
+                from cfv_recovery import phase_b as recovery_phase_b
+                stats=recovery_phase_b(baseline,folder,plan,workers,device,audit,
+                    deadline=time.monotonic()+max(0.,a.hours*3600-store.age()))
+            else:stats=phase_b(baseline,folder,plan,workers,device,a.smoke)
             nets=str(folder/'cfv_nets.npz')
             if not a.smoke:assert_production_cfv(nets)
             return dict(nets=nets,validation=stats)
-        trained=stage('production_cfv_50_epochs',cfv_training);summary['training']=trained;nets=trained['nets'];publish()
+        trained=stage('production_cfv_50_epochs',cfv_training,clean=not a.cfv_data_recovery);summary['training']=trained;nets=trained['nets'];publish()
         previous=baseline;checkpoints={'baseline':baseline};distillation={}
         for generation,seed in (('g3',100000000000),('g4',200000000000),('g5',300000000000)):
             def evolve(folder,previous=previous,seed=seed):
@@ -282,7 +308,10 @@ def _execute(a):
         if len(packages)<3:summary['limitations']=['Fewer than three latency-qualified arms/packages were available; excluded arms are never uploaded.']
         return 0
     except BaseException as exc:
-        summary.update(status='FAILED',error=type(exc).__name__+': '+str(exc),elapsed_s=store.age())
+        status='FAILED'
+        if 'CFV_HOLDOUT_GATE_FAILED' in str(exc):status='STOPPED_CFV_HOLDOUT_GATE'
+        elif 'INSUFFICIENT_' in str(exc):status='STOPPED_CFV_DATA_BUDGET'
+        summary.update(status=status,error=type(exc).__name__+': '+str(exc),elapsed_s=store.age())
         raise
     finally:
         summary['elapsed_s']=store.age();publish()
@@ -297,6 +326,9 @@ def main(argv=None):
     p.add_argument('--evening-root',type=Path,default=Path('/root/autodl-tmp/sprint24/evening_production'))
     p.add_argument('--resume',action='store_true');p.add_argument('--fresh',action='store_true')
     p.add_argument('--benchmark-only',action='store_true');p.add_argument('--smoke',action='store_true')
+    p.add_argument('--cfv-data-recovery',action='store_true',help='audit/relabel historical public states and transfer-initialize CFVs; enforce 80k/50k')
+    p.add_argument('--reuse-evening-run',type=Path,default=Path('/root/autodl-tmp/sprint24/evening_production/20261104T142449Z_5cbf1db6'))
+    p.add_argument('--reuse-source',type=Path,default=Path('/root/autodl-tmp/poker-evening-anchor-fix-5cbf1db'))
     p.add_argument('--_run',action='store_true',help=argparse.SUPPRESS)
     a=p.parse_args(argv)
     if not 0<a.hours<=8.5:p.error('hours must be >0 and <=8.5; hard watchdog remains 9h')

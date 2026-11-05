@@ -45,6 +45,12 @@ def assert_qualified_manifest(meta):
         meta.get('production') is not True or meta.get('offline_hud_prior') is not False or
         meta.get('tree')!=TREE or meta.get('river_samples',0)<8192 or meta.get('turn_samples',0)<4096):
         raise ValueError('FINAL_ARENA_REQUIRES_PRODUCTION_50_EPOCH_CFV: fixture/unqualified CFVs forbidden')
+    if meta.get('recovery') is not None:
+        from cfv_recovery import FLOORS,RECOVERY
+        if meta['recovery']!=RECOVERY:raise ValueError('unknown CFV recovery contract')
+        if meta.get('minimum_samples')!=FLOORS:raise ValueError('CFV recovery sample floor contract changed')
+        if any(meta.get(name+'_samples',0)<floor for name,floor in FLOORS.items()):
+            raise ValueError('FINAL_ARENA_REQUIRES_RECOVERY_SAMPLE_FLOORS')
     for street in ('river','turn'):
         training=meta.get('validation',{}).get(street,{})
         if training.get('epochs_completed')!=50 or training.get('lr_schedule')!='cosine':

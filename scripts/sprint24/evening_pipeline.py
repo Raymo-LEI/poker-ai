@@ -73,7 +73,7 @@ def _predict(weights,feat,prefix='cfv_river.'):
     return cfv.predict_residual_cfv(weights,prefix,feat)
 
 
-def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None,cosine=False):
+def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None,cosine=False,initial_weights=None):
     import torch
     from torch import nn
     torch.manual_seed(seed)
@@ -92,6 +92,12 @@ def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None,c
                 h=h+nn.functional.gelu(layer(h))
             return self.out(h)
     model=Net().to(device)
+    if initial_weights is not None:
+        cfv.validate_weights(initial_weights,(prefix,))
+        with torch.no_grad():
+            for i,layer in enumerate([model.inp]+list(model.blocks)+[model.out]):
+                layer.weight.copy_(torch.as_tensor(initial_weights[prefix+'%d.weight'%i],device=device))
+                layer.bias.copy_(torch.as_tensor(initial_weights[prefix+'%d.bias'%i],device=device))
     x=torch.as_tensor(feats,device=device)
     y=torch.as_tensor(targets,device=device)
     opt=torch.optim.Adam(model.parameters(),lr=1e-3)
@@ -115,7 +121,8 @@ def _train(feats, targets, prefix, epochs=30, seed=0, device='cpu', valid=None,c
         ref=model(x[:64]).cpu().numpy()
     error=float(np.max(np.abs(ref-cfv.predict_residual_cfv(weights,prefix,feats[:64]))))
     if not np.isfinite(error) or error > 1e-4: raise ValueError('Torch / portable residual mismatch')
-    stats={'loss':float(loss.detach()),'forward_max_error':error,'epochs_completed':int(epochs),'lr_schedule':'cosine' if cosine else 'constant'}
+    stats={'loss':float(loss.detach()),'forward_max_error':error,'epochs_completed':int(epochs),'lr_schedule':'cosine' if cosine else 'constant',
+           'warm_started':initial_weights is not None}
     if valid is not None:
         vx,vy=valid
         errors=np.abs(cfv.predict_residual_cfv(weights,prefix,vx)-vy)

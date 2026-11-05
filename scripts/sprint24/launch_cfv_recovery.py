@@ -13,6 +13,7 @@ import fcntl
 import json
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -22,6 +23,46 @@ sys.path[:0]=[str(REPO/'src'),str(REPO/'scripts/sprint24')]
 from alphanl.stage2 import cfv
 from server_resources import core_plan
 from cfv_recovery import OLD_ROOT,OLD_SOURCE
+
+
+CUDA_PROBE = '''
+import torch
+assert torch.cuda.is_available(), 'CUDA unavailable'
+name = torch.cuda.get_device_name(0)
+print(name, torch.__version__, flush=True)
+assert '5090' in name, 'RTX 5090 required'
+x = torch.randn(64, 64, device='cuda', requires_grad=True)
+(x @ x.T).sum().backward()
+torch.cuda.synchronize()
+assert torch.isfinite(x.grad).all().item(), 'nonfinite CUDA gradients'
+print('CUDA_FORWARD_BACKWARD_OK', flush=True)
+'''
+
+
+def kernel_wait(pid):
+    proc = Path('/proc') / str(pid)
+    try:
+        state = (proc / 'stat').read_text().rsplit(') ', 1)[1].split()[0]
+        return (proc / 'wchan').read_text().strip() if state == 'D' else None
+    except OSError:
+        return None
+
+
+def stop_child(child, isolated, grace=5):
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            if isolated:
+                os.killpg(child.pid, sig)
+            else:
+                child.send_signal(sig)
+        except ProcessLookupError:
+            pass
+        try:
+            child.wait(timeout=grace)
+            return True
+        except subprocess.TimeoutExpired:
+            continue
+    return False
 
 
 def main(argv=None):
@@ -48,7 +89,8 @@ def main(argv=None):
     if a.resume and not (out/'CHECKPOINTS.json').exists():raise ValueError('--resume requires CHECKPOINTS.json; do not resume old 408a2ff run')
     resources=core_plan(a.inference_core);cfv.atomic_json(out/'LAUNCH_CPU_RESERVATION.json',resources)
     env=dict(os.environ,PYTHONPATH=str(REPO/'src')+os.pathsep+str(REPO/'scripts/sprint24'))
-    validation=out/'REMOTE_PYTEST.json';command=[sys.executable,'-m','pytest']
+    validation=out/'REMOTE_PYTEST.json'
+    command=[sys.executable,'-u','-m','pytest','-v','-o','faulthandler_timeout=120']
     launch=dict(commit=a.expected_commit,resources=resources,started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 command=command,status='REMOTE_PREFLIGHT')
     def status(state,**extra):
@@ -57,24 +99,32 @@ def main(argv=None):
         # Reserve inference core AND its SMT sibling during tests/training.
         command=(['taskset','-c',','.join(map(str,resources['worker_cpus']))]+command) if isolated else command
         with Path(log).open('a',buffering=1) as handle:
-            child=subprocess.Popen(command,cwd=REPO,env=env,stdout=handle,stderr=subprocess.STDOUT)
+            child=subprocess.Popen(command,cwd=REPO,env=env,stdout=handle,stderr=subprocess.STDOUT,
+                                   start_new_session=isolated)
             started=time.monotonic()
+            wait_channel=None
+            wait_started=started
             try:
                 while child.poll() is None:
-                    status(launch['status'],child_pid=child.pid,heartbeat_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
-                    if time.monotonic()-started>timeout:
-                        child.terminate()
-                        try:child.wait(timeout=20)
-                        except subprocess.TimeoutExpired:child.kill();child.wait()
+                    now=time.monotonic()
+                    channel=kernel_wait(child.pid) if isolated else None
+                    if channel!=wait_channel:
+                        wait_channel,wait_started=channel,now
+                    stuck=channel is not None and now-wait_started>=120
+                    status(launch['status'],child_pid=child.pid,kernel_wait=channel,
+                           heartbeat_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
+                    if now-started>=timeout or stuck:
+                        reason=f'continuous kernel wait ({channel})' if stuck else 'wall-clock timeout'
+                        stopped=stop_child(child,isolated,grace=5 if isolated else 20)
+                        handle.write(f'\n{reason}: PID {child.pid}, exited={stopped}\n')
                         return 124
-                    try:child.wait(timeout=30)
+                    try:child.wait(timeout=min(10,max(0.01,timeout-(now-started))))
                     except subprocess.TimeoutExpired:pass
                 return child.returncode
-            finally:
+            except BaseException:
                 if child.poll() is None:
-                    child.terminate()
-                    try:child.wait(timeout=20)
-                    except subprocess.TimeoutExpired:child.kill();child.wait()
+                    stop_child(child,isolated,grace=5 if isolated else 20)
+                raise
     def final_failure(state,reason):
         report=dict(status=state,error=reason,commit=a.expected_commit,remote_validation=str(validation),launch=str(out/'LAUNCH_STATUS.json'))
         for name in ('FINAL_REPORT.json','OVERNIGHT_FINAL_REPORT.json'):cfv.atomic_json(out/name,report)
@@ -90,15 +140,20 @@ def main(argv=None):
     existing=Path('/root/autodl-tmp/sprint24/code_handoffs/V23_V25_completed_reports_20261105.zip')
     if existing.exists():shutil.copy2(existing,archive/existing.name)
     cfv.atomic_json(archive/'ARCHIVE_SHA256.json',{str(f.relative_to(archive)):cfv.digest(f) for f in archive.rglob('*') if f.is_file() and f.name!='ARCHIVE_SHA256.json'})
-    if validation.exists():
-        receipt=json.loads(validation.read_text())
+    probe=[sys.executable,'-u','-c',CUDA_PROBE]
+    status('REMOTE_CUDA_PROBE',command=probe)
+    rc=run(probe,out/'remote_cuda_probe.log',45)
+    if rc:return final_failure('STOPPED_REMOTE_CUDA',f'RTX 5090 compute probe exited {rc}; see remote_cuda_probe.log.')
+    status('REMOTE_PREFLIGHT',command=command)
+    receipt=json.loads(validation.read_text()) if validation.exists() else None
+    if receipt is not None and receipt.get('returncode')!=124:
         if receipt.get('commit')!=a.expected_commit or receipt.get('returncode')!=0:
             return final_failure('STOPPED_REMOTE_TESTS','Prior full pytest failed or belongs to a different commit; no skip or identical retry.')
     else:
         start=time.monotonic();rc=run(command,out/'remote_pytest.log',7200)
         cfv.atomic_json(validation,dict(commit=a.expected_commit,returncode=rc,command=command,seconds=time.monotonic()-start))
         if rc:return final_failure('STOPPED_REMOTE_TESTS','Full pytest failed; see remote_pytest.log. Existing tests were not filtered or changed.')
-    lock_source();status('PRODUCTION_RUNNING')
+    lock_source()
     command=[sys.executable,str(REPO/'scripts/sprint24/overnight_production.py'),'--server-profile','--cfv-data-recovery',
         '--expected-commit',a.expected_commit,'--out',str(out),'--hours',str(a.hours),'--workers',str(a.workers),
         '--inference-core',str(a.inference_core),'--champion',str(a.champion),'--deliver',str(a.deliver),
@@ -107,6 +162,7 @@ def main(argv=None):
     # reserve inference CPU1 before pinning its own training/judge descendants.
     for attempt in range(3):
         arguments=command+(['--resume'] if (out/'CHECKPOINTS.json').exists() else [])
+        status('PRODUCTION_RUNNING',command=arguments)
         rc=run(arguments,out/'production.log',9*3600+60,isolated=False)
         report_path=out/'OVERNIGHT_FINAL_REPORT.json'
         report=json.loads(report_path.read_text()) if report_path.exists() else {}

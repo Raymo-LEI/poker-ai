@@ -90,7 +90,9 @@ def main(argv=None):
     resources=core_plan(a.inference_core);cfv.atomic_json(out/'LAUNCH_CPU_RESERVATION.json',resources)
     env=dict(os.environ,PYTHONPATH=str(REPO/'src')+os.pathsep+str(REPO/'scripts/sprint24'))
     validation=out/'REMOTE_PYTEST.json'
-    command=[sys.executable,'-u','-m','pytest','-v','-o','faulthandler_timeout=120']
+    # Log each test without the in-process timer that crashed while dumping
+    # the stack of a long-running portable evaluator test on the server.
+    command=[sys.executable,'-u','-m','pytest','-vv']
     launch=dict(commit=a.expected_commit,resources=resources,started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 command=command,status='REMOTE_PREFLIGHT')
     def status(state,**extra):

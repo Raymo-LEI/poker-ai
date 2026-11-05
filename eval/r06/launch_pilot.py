@@ -14,7 +14,9 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+# This entry point is a CPU-only schema check even on a GPU host.
+# Hide inherited devices before importing Torch; retain the CUDA failsafe below.
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 import torch

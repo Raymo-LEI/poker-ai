@@ -403,7 +403,11 @@ class SDCFRTrainer:
                 metrics["seat_balanced_sampling"] = 1
         self.iteration = iteration
         from .study import memory_usage
-        metrics.update(memory_usage())
+        # Hardware telemetry changes across exact checkpoint continuations.
+        # Keep the deterministic return contract separate from live log fields.
+        resources = memory_usage()
+        self.last_resource_usage = dict(resources)
+        timing.update(resources)
         out = Path(self.config.out_dir)
         if iteration % self.config.snapshot_every == 0 or iteration == 1:
             path = out / "strategies" / f"iteration_{iteration:07d}.pt"
@@ -411,7 +415,7 @@ class SDCFRTrainer:
             self.strategy_paths[iteration] = path
         self._write_strategy_index()
         out.mkdir(parents=True, exist_ok=True)
-        _append_csv(out / "metrics.csv", {**metrics, **getattr(self, "experiment", {})})
+        _append_csv(out / "metrics.csv", {**metrics, **resources, **getattr(self, "experiment", {})})
         timing["iteration_s"] = time.perf_counter() - iteration_started
         self.last_timing = timing
         timing_path = out / "performance.csv"

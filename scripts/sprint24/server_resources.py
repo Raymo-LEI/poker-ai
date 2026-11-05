@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 
 
+SERVER_TARGET_HOURS = 14.5
+SERVER_WATCHDOG_SECONDS = 16 * 3600
+
 def cpu_list(text):
     result=set()
     for part in text.strip().split(','):

@@ -17,12 +17,13 @@ if str(REPO/'src') not in sys.path:sys.path.insert(0,str(REPO/'src'))
 from alphanl.stage2 import cfv
 from evening_production import git,find_champion,EXPECTED_CHAMPION_SHA256
 from overnight_production import select_handoff,plan_counts,group_stop,ONLINE,OFFLINE
-from server_resources import core_plan,pin
+from server_resources import core_plan,pin,SERVER_TARGET_HOURS,SERVER_WATCHDOG_SECONDS
 from server_checkpoint import Checkpoints
 from server_arena import profiles,ARM_ORDER,assert_production_cfv,run_arm,compare_arms,rank_arms,SERVER_ITERATIONS
 from server_benchmark import gates,full_power_gates
 from server_pr85 import PR85_SHA,build as build_pr85
 from server_packaging import reserve,package_one
+
 
 
 def source_lock(expected):
@@ -131,7 +132,7 @@ def _execute(a):
     else:source,handoff=select_handoff(a.evening_root,champion,a.fresh)
     identity=dict(commit=a.expected_commit,champion=str(champion),champion_sha256=cfv.digest(champion),
                   handoff_sha256=cfv.digest(source),handoff=handoff,workers=workers,resources=resources,
-                  hours=a.hours,smoke=a.smoke,deliver=str(a.deliver.resolve()),server_profile='xeon-four-arm-v1',
+                  hours=a.hours,full_precision=a.full_precision,smoke=a.smoke,deliver=str(a.deliver.resolve()),server_profile='xeon-four-arm-v1',
                   runtime=dict(torch=torch.__version__,cuda=torch.version.cuda,numpy=np.__version__))
     if a.cfv_data_recovery:
         identity['cfv_recovery']=dict(root=str(a.reuse_evening_run.resolve()),source=str(a.reuse_source.resolve()))
@@ -196,7 +197,7 @@ def _execute(a):
             audit=stage('historical_cfv_compatibility',lambda folder:inspect_history(a.reuse_evening_run,a.reuse_source,folder))
             summary['historical_cfv_compatibility']=audit;publish()
             offline_benchmark=stage('offline_label_quality_throughput',lambda folder:benchmark_labels(
-                audit,folder,workers))
+                audit,folder,workers,full_precision=a.full_precision))
             summary['offline_label_benchmark']=offline_benchmark;publish()
         def compute_plan(folder):
             if a.smoke:
@@ -231,7 +232,7 @@ def _execute(a):
             bench=max((r.get('mean_ms',100.) for r in calibration['pilot_gates'].values()))/1000*512+12*.5+10.
             if a.cfv_data_recovery:
                 from cfv_recovery import choose_plan as recovery_plan
-                plan=recovery_plan(audit,offline_benchmark,rates,a.hours,store.age(),probe['seconds'],bench,workers)
+                plan=recovery_plan(audit,offline_benchmark,rates,a.hours,store.age(),probe['seconds'],bench,workers,full_precision=a.full_precision)
                 cfv.atomic_json(folder/'RECOVERY_PLAN.json',plan)
                 return plan
             return choose_plan(rates,a.hours,probe['seconds'],bench,store.age(),workers)
@@ -284,6 +285,23 @@ def _execute(a):
         def arm_update(arenas,exclusions,latencies):
             summary.update(arena=arenas,exclusions=exclusions)
             summary['gates']['trained_arms']=latencies;publish()
+            if not a.full_precision or 'A' not in arenas or len(arenas)==len(plan['arms']):
+                return
+            compared=compare_arms(arenas)
+            ranking=rank_arms(compared,exclusions)
+            if not ranking:
+                return
+            snapshot=''.join(arenas)
+            def preview(folder):
+                root=folder/'candidates'
+                run_id=a.expected_commit+':'+str(out)+':preview:'+snapshot
+                reservation=reserve(root,folder,run_id,ranking)
+                return {version:package_one(previous,nets,root,folder,reservation,int(version),
+                    arm,arm_profiles[arm],compared[arm]['promoted'],
+                    lambda release,path:measure(release,path,corpus,resources),preview=snapshot)
+                    for version,arm in reservation['versions'].items()}
+            summary['provisional_packages']=stage('arena_packages_'+snapshot,preview,clean=False)
+            publish()
         arenas,exclusions,latencies=arena_phase(releases,nets,corpus,resources,workers,stage,arm_update,gate_function=full_power_gates)
         if 'A' not in arenas:
             summary['status']='FAILED_NO_PAIRED_BASELINE';summary['packaging_reason']='No valid paired A results; no unsupported promotion or unsafe fallback is published.'
@@ -299,6 +317,7 @@ def _execute(a):
             if packed.get('excluded'):exclusions[arm]=packed['reason'];summary.setdefault('package_exclusions',[]).append(packed)
             else:packages[str(version)]=packed
             summary.update(packages=packages,exclusions=exclusions);publish()
+        summary.pop('provisional_packages',None)
         source_lock(a.expected_commit)
         if cfv.digest(champion)!=identity['champion_sha256'] or cfv.digest(source)!=identity['handoff_sha256']:
             raise RuntimeError('source checkpoint changed')
@@ -320,7 +339,7 @@ def _execute(a):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--hours',type=float,default=8.5);p.add_argument('--workers',type=int);p.add_argument('--inference-core',type=int)
+    p.add_argument('--hours',type=float,default=None);p.add_argument('--workers',type=int);p.add_argument('--inference-core',type=int)
     p.add_argument('--expected-commit',required=True);p.add_argument('--champion',type=Path)
     p.add_argument('--out',type=Path,required=True);p.add_argument('--deliver',type=Path,default=Path('/root/autodl-tmp/sprint24/deliver'))
     p.add_argument('--evening-root',type=Path,default=Path('/root/autodl-tmp/sprint24/evening_production'))
@@ -329,9 +348,15 @@ def main(argv=None):
     p.add_argument('--cfv-data-recovery',action='store_true',help='audit/relabel historical public states and transfer-initialize CFVs; enforce 80k/50k')
     p.add_argument('--reuse-evening-run',type=Path,default=Path('/root/autodl-tmp/sprint24/evening_production/20261104T142449Z_5cbf1db6'))
     p.add_argument('--reuse-source',type=Path,default=Path('/root/autodl-tmp/poker-evening-anchor-fix-5cbf1db'))
+    p.add_argument('--full-precision',action='store_true',help='lock V23 recovery counts, offline 64/32 x4, and all four arms')
     p.add_argument('--_run',action='store_true',help=argparse.SUPPRESS)
     a=p.parse_args(argv)
-    if not 0<a.hours<=8.5:p.error('hours must be >0 and <=8.5; hard watchdog remains 9h')
+    if a.hours is None:a.hours=SERVER_TARGET_HOURS if a.cfv_data_recovery else 8.5
+    if not 0<a.hours<=SERVER_TARGET_HOURS:p.error('hours must be >0 and <=14.5')
+    if not a.cfv_data_recovery and a.hours>8.5 and not (a.smoke or a.benchmark_only):
+        p.error('server hours above 8.5 require --cfv-data-recovery')
+    if a.full_precision and (not a.cfv_data_recovery or a.smoke or a.benchmark_only):
+        p.error('--full-precision requires a production --cfv-data-recovery run')
     source_lock(a.expected_commit)
     if a._run:
         try:return _execute(a)
@@ -346,8 +371,8 @@ def main(argv=None):
         started=datetime.datetime.now(datetime.timezone.utc)
         checkpoint=a.out/'CHECKPOINTS.json'
         if checkpoint.exists():started=datetime.datetime.fromisoformat(json.loads(checkpoint.read_text())['started_utc'])
-        remaining=9*3600-(datetime.datetime.now(datetime.timezone.utc)-started).total_seconds()
-        if remaining<=0:raise RuntimeError('the run has exhausted its cumulative 9h watchdog')
+        remaining=SERVER_WATCHDOG_SECONDS-(datetime.datetime.now(datetime.timezone.utc)-started).total_seconds()
+        if remaining<=0:raise RuntimeError('the run has exhausted its cumulative 16h watchdog')
         arguments=list(sys.argv[1:] if argv is None else argv)
         child=subprocess.Popen([sys.executable,str(Path(__file__).resolve()),*arguments,'--_run'],start_new_session=True)
         def stop(signum,frame):raise KeyboardInterrupt
@@ -357,7 +382,7 @@ def main(argv=None):
             group_stop(child,grace=0.)
             path=a.out/'OVERNIGHT_FINAL_REPORT.json'
             report=json.loads(path.read_text()) if path.exists() else {}
-            report.update(status='WATCHDOG_FAILED',reason='maximum cumulative 9h process-group watchdog or interruption',commit=a.expected_commit)
+            report.update(status='WATCHDOG_FAILED',reason='maximum cumulative 16h process-group watchdog or interruption',commit=a.expected_commit)
             cfv.atomic_json(path,report)
             return 1
         finally:

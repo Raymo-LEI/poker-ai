@@ -1,6 +1,7 @@
 """Under-30-second local smoke; no full pytest, benchmark, dataset or training run."""
 import sys
 from pathlib import Path
+import subprocess
 import tempfile
 import time
 import numpy as np
@@ -9,11 +10,16 @@ sys.path[:0]=[str(ROOT/'src'),str(ROOT/'scripts/sprint24')]
 from alphanl.stage2 import cfv
 from evening_pipeline import sample_spot
 from overnight_data import label,TREE
-from cfv_recovery import require_floor,RecoveryStop,decode_state,assert_disjoint,old_artifact,choose_plan
+from cfv_recovery import require_floor,RecoveryStop,decode_state,assert_disjoint,old_artifact,choose_plan,function_hash,OLD_COMMIT
 
 
 def main():
     started=time.monotonic()
+    relative='src/alphanl/stage2/deep_solver_v2.py'
+    before=subprocess.check_output(['git','show',OLD_COMMIT+':'+relative],cwd=ROOT,text=True)
+    after=(ROOT/relative).read_text()
+    for function in ('pack_many','_public','expand_range','bucket_values'):
+        assert function_hash(before,function)==function_hash(after,function),function
     require_floor({'river':80000,'turn':50000})
     try:require_floor({'river':8192,'turn':4352})
     except RecoveryStop:pass

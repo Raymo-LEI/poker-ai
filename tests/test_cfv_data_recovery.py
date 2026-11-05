@@ -92,6 +92,18 @@ def test_audit_proves_fixed_evaluator_and_relabels_old_tree(tmp_path,monkeypatch
     with pytest.raises(ValueError):r.old_artifact(root/'b/river_ds.npz',bad,'dataset')
 
 
+def test_historical_32_bucket_path_matches_current_full_combo_capable_solver():
+    # The actual historical expand_range body, before the full-combo guard.
+    old='''def expand_range(ranges, bins):
+    ranges = normalize_range(ranges)
+    count = np.bincount(bins, minlength=32)
+    return ranges[bins] / count[bins]
+'''
+    source=Path(r.solver.__file__).read_text()
+    assert r.function_hash(old,'expand_range')==r.function_hash(source,'expand_range')
+    assert r.function_hash(old.replace('minlength=32','minlength=16'),'expand_range')!=r.function_hash(source,'expand_range')
+
+
 def test_warm_start_copies_weights_and_runs_new_epochs():
     x=np.stack([spot(),spot(14)]);y=np.full((2,32),.125,np.float32)
     initial=zero_weights(bias=.125)

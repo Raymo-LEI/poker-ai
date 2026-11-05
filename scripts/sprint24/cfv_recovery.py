@@ -39,6 +39,14 @@ def schema_hash():
 
 def function_hash(source,name):
     node=next(n for n in ast.parse(source).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name==name)
+    if name=='expand_range' and len(node.body)==4:
+        # The current solver has a full-combo fast path. Historical rows
+        # have 32 entries and >1,000 legal combos, so that branch is unreachable.
+        # Ignore only the precisely identified guard, not arbitrary new code.
+        first=node.body[0]
+        guard=ast.parse('np.asarray(ranges).shape == (len(bins),)',mode='eval').body
+        if isinstance(first,ast.If) and not first.orelse and ast.dump(first.test)==ast.dump(guard):
+            node.body=node.body[1:]
     return hashlib.sha256(ast.dump(node,include_attributes=False).encode()).hexdigest()
 
 
@@ -84,8 +92,10 @@ def inspect_history(root,checkout,out):
     if original!=Path(solver.__file__).with_name('portable_evaluator.py').read_bytes():
         raise ValueError('historical portable evaluator differs from repaired evaluator')
     result=dict(recovery=RECOVERY,old_commit=OLD_COMMIT,root=str(root),sources=sources,schema=cfv.SCHEMA,
+                completed_report_sha256=cfv.digest(root/'FINAL_REPORT.json'),
                 schema_sha256=schema_hash(),evaluator=dict(version='exact-vector-pack-v1-post-fix',
-                ast_sha256=evaluators,portable_sha256=hashlib.sha256(original).hexdigest()),
+                ast_sha256=evaluators,portable_sha256=hashlib.sha256(original).hexdigest(),
+                range_contract='32 buckets only; unreachable full-combo input branch excluded from expand_range hash'),
                 pot_normalization='identical cfv.py bytes; x[119]*200 = pot/BB; targets zero_sum_root_bb',datasets={})
     for name,street in (('river',3),('turn',2)):
         data,meta=old_artifact(root/'b'/(name+'_ds.npz'),sources,'dataset')
@@ -99,7 +109,8 @@ def inspect_history(root,checkout,out):
             original_labels_per_second=meta['samples']/meta['active_compute_s'],original_iterations=meta['iterations'],
             original_chance_samples=meta['chance_samples'])
         # Old validation is never new validation and never training augmentation.
-        old_artifact(root/'b'/(name+'_holdout.npz'),sources,'dataset')
+        _,valid_meta=old_artifact(root/'b'/(name+'_holdout.npz'),sources,'dataset')
+        result['datasets'][name]['historical_holdout_sha256']=valid_meta['sha256']
     weights,meta=old_artifact(root/'b/cfv_nets.npz',sources,'nets');cfv.validate_weights(weights)
     if meta.get('epochs',0)<1:raise ValueError('historical CFV checkpoint is untrained')
     result['warm_start']=dict(path=str(root/'b/cfv_nets.npz'),sha256=meta['sha256'],epochs=meta['epochs'],
@@ -111,7 +122,10 @@ def inspect_history(root,checkout,out):
 def historical_data(audit,name,holdout=False):
     p=Path(audit['datasets'][name]['path'])
     if holdout:p=p.with_name(name+'_holdout.npz')
-    return old_artifact(p,audit['sources'],'dataset')[0]
+    arrays,meta=old_artifact(p,audit['sources'],'dataset')
+    key='historical_holdout_sha256' if holdout else 'sha256'
+    if meta['sha256']!=audit['datasets'][name][key]:raise ValueError('historical CFV artifact changed after audit: '+str(p))
+    return arrays
 
 
 def board_ids(x):

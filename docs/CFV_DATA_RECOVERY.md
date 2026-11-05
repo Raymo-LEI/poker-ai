@@ -16,8 +16,9 @@ Its `b/river_ds.npz` has 100,608 rows; `b/turn_ds.npz` has 68,096 rows.
 Import verifies NPZ SHA256, array digest, all manifest source hashes, completeness,
 kind, dimensions, schema, units, and the actual historical git source bytes.
 The entire feature/normalization implementation must match current `cfv.py`.
-The repaired evaluator (`pack_many`), public bucket map, range expansion, and
-bucket-value reduction must have identical AST hashes; the portable evaluator
+The repaired evaluator (`pack_many`), public bucket map, historical 32-bucket
+range path, and bucket-value reduction must have identical AST hashes. The
+current full-combo input branch is unreachable for the old 32-entry rows. The portable evaluator
 must match byte for byte. `COMPATIBILITY.json` records a schema fingerprint and
 those evaluator hashes. A schema string by itself is never accepted as proof.
 

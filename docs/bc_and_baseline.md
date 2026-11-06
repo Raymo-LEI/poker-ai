@@ -1,5 +1,7 @@
 # 控制组卷积网与 c_1048 行为克隆
 
+这是历史对照，不是主模型。卷积网在 `src/alphanl_control/`，配置在 `configs/alphanl_control/`。SD-CFR、下注历史 Transformer、Stage 2 和 Botzone 内核不导入它，也不需要 `third_party/AlphaNLHoldem`。
+
 只写了代码和 CPU 冒烟，没有正式训练。目标是：PPO、5 维策略头、非法动作掩码、训练脚本都不变，实验只改 `encoder`。
 
 | `encoder` | 网络 | 观测 |
@@ -12,13 +14,13 @@
 两份笔记本 / Colab 配置：
 
 - `configs/transformer/laptop_8gb.json`、`configs/transformer/colab_l4.json`：Transformer
-- `configs/transformer/laptop_8gb_conv.json`、`configs/transformer/colab_l4_conv.json`：控制组
+- `configs/alphanl_control/laptop_8gb_conv.json`、`configs/alphanl_control/colab_l4_conv.json`：控制组
 
 控制组大约 **424,710** 个参数，宽度是上游写死的 16 / 32 / 64，不看 `model.d_model`。`model.*` 留在 JSON 里只是为了和另一份配置同一套字段；换编码器时不要同时改 PPO。Colab 那份只把 batch 加大，网络本身仍是这一个小卷积网，8GB 笔记本也跑得下那份网络，但 32×256 的 rollout 会先卡在 rlcard 上。
 
 ## 和 TF 1.15 原网络对齐了什么
 
-`src/alphanl/transformer/conv_net.py` 按 `agi/nl_holdem_net.py` 移植：
+`src/alphanl_control/conv_net.py` 按 `agi/nl_holdem_net.py` 移植：
 
 - 牌面 `(4, 13, 6)`、动作历史 `(4, 5, 25)`，通道在最后一维，和 wrapper 一致。
 - 三个 stage：`[16, stride 1, 1 block]`、`[32, stride 2, 2 blocks]`、`[64, stride 2, 2 blocks]`。
@@ -27,7 +29,7 @@
 - Flatten 用 NHWC 顺序，这样 `extra_fc` / `fc_1` 的核才能和 TF 对上。牌面和历史各自 flatten 成 64 维。
 - 后面是 256 → 128 → 64，策略头 `conv_fuse`（5 维），价值头 `value_out`（1 维）。
 
-观测编码在 `src/alphanl/nl_obs.py`，按 `NlHoldemEnvWrapper._get_observation`：花色 `CDHS`、点数 `23456789TJQKA`、每条街只保留前 6 个动作、最后一维整片写成当前座位号。这个文件只有 NumPy，给 Python 3.7 的导出脚本用，不进 PyTorch。
+观测编码在 `src/alphanl_control/nl_obs.py`，按 `NlHoldemEnvWrapper._get_observation`：花色 `CDHS`、点数 `23456789TJQKA`、每条街只保留前 6 个动作、最后一维整片写成当前座位号。这个文件只有 NumPy，给 Python 3.7 的导出脚本用，不进 PyTorch。
 
 ## 对不齐、或者故意没搬进 PPO 的地方
 
@@ -46,8 +48,8 @@
 
 两个环境不要装在一起。
 
-1. **Python 3.7 + `requirements-alphanl.txt`** 里跑 `scripts/dump_c1048_bc.py`。它用 TF 1.15 的 `c_1048` 自己跟自己打（或打随机 / 其他 pkl），把每次决策写成 npz：卷积观测、合法掩码、教师概率、采样动作，以及一份 JSON（手牌、历史、盲注座位），好让 PyTorch 这边再做成 Transformer 的 token。
-2. **Python 3.10+ + `requirements-transformer.txt`** 里跑 `scripts/train_bc.py`。损失是对教师概率的 KL，或对动作的交叉熵。非法动作会从教师分布里去掉再归一化，学生的 softmax 用和 PPO 相同的掩码。某一行教师把质量全放在非法动作上时，退回成合法动作上的均匀分布。
+1. **Python 3.7 + `requirements-alphanl.txt`** 里跑 `scripts/alphanl_control/dump_c1048_bc.py`。它用 TF 1.15 的 `c_1048` 自己跟自己打（或打随机 / 其他 pkl），把每次决策写成 npz：卷积观测、合法掩码、教师概率、采样动作，以及一份 JSON（手牌、历史、盲注座位），好让 PyTorch 这边再做成 Transformer 的 token。
+2. **Python 3.10+ + `requirements-transformer.txt`** 里跑 `scripts/alphanl_control/train_bc.py`。损失是对教师概率的 KL，或对动作的交叉熵。非法动作会从教师分布里去掉再归一化，学生的 softmax 用和 PPO 相同的掩码。某一行教师把质量全放在非法动作上时，退回成合法动作上的均匀分布。
 
 BC checkpoint（`update = -1`）可以用两种方式接进 PPO：
 
@@ -63,16 +65,16 @@ BC checkpoint（`update = -1`）可以用两种方式接进 PPO：
 conda activate alphanl
 cd /path/to/poker-ai
 export PYTHONPATH=src
-python scripts/dump_c1048_bc.py \
+python scripts/alphanl_control/dump_c1048_bc.py \
   --weights third_party/AlphaNLHoldem/weights/c_1048.pkl \
   --hands 200 --opponent self --seed 0 \
   --out data/c1048_self.npz
 
 # 对随机对手，只记录教师座位（每手换边）
-python scripts/dump_c1048_bc.py --hands 200 --opponent random --out data/c1048_vs_random.npz
+python scripts/alphanl_control/dump_c1048_bc.py --hands 200 --opponent random --out data/c1048_vs_random.npz
 
 # 对其他 pkl。每个对手一份 TF 图，池子别一下放太多。
-python scripts/dump_c1048_bc.py --hands 100 --opponent pool \
+python scripts/alphanl_control/dump_c1048_bc.py --hands 100 --opponent pool \
   --pool third_party/AlphaNLHoldem/weights/c_1048.pkl \
   --out data/c1048_vs_pool.npz
 ```
@@ -86,20 +88,20 @@ export PYTHONPATH=src
 export ALPHANL_PYTHON=/path/to/alphanl/bin/python   # 仅当下面用 --dump 时需要
 
 # 控制组：先把 c_1048 灌进去，再 KL 微调，再 PPO
-python scripts/train_bc.py \
-  --config configs/transformer/laptop_8gb_conv.json \
+python scripts/alphanl_control/train_bc.py \
+  --config configs/alphanl_control/laptop_8gb_conv.json \
   --data data/c1048_self.npz \
   --init-c1048 third_party/AlphaNLHoldem/weights/c_1048.pkl \
   --loss kl --steps 2000 --batch-size 256 \
   --out runs/bc_conv/bc.pt
 
 python scripts/train_transformer.py \
-  --config configs/transformer/laptop_8gb_conv.json \
+  --config configs/alphanl_control/laptop_8gb_conv.json \
   --init-weights runs/bc_conv/bc.pt \
   --updates 2 --checkpoint-every 1          # 冒烟；正式跑去掉 --updates
 
 # Transformer：不能 --init-c1048，只能 BC
-python scripts/train_bc.py \
+python scripts/alphanl_control/train_bc.py \
   --config configs/transformer/laptop_8gb.json \
   --data data/c1048_self.npz \
   --loss kl --steps 2000 \
@@ -124,13 +126,13 @@ python scripts/train_transformer.py \
 # 环境 A（Python 3.7）
 conda activate alphanl
 export PYTHONPATH=src
-python scripts/compare_c1048_probs.py dump-tf \
+python scripts/alphanl_control/compare_c1048_probs.py dump-tf \
   --weights third_party/AlphaNLHoldem/weights/c_1048.pkl \
   --hands 20 --out data/c1048_probs.npz
 
 # 环境 B（Python 3.10+）
 export PYTHONPATH=src
-python scripts/compare_c1048_probs.py compare \
+python scripts/alphanl_control/compare_c1048_probs.py compare \
   --weights third_party/AlphaNLHoldem/weights/c_1048.pkl \
   --data data/c1048_probs.npz
 ```
@@ -144,14 +146,14 @@ from google.colab import drive
 drive.mount('/content/drive')
 # 代码与 data/c1048_self.npz 放到 /content/poker-ai 之后：
 !pip install -q -r requirements-transformer.txt
-!PYTHONPATH=src python scripts/train_bc.py \
-    --config configs/transformer/colab_l4_conv.json \
+!PYTHONPATH=src python scripts/alphanl_control/train_bc.py \
+    --config configs/alphanl_control/colab_l4_conv.json \
     --data /content/drive/MyDrive/poker-ai/c1048_self.npz \
     --init-c1048 /content/drive/MyDrive/poker-ai/c_1048.pkl \
     --loss kl --steps 2000 \
     --out /content/drive/MyDrive/poker-ai/bc_conv.pt
 !PYTHONPATH=src python scripts/train_transformer.py \
-    --config configs/transformer/colab_l4_conv.json \
+    --config configs/alphanl_control/colab_l4_conv.json \
     --init-weights /content/drive/MyDrive/poker-ai/bc_conv.pt \
     --resume
 ```
@@ -163,7 +165,7 @@ Transformer 热启动把配置换成 `configs/transformer/colab_l4.json`，并�
 ```bash
 export PYTHONPATH=src
 python3 -m pytest -q tests/test_bc_baseline.py
-python3 scripts/compare_c1048_probs.py    # 无权重时打印 UNVERIFIED
+python3 scripts/alphanl_control/compare_c1048_probs.py    # 无权重时打印 UNVERIFIED
 ```
 
 覆盖：配置开关、两种编码器的 logit/value 形状、TF same-pad、`extra_info` 不影响输出、权重布局往返、非法教师质量被丢掉、合成数据上 BC loss 下降、BC checkpoint 能被 PPO 的 `load_checkpoint` + `ppo_update` 读入、卷积观测能进同一条 rollout。

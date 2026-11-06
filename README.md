@@ -40,7 +40,7 @@
 
 ## Transformer PPO
 
-下注历史 token 编码器、策略头和价值头、自博弈及 PFSP。支持 `rlcard`、`pokerkit` 和 Botzone 规则后端，另有卷积控制组、行为克隆，以及旧 [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) 基线适配。见 [Transformer 路径](docs/step3_transformer.md)、[控制组](docs/bc_and_baseline.md)和 [Botzone 里程碑 M1–M12](docs/botzone_transformer_milestones.md)。
+下注历史 token 编码器、策略头和价值头、自博弈及 PFSP。支持 `rlcard`、`pokerkit` 和 Botzone 规则后端。这个编码器是本仓库自己写的，不是 [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) 的卷积网。卷积控制组、`c_1048` 行为克隆和旧基线适配在 `src/alphanl_control/`，主线训练不加载它们。见 [Transformer 路径](docs/step3_transformer.md)、[控制组](docs/bc_and_baseline.md)和 [Botzone 里程碑 M1–M12](docs/botzone_transformer_milestones.md)。
 
 配置在 `configs/transformer/`。续训见 [训练说明](docs/training.md)。Windows 上进程被杀掉之后，`tools/train_autoresume.ps1` 只从写完的 PPO checkpoint 拉起，见 [自动续训](docs/train_autoresume.md)。
 
@@ -150,7 +150,7 @@ PYTHONPATH=src python scripts/smoke_stage2.py --out-dir runs/stage2_smoke
 
 这次冒烟写明自己只验证接口和 CPU 执行。它的输出不能当作 Stage 1 或 Stage 2 的强度。
 
-旧 AlphaNLHoldem 使用独立的 Python 3.7 / TensorFlow 1.15 环境，依赖文件是 `requirements-alphanl.txt`。需要上游代码或 `c_1048` 权重时：
+主线的 CFR、Transformer、Stage 2 和 Botzone 路径不需要 AlphaNLHoldem 子模块。历史控制组使用独立的 Python 3.7 / TensorFlow 1.15 环境，依赖文件是 `requirements-alphanl.txt`。需要上游代码或 `c_1048` 权重时：
 
 ```bash
 git submodule update --init --recursive
@@ -170,12 +170,13 @@ PYTHONPATH=src python -m alphanl.cfr.kuhn --iterations 1000
 Kuhn 是表格型 external-sampling CFR 的玩具博弈，用来核对采样和可利用度下降。它的数字不是 Hold'em 收敛结果。R06 记录过 1000 次迭代、种子 1 的一次 CPU 运行。
 
 - `src/alphanl/cfr/`：SD-CFR、reservoir、并行采样、历史策略、蒸馏、评测与 checkpoint。
-- `src/alphanl/transformer/`：牌桌适配、观测编码、PPO、PFSP 和模型。
+- `src/alphanl/transformer/`：牌桌适配、下注历史编码、PPO、PFSP 和主线模型。卷积控制组不在这里。
 - `src/alphanl/botzone/`：官方裁判内核、合法响应、A5/A6 schema、规则机器人。
 - `src/alphanl/stage2/`：50 手环境、残差策略、对手池、导出、部署护栏和蓝图子博弈搜索。
 - `src/alphanl/exploiter/`：更早的 50 手残差原型。
-- `scripts/`：训练、评测、基准、监控和冒烟入口。
-- `configs/cfr/`、`configs/transformer/`、`configs/stage2/`：对应路径的配置。
+- `src/alphanl_control/`：历史 AlphaNLHoldem 控制组。PyTorch 移植的 `NlHoldemNet`、观测移植、TF 教师和 step-1 基线。包名 `alphanl` 是历史命名，不表示主模型建立在这份代码上。
+- `scripts/`：训练、评测、基准、监控和冒烟入口。`scripts/alphanl_control/` 是 `c_1048` 导出、对照和克隆。
+- `configs/cfr/`、`configs/transformer/`、`configs/stage2/`：主线配置。`configs/alphanl_control/` 是卷积控制组配置。
 - `eval/`：Slumbot 客户端、GTO Wizard 脚手架，以及 R02–R06、R08 的结果和清单。
 - `botzone_bots/`、`tools/`：可上传的入口和打包工具。
 - `docs/`：规则、算法、训练和部署说明。[调研笔记](docs/reference_survey.md)记录早期基线。
@@ -184,4 +185,4 @@ Kuhn 是表格型 external-sampling CFR 的玩具博弈，用来核对采样和�
 
 ## 许可与第三方代码
 
-仓库根目录目前没有 `LICENSE` 文件。`third_party/AlphaNLHoldem` 是独立的 Git 子模块。使用其代码以及其他依赖时，分别查看对应上游项目的许可。GTO Wizard 公开客户端同样没有随仓库附带许可证，因此没有被内嵌。
+仓库使用 [GNU AGPL-3.0](LICENSE)。来源划分写在 [NOTICE](NOTICE)：主线代码、从 AlphaNLHoldem 移植的控制组、`third_party/AlphaNLHoldem` 子模块，以及其他第三方。GTO Wizard 公开客户端没有许可证，因此没有被内嵌。`tests/fixtures/botzone_judge.py` 是未修改的官方裁判夹具，保留其自身条款，不是本仓库的原创代码。

@@ -8,7 +8,7 @@ Does not train unless you run it. ``--dry-run`` only prints the model size.
     python scripts/train_transformer.py --config configs/transformer/colab_l4.json --entropy-coef 0.02
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume   # newest ckpt
     python scripts/train_transformer.py --config configs/transformer/laptop_8gb.json --resume auto
-    python scripts/train_transformer.py --config configs/transformer/laptop_8gb_conv.json --init-weights runs/bc_conv/bc.pt
+    python scripts/train_transformer.py --config configs/alphanl_control/laptop_8gb_conv.json --init-weights runs/bc_conv/bc.pt
 """
 
 from __future__ import annotations

@@ -1,15 +1,19 @@
-"""Behavior-cloning warm start for either encoder.
+"""Behavior-cloning loss shared by the Botzone rulebot trainer.
 
 The loss is cross-entropy to a teacher action, or KL from the teacher
 distribution to the student. Illegal actions are removed from the teacher and
 from the student softmax (the same ``masked_log_probs`` PPO uses). A teacher
 that put mass on an illegal action is renormalized over the legal set; a row
 with no legal teacher mass falls back to uniform over the legal actions.
+
+The c_1048 conv batches are loaded by ``alphanl_control.bc_data``. This
+module imports that package only when ``encoder`` is ``alphanl_conv``.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -113,25 +117,65 @@ def bc_update(
     return {key: value / updates for key, value in totals.items()}
 
 
+def kl_value(model, batch, teacher, *, minibatch_size: int) -> float:
+    """Row-weighted KL from :func:`bc_losses`. No optimizer step.
+
+    Illegal teacher mass is dropped inside ``bc_losses`` the same way a
+    training step drops it. ``scripts/train_bc_rulebot.py`` reports this
+    number. The historical c_1048 script uses :func:`bc_update` directly.
+    """
+
+    count = int(teacher.shape[0])
+    if count == 0:
+        raise ValueError("KL requires at least one row")
+    width = max(1, int(minibatch_size))
+    was_training = model.training
+    model.eval()
+    total = 0.0
+    try:
+        with torch.no_grad():
+            for start in range(0, count, width):
+                index = torch.arange(start, min(start + width, count), device=teacher.device)
+                _loss, metrics = bc_losses(
+                    model,
+                    slice_batch(batch, index),
+                    teacher_probs=teacher.index_select(0, index),
+                    kind="kl",
+                )
+                value = float(metrics["kl"])
+                if not math.isfinite(value):
+                    raise RuntimeError(f"non-finite KL {value}")
+                total += value * int(index.shape[0])
+    finally:
+        if was_training:
+            model.train()
+    return total / float(count)
+
+
+def train_kl_epoch(model, optimizer, batch, teacher, *, minibatch_size: int, max_grad_norm: float) -> float:
+    """One pass of :func:`bc_update` with ``kind='kl'``. Returns that pass's mean loss."""
+
+    metrics = bc_update(
+        model,
+        optimizer,
+        batch,
+        teacher_probs=teacher,
+        actions=None,
+        kind="kl",
+        epochs=1,
+        minibatch_size=int(minibatch_size),
+        max_grad_norm=float(max_grad_norm),
+    )
+    value = float(metrics["loss"])
+    if not math.isfinite(value):
+        raise RuntimeError(f"non-finite training KL {value}")
+    return value
+
+
 def load_bc_npz(path: Path | str) -> Dict[str, np.ndarray]:
     path = Path(path)
     with np.load(path, allow_pickle=True) as blob:
         return {key: blob[key] for key in blob.files}
-
-
-def conv_tensors_from_npz(arrays: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-    required = ("card_info", "action_info", "extra_info", "legal_mask", "probs", "actions")
-    missing = [key for key in required if key not in arrays]
-    if missing:
-        raise KeyError("BC npz is missing %s" % missing)
-    return {
-        "card_info": torch.from_numpy(np.asarray(arrays["card_info"], dtype=np.float32)),
-        "action_info": torch.from_numpy(np.asarray(arrays["action_info"], dtype=np.float32)),
-        "extra_info": torch.from_numpy(np.asarray(arrays["extra_info"], dtype=np.float32)),
-        "legal_mask": torch.from_numpy(np.asarray(arrays["legal_mask"], dtype=np.float32)),
-        "probs": torch.from_numpy(np.asarray(arrays["probs"], dtype=np.float32)),
-        "actions": torch.from_numpy(np.asarray(arrays["actions"], dtype=np.int64)),
-    }
 
 
 def transformer_tensors_from_npz(arrays: Dict[str, np.ndarray], max_seq_len: int) -> Dict[str, torch.Tensor]:
@@ -144,7 +188,8 @@ def transformer_tensors_from_npz(arrays: Dict[str, np.ndarray], max_seq_len: int
 
     if "meta_json" not in arrays:
         raise KeyError(
-            "transformer BC needs meta_json in the npz (re-run scripts/dump_c1048_bc.py)"
+            "transformer BC needs meta_json in the npz "
+            "(re-run scripts/alphanl_control/dump_c1048_bc.py)"
         )
     from .history import build_snapshot
     from .tokenizer import BettingHistoryTokenizer, cat_batches
@@ -185,6 +230,8 @@ def transformer_tensors_from_npz(arrays: Dict[str, np.ndarray], max_seq_len: int
 
 def dataset_for_encoder(cfg: ExperimentConfig, arrays: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
     if cfg.encoder == "alphanl_conv":
+        from alphanl_control.bc_data import conv_tensors_from_npz
+
         return conv_tensors_from_npz(arrays)
     if cfg.encoder == "transformer":
         return transformer_tensors_from_npz(arrays, cfg.model.max_seq_len)

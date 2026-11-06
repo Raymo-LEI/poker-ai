@@ -11,7 +11,7 @@
 | **Submodule（选用）** | 保留上游 AGPL 代码边界清晰、diff 小、权重 `weights/c_1048.pkl` 随上游提交；`git submodule update --init` 即可拉取。 |
 | Vendor 拷贝 | 离线/CI 更简单，但仓库体积大、与上游 diff 难追踪。 |
 
-本仓库为私有仓库，在私有环境内使用 AGPL 上游符合许可说明（见根目录 README）。
+本仓库使用 AGPL-3.0，与上游相同。见根目录 `LICENSE` 和 `NOTICE`。主线训练不依赖这一步。
 
 ## 环境
 
@@ -31,17 +31,17 @@ pip install -r requirements-alphanl.txt
 ```
 
 - **CPU**：默认即可（云 agent / 笔记本均可）。
-- **CUDA（可选，如 RTX 3070）**：`eval/eval_step1.py --cuda`；需本机 TensorFlow 1.15 GPU 与驱动匹配【未在 CI 中验证 GPU 路径】。
+- **CUDA（可选，如 RTX 3070）**：`eval/alphanl_control/eval_step1.py --cuda`；需本机 TensorFlow 1.15 GPU 与驱动匹配【未在 CI 中验证 GPU 路径】。
 
 ## 代码布局
 
 | 路径 | 作用 |
 |------|------|
 | `third_party/AlphaNLHoldem/` | 上游子模块（环境、网络、权重，**未改网络结构**） |
-| `src/alphanl/inference.py` | 加载 `NlHoldemNet` + `NNAgent`，贪心出牌 |
-| `src/alphanl/bots.py` | `RandomBot`、`RuleBot`（本仓库新增，非上游） |
-| `src/alphanl/matchup.py` | 对局循环；座位平衡逻辑对齐 `agi.evaluation_tools.death_match` |
-| `eval/eval_step1.py` | CLI 评测入口 |
+| `src/alphanl_control/inference.py` | 加载 `NlHoldemNet` + `NNAgent`，贪心出牌 |
+| `src/alphanl_control/bots.py` | `RandomBot`、`RuleBot`（本仓库新增，非上游） |
+| `src/alphanl_control/matchup.py` | 对局循环；座位平衡逻辑对齐 `agi.evaluation_tools.death_match` |
+| `eval/alphanl_control/eval_step1.py` | CLI 评测入口 |
 
 ### 指标
 
@@ -54,8 +54,8 @@ pip install -r requirements-alphanl.txt
 
 ```bash
 export PYTHONPATH=src
-python eval/eval_step1.py --hands 2000 --seed 42
-# 可选：python eval/eval_step1.py --hands 2000 --progress --cuda
+python eval/alphanl_control/eval_step1.py --hands 2000 --seed 42
+# 可选：python eval/alphanl_control/eval_step1.py --hands 2000 --progress --cuda
 ```
 
 ## 复现结果（本环境）

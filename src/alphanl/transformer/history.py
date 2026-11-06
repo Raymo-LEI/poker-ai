@@ -1,9 +1,11 @@
-"""Rebuild a ``HandSnapshot`` from AlphaNLHoldem's rlcard history.
+"""Rebuild a ``HandSnapshot`` from an rlcard 1.1.0 history.
 
-``NlHoldemEnvWrapper.history`` stores ``[seat, action_id, legal_ids]`` per
-street and does not store chip amounts. This module replays the rlcard 1.1.0
-heads-up chip rules (including ``int(pot / 2)`` and the cumulative ``in_chips``
-pot) so bet sizes become pot fractions.
+This adapter is part of the mainline Transformer. It is not a port of
+``NlHoldemNet``. ``NlHoldemEnvWrapper.history`` stores
+``[seat, action_id, legal_ids]`` per street and does not store chip amounts.
+The replay below follows the rlcard 1.1.0 heads-up chip rules (including
+``int(pot / 2)`` and the cumulative ``in_chips`` pot) so bet sizes become
+pot fractions. ``NlEnvTracker`` is the reader for that wrapper.
 
 ``PokerkitTable`` does not reuse the replay. It calls ``make_action_event``
 with the real chip delta and passes the resulting events to ``HandSnapshot``.

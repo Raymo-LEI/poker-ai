@@ -1,0 +1,140 @@
+poker-ai — license and provenance
+=================================
+
+This repository is licensed under the GNU Affero General Public License
+v3.0. The full text is `LICENSE`.
+
+The Python package is still named `alphanl`. That name is historical. It
+does not mean the main model is AlphaNLHoldem, and it does not mean the
+files under `src/alphanl/` were ported from that project. Some older
+labels, including the Windows scheduled-task example
+`AlphaNL-TrainAutoresume` in `docs/train_autoresume.md`, are the same kind
+of leftover name.
+
+Archived hash maps under `docs/benchmarks/` record the tree as it was
+hashed for those runs. Paths such as `src/alphanl/transformer/conv_net.py`
+in those JSON files are the old locations, not the current layout.
+
+
+1. Original mainline
+--------------------
+
+Written in this repository. These paths do not import
+`third_party/AlphaNLHoldem` or `alphanl_control` unless a caller
+explicitly selects the `alphanl_conv` encoder.
+
+- `src/alphanl/cfr/` — SD-CFR on a PokerKit table: regret matching,
+  external sampling, reservoirs, distillation, and evaluation.
+- `src/alphanl/transformer/` — betting-history Transformer, PPO, PFSP,
+  and the rlcard / PokerKit / Botzone table adapters. `history.py`
+  replays rlcard 1.1.0 chip amounts into a `HandSnapshot`. That adapter
+  was written here. It is not a port of `NlHoldemNet`.
+- `src/alphanl/transformer/bc.py` — behavior-cloning loss. The Botzone
+  rulebot trainer (`scripts/train_bc_rulebot.py`) uses it. The c_1048
+  conv batches are loaded from `alphanl_control` only when `encoder` is
+  `alphanl_conv`.
+- `src/alphanl/stage2/` — 50-hand residual adaptation, export, and the
+  blueprint search hook.
+- `src/alphanl/exploiter/` — the earlier 50-hand residual prototype.
+- `src/alphanl/botzone/` — branchable kernel, legal responses, the A5/A6
+  schema, and `BotzoneRuleBot`. The rule bot copies strength cut points
+  from the step-1 heuristic. It does not call that heuristic's rlcard
+  `make_action`.
+- `configs/cfr/`, `configs/transformer/` (no `*_conv.json`), `configs/stage2/`.
+- Training, evaluation, and pack scripts outside `scripts/alphanl_control/`
+  and `eval/alphanl_control/`.
+
+`src/alphanl/__init__.py` does not import the control group. Importing
+`alphanl.transformer` does not import it either.
+
+
+2. AGPL-derived and control-group code
+--------------------------------------
+
+`src/alphanl_control/` is the historical AlphaNLHoldem boundary. Mainline
+CFR, the token encoder, Stage 2, and the Botzone kernel run without this
+package and without the submodule.
+
+Ported from https://github.com/bupticybee/AlphaNLHoldem (AGPL-3.0):
+
+- `src/alphanl_control/nl_obs.py` — NumPy port of
+  `NlHoldemEnvWrapper._get_observation` in
+  `agi/nl_holdem_env.py`.
+- `src/alphanl_control/conv_net.py` — PyTorch port of TF 1.15
+  `NlHoldemNet` in `agi/nl_holdem_net.py`, including the published
+  padding and the unused `extra_info` input. This is the `alphanl_conv`
+  encoder.
+- `src/alphanl_control/conv_obs.py` — torch batches of that observation.
+
+Written here, and used only for that control group or the step-1 eval:
+
+- `src/alphanl_control/inference.py` — loads the upstream net unchanged
+  through the submodule.
+- `src/alphanl_control/tf_teacher.py` — reads action probabilities from a
+  loaded TF 1.15 session.
+- `src/alphanl_control/bc_data.py` — loads a c_1048 npz into the conv batch.
+- `src/alphanl_control/bots.py` — `RandomBot` and `RuleBot` for the step-1
+  rlcard eval. Not copied from upstream.
+- `src/alphanl_control/matchup.py` — match loop for that eval. Seating
+  follows the shape of upstream `death_match`. The file is not a copy of
+  that function.
+- `src/alphanl_control/paths.py` — paths into the submodule.
+
+Scripts, configs, and eval that belong with this group:
+
+- `scripts/alphanl_control/dump_c1048_bc.py`
+- `scripts/alphanl_control/compare_c1048_probs.py`
+- `scripts/alphanl_control/train_bc.py`
+- `configs/alphanl_control/laptop_8gb_conv.json`
+- `configs/alphanl_control/colab_l4_conv.json`
+- `eval/alphanl_control/eval_step1.py`
+- `eval/alphanl_control/alphanl_worker.py`
+- `requirements-alphanl.txt` — Python 3.7 / TensorFlow 1.15 / Ray 0.8.3 pin
+  file. Do not install it into the mainline environment.
+- `docs/step1_reproduce.md`, `docs/bc_and_baseline.md`
+- `tests/test_bc_baseline.py`, `tests/test_step1_rulebot.py`
+- `tests/fake_repo/` — TensorFlow-free stand-in for the worker subprocess.
+  Nothing in the default test run executes it.
+
+`eval/slumbot_client.py` stays on the mainline import path because the
+200BB CFR Slumbot eval reuses its `State` and `post` helpers. The
+`--agent alphanl` mode is the historical 50bb control. It is not the
+200BB SD-CFR client (`scripts/eval_cfr_slumbot.py`).
+
+
+3. Submodule
+------------
+
+`third_party/AlphaNLHoldem` is a Git submodule of
+https://github.com/bupticybee/AlphaNLHoldem (AGPL-3.0). The network and
+training scripts in that tree are upstream code. This repository does
+not vendor a second copy. Initialize it only for the control group:
+
+    git submodule update --init --recursive
+
+Weights such as `weights/c_1048.pkl` ship with that upstream tree. They
+are not part of the mainline checkpoints.
+
+
+4. Other third-party material
+-----------------------------
+
+Dependencies are installed from requirements files and are not vendored.
+Their licenses stay with those projects. The ones the mainline imports
+include PokerKit (MIT), PyTorch, NumPy, and, when the rlcard backend is
+selected, rlcard 1.1.0 (MIT). `phevaluator` is imported by the equity
+and search paths.
+
+GTO Wizard client
+  https://github.com/gtowizard-ai/researcher-api-client publishes no
+  license. This tree does not vendor that source. The offline fixture
+  and the live smoke are described in `eval/gto_wizard/NOTICE.md` and
+  `docs/gto_wizard_eval.md`.
+
+Botzone official judge
+  `tests/fixtures/botzone_judge.py` is the unmodified official Botzone
+  TexasHoldem2p referee used as an oracle. It is not original code of
+  this repository, and it is not an AlphaNLHoldem port. Do not relabel
+  it as either. It keeps the terms of the official judge source it was
+  taken from. The file is hashed by the Route 1 tests, so those terms
+  are preserved by leaving the file unchanged.

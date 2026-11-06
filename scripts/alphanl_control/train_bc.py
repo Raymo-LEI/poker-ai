@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
-"""Behavior-cloning warm start, then a checkpoint PPO can load.
+"""Behavior-cloning warm start from a c_1048 dump. Historical control group.
 
-The dataset is produced by ``scripts/dump_c1048_bc.py`` in the Python 3.7
-environment. This script stays in the PyTorch environment. ``--dump`` shells
-out to that interpreter when the npz is missing; it does not import TensorFlow
-into this process.
+The dataset is produced by ``scripts/alphanl_control/dump_c1048_bc.py`` in the
+Python 3.7 environment. This script stays in the PyTorch environment.
+``--dump`` shells out to that interpreter when the npz is missing; it does
+not import TensorFlow into this process.
+
+The Botzone rulebot trainer is ``scripts/train_bc_rulebot.py``. It does not
+use this file. Both call ``alphanl.transformer.bc``.
 
     export PYTHONPATH=src
-    python scripts/train_bc.py --config configs/transformer/laptop_8gb_conv.json \\
+    python scripts/alphanl_control/train_bc.py \\
+        --config configs/alphanl_control/laptop_8gb_conv.json \\
         --data data/c1048_bc.npz --init-c1048 third_party/AlphaNLHoldem/weights/c_1048.pkl \\
         --loss kl --steps 2000 --out runs/bc_conv/bc.pt
 
-    python scripts/train_bc.py --config configs/transformer/laptop_8gb.json \\
+    python scripts/alphanl_control/train_bc.py \\
+        --config configs/transformer/laptop_8gb.json \\
         --data data/c1048_bc.npz --loss kl --steps 2000 --out runs/bc_transformer/bc.pt
 """
 
 from __future__ import annotations
 
 import argparse
-import math
 import os
 import shutil
 import subprocess
@@ -27,73 +31,17 @@ from pathlib import Path
 
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from alphanl.transformer.bc import (  # noqa: E402
-    bc_losses,
     bc_update,
     dataset_for_encoder,
     load_bc_npz,
     save_bc_checkpoint,
 )
 from alphanl.transformer.config import ExperimentConfig, resolve_device  # noqa: E402
-from alphanl.transformer.tokenizer import slice_batch  # noqa: E402
 from alphanl.transformer.train import build_model, build_optimizer  # noqa: E402
-
-
-def kl_value(model, batch, teacher, *, minibatch_size: int) -> float:
-    """Row-weighted KL from :func:`bc_losses`. No optimizer step.
-
-    ``train_bc.py``'s KL. Illegal teacher mass is dropped inside
-    ``bc_losses`` the same way a training step drops it.
-    """
-
-    count = int(teacher.shape[0])
-    if count == 0:
-        raise ValueError("KL requires at least one row")
-    width = max(1, int(minibatch_size))
-    was_training = model.training
-    model.eval()
-    total = 0.0
-    try:
-        with torch.no_grad():
-            for start in range(0, count, width):
-                index = torch.arange(start, min(start + width, count), device=teacher.device)
-                _loss, metrics = bc_losses(
-                    model,
-                    slice_batch(batch, index),
-                    teacher_probs=teacher.index_select(0, index),
-                    kind="kl",
-                )
-                value = float(metrics["kl"])
-                if not math.isfinite(value):
-                    raise RuntimeError(f"non-finite KL {value}")
-                total += value * int(index.shape[0])
-    finally:
-        if was_training:
-            model.train()
-    return total / float(count)
-
-
-def train_kl_epoch(model, optimizer, batch, teacher, *, minibatch_size: int, max_grad_norm: float) -> float:
-    """One pass of :func:`bc_update` with ``kind='kl'``. Returns that pass's mean loss."""
-
-    metrics = bc_update(
-        model,
-        optimizer,
-        batch,
-        teacher_probs=teacher,
-        actions=None,
-        kind="kl",
-        epochs=1,
-        minibatch_size=int(minibatch_size),
-        max_grad_norm=float(max_grad_norm),
-    )
-    value = float(metrics["loss"])
-    if not math.isfinite(value):
-        raise RuntimeError(f"non-finite training KL {value}")
-    return value
 
 
 def _dump_if_needed(args) -> None:
@@ -102,7 +50,7 @@ def _dump_if_needed(args) -> None:
     if not args.dump:
         raise SystemExit(
             "BC data %s is missing. Generate it in the Python 3.7 env "
-            "(scripts/dump_c1048_bc.py) or pass --dump." % args.data
+            "(scripts/alphanl_control/dump_c1048_bc.py) or pass --dump." % args.data
         )
     python = args.python or os.environ.get("ALPHANL_PYTHON") or shutil.which("python3.7")
     if not python:
@@ -112,7 +60,7 @@ def _dump_if_needed(args) -> None:
         )
     cmd = [
         python,
-        str(REPO_ROOT / "scripts" / "dump_c1048_bc.py"),
+        str(REPO_ROOT / "scripts" / "alphanl_control" / "dump_c1048_bc.py"),
         "--hands",
         str(args.dump_hands),
         "--opponent",
@@ -132,7 +80,11 @@ def _dump_if_needed(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "transformer" / "laptop_8gb.json")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=REPO_ROOT / "configs" / "alphanl_control" / "laptop_8gb_conv.json",
+    )
     parser.add_argument("--encoder", choices=("transformer", "alphanl_conv"), default=None)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
@@ -170,7 +122,7 @@ def main() -> None:
     device = torch.device(resolve_device(cfg.device))
     model = build_model(cfg).to(device)
     if args.init_c1048 is not None:
-        from alphanl.transformer.conv_net import load_tf_weights
+        from alphanl_control.conv_net import load_tf_weights
 
         missing = load_tf_weights(model, args.init_c1048)
         print("ported c_1048, missing layers:", missing)

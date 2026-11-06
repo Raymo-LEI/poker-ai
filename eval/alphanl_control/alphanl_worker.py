@@ -1,7 +1,7 @@
 """AlphaNLHoldem inference worker. Runs under the Python 3.7 / TF1.15 / Ray 0.8.3 env from poker-ai PR #2.
 Protocol: prints {"ready": true} once loaded; then for each stdin line (JSON obs with card_info,
 action_info, extra_info, legal_moves as nested lists) prints {"action": <0..4>}.
-Usage: python eval/alphanl_worker.py --repo /path/to/poker-ai [--weights path/to/c_1048.pkl]
+Usage: python eval/alphanl_control/alphanl_worker.py --repo /path/to/poker-ai [--weights path/to/c_1048.pkl]
 """
 import argparse, json, os, sys
 
@@ -15,7 +15,7 @@ def main():
     real_stdout = sys.stdout
     sys.stdout = sys.stderr  # keep library prints off the protocol channel
     import numpy as np
-    from alphanl.inference import AlphaNLHoldemAgent
+    from alphanl_control.inference import AlphaNLHoldemAgent
     agent = AlphaNLHoldemAgent(weights_path=a.weights)
     def out(d):
         real_stdout.write(json.dumps(d) + "\n"); real_stdout.flush()

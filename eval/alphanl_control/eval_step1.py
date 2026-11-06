@@ -9,12 +9,12 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from alphanl.bots import RandomBot, RuleBot
-from alphanl.inference import AlphaNLHoldemAgent
-from alphanl.matchup import run_matchup
+from alphanl_control.bots import RandomBot, RuleBot
+from alphanl_control.inference import AlphaNLHoldemAgent
+from alphanl_control.matchup import run_matchup
 
 
 def main() -> None:

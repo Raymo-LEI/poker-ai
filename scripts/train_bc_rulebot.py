@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """KL behavior cloning from ``scripts/gen_rulebot_bc.py`` into the botzone transformer.
 
-The loss and the minibatch update are :func:`train_bc.train_kl_epoch` and
-:func:`train_bc.kl_value`, which call ``bc_update`` / ``bc_losses``. This
-file does not reimplement that KL. The network is the config's
+The loss and the minibatch update are :func:`alphanl.transformer.bc.train_kl_epoch`
+and :func:`alphanl.transformer.bc.kl_value`, which call ``bc_update`` /
+``bc_losses``. This file does not reimplement that KL. The c_1048 control-group
+script is ``scripts/alphanl_control/train_bc.py`` and is not imported here.
+The network is the config's
 ``laptop_8gb`` transformer. Observations are the token fields already stored
 in the npz (the same tokenizer PPO uses). ``legal_mask`` is the maskfold
 policy mask.
@@ -43,9 +45,8 @@ import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-import train_bc  # noqa: E402
+from alphanl.transformer.bc import kl_value, save_bc_checkpoint, train_kl_epoch  # noqa: E402
 from alphanl.transformer.checkpoint import load_checkpoint  # noqa: E402
 from alphanl.transformer.config import ExperimentConfig, resolve_device  # noqa: E402
 from alphanl.transformer.tokenizer import slice_batch  # noqa: E402
@@ -208,7 +209,7 @@ def train_rulebot_bc(
     minibatch = min(batch, int(train_teacher.shape[0]))
     curve: List[dict] = []
     for epoch in range(n_epochs):
-        train_kl = train_bc.train_kl_epoch(
+        train_kl = train_kl_epoch(
             model,
             optimizer,
             train_batch,
@@ -216,7 +217,7 @@ def train_rulebot_bc(
             minibatch_size=minibatch,
             max_grad_norm=float(cfg.ppo.max_grad_norm),
         )
-        val_kl = train_bc.kl_value(model, val_batch, val_teacher, minibatch_size=minibatch)
+        val_kl = kl_value(model, val_batch, val_teacher, minibatch_size=minibatch)
         row = {"epoch": epoch, "train_kl": train_kl, "val_kl": val_kl}
         curve.append(row)
         print(f"epoch {epoch} train_kl {train_kl:.6f} val_kl {val_kl:.6f}", flush=True)
@@ -225,7 +226,7 @@ def train_rulebot_bc(
             raise RuntimeError("non-finite parameter after BC")
     out = assert_train_out(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    train_bc.save_bc_checkpoint(out, model=model, optimizer=optimizer, config=cfg.to_dict())
+    save_bc_checkpoint(out, model=model, optimizer=optimizer, config=cfg.to_dict())
     train_games = sorted({int(game) for game in arrays["game_id"].tolist()} - set(val_games))
     bc_metadata = {
         "mask_free_fold": True,

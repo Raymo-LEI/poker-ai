@@ -15,17 +15,17 @@
     },
     {
       "disposition": "frozen_botzone_5action_v1_fail_closed",
-      "path": "src/alphanl/nl_obs.py",
+      "path": "src/alphanl_control/nl_obs.py",
       "site": "NUM_ACTIONS = 5"
     },
     {
       "disposition": "frozen_botzone_5action_v1_fail_closed",
-      "path": "src/alphanl/transformer/conv_net.py",
+      "path": "src/alphanl_control/conv_net.py",
       "site": "conv head width NUM_ACTIONS"
     },
     {
       "disposition": "frozen_botzone_5action_v1_fail_closed",
-      "path": "src/alphanl/transformer/conv_obs.py",
+      "path": "src/alphanl_control/conv_obs.py",
       "site": "legal_mask width 5"
     },
     {
@@ -50,7 +50,7 @@
     },
     {
       "disposition": "frozen_botzone_5action_v1_fail_closed",
-      "path": "src/alphanl/tf_teacher.py",
+      "path": "src/alphanl_control/tf_teacher.py",
       "site": "reshape(-1, 5)"
     },
     {

@@ -119,7 +119,7 @@ class RolloutProfiler:
             self._wrap(E.PolicyActor, "prepare_pool", "opp_load_s")
         classes = [PokerTransformer]
         try:
-            from alphanl.transformer.conv_net import AlphaNLConvNet
+            from alphanl_control.conv_net import AlphaNLConvNet
             classes.append(AlphaNLConvNet)
         except Exception:  # pragma: no cover
             pass

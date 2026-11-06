@@ -9,7 +9,9 @@ numpy>=1.23
 tensorboard>=2.14
 pytest>=7
 
-# Same no-limit game AlphaNLHoldem wraps (5 actions, 50bb, blinds 1/2).
+# rlcard 1.1.0 heads-up no-limit (5 actions, 50bb, blinds 1/2).
+# The historical AlphaNLHoldem control group uses the same rlcard build.
+# Mainline SD-CFR does not import it. See NOTICE.
 rlcard==1.1.0
 # Heads-up rules for env.backend=pokerkit. Imported only when that backend is used.
 pokerkit==0.7.7

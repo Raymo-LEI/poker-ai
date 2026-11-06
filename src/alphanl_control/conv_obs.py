@@ -1,4 +1,8 @@
-"""Torch batches of the AlphaNL conv observation. The numpy layout lives in ``nl_obs``."""
+"""Torch batches of the AlphaNL conv observation. The numpy layout lives in ``nl_obs``.
+
+This observer is the control-group encoder input. The mainline tokenizer
+does not call it.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +11,8 @@ from typing import Any, Sequence
 import numpy as np
 import torch
 
-from alphanl.nl_obs import encode_observation
-from .tokenizer import TensorBatch
+from alphanl.transformer.tokenizer import TensorBatch
+from alphanl_control.nl_obs import encode_observation
 
 
 def arrays_to_batch(arrays: dict) -> TensorBatch:
@@ -26,7 +30,7 @@ def encode_table_conv(table: Any, me_seat: int) -> dict:
         raise RuntimeError(
             "conv encoding requires the acting seat, got %s vs %s" % (seat, table.current_player())
         )
-    from .tables import PokerkitTable, RlcardTable
+    from alphanl.transformer.tables import PokerkitTable, RlcardTable
 
     if isinstance(table, RlcardTable):
         return encode_observation(table.state["raw_obs"], table.history, seat)

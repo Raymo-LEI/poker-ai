@@ -133,7 +133,7 @@ def test_shared_trunk_parameters_exclude_only_the_heads():
     assert not any(name.startswith("policy_head") or name.startswith("value_head") for name in names)
     assert {id(param) for param in selected} == {id(param) for param in _trunk_excluding_heads(model)}
 
-    from alphanl.transformer.conv_net import AlphaNLConvNet
+    from alphanl_control.conv_net import AlphaNLConvNet
 
     conv = AlphaNLConvNet()
     conv_names = [

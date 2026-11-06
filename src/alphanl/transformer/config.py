@@ -124,9 +124,10 @@ class ExperimentConfig:
     seed: int = 1
     device: str = "auto"
     rollout_device: str = "cpu"
-    # ``transformer`` is the step-3 token encoder. ``alphanl_conv`` is the
-    # PyTorch port of TF1.15 ``NlHoldemNet`` (the control group). PPO, the
-    # 5-way mask, and this training script stay the same either way.
+    # ``transformer`` is this project's token encoder. ``alphanl_conv`` selects
+    # the PyTorch port of TF1.15 ``NlHoldemNet`` in ``alphanl_control``. That
+    # package is imported only when the conv encoder is built. PPO and the
+    # 5-way mask stay in this package either way.
     encoder: str = "transformer"
     # Documented path of a behavior-cloning checkpoint for a later PPO run.
     # PPO does not load this field. Pass the same path as ``--init-weights``

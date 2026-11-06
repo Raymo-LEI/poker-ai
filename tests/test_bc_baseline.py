@@ -7,7 +7,6 @@ import numpy as np
 import pytest
 import torch
 
-from alphanl.nl_obs import encode_observation, masked_softmax_tf
 from alphanl.transformer.bc import (
     bc_losses,
     bc_update,
@@ -18,13 +17,14 @@ from alphanl.transformer.bc import (
 )
 from alphanl.transformer.checkpoint import load_checkpoint
 from alphanl.transformer.config import ExperimentConfig
-from alphanl.transformer.conv_net import (
+from alphanl_control.conv_net import (
     AlphaNLConvNet,
     export_tf_weights,
     load_tf_weights,
     tf_same_pad,
 )
-from alphanl.transformer.conv_obs import AlphaNLObserver
+from alphanl_control.conv_obs import AlphaNLObserver
+from alphanl_control.nl_obs import encode_observation, masked_softmax_tf
 from alphanl.transformer.model import PokerTransformer
 from alphanl.transformer.ppo import ppo_update
 from alphanl.transformer.train import build_model, build_optimizer, collect_rollout, describe_run, flatten_rollout
@@ -62,7 +62,7 @@ def _token_batch(batch_size=8, seq=16):
 
 def test_config_switch_selects_encoder_and_shapes():
     laptop = ExperimentConfig.from_json(ROOT / "configs" / "transformer" / "laptop_8gb.json")
-    conv_cfg = ExperimentConfig.from_json(ROOT / "configs" / "transformer" / "laptop_8gb_conv.json")
+    conv_cfg = ExperimentConfig.from_json(ROOT / "configs" / "alphanl_control" / "laptop_8gb_conv.json")
     assert laptop.encoder == "transformer"
     assert conv_cfg.encoder == "alphanl_conv"
     assert "encoder=transformer" in describe_run(laptop)
@@ -320,7 +320,7 @@ def test_conv_observer_pokerkit_shapes():
 
     if importlib.util.find_spec("pokerkit") is None:
         pytest.skip("pokerkit is not installed")
-    from alphanl.transformer.conv_obs import AlphaNLObserver, encode_table_conv
+    from alphanl_control.conv_obs import AlphaNLObserver, encode_table_conv
     from alphanl.transformer.tables import PokerkitTable
 
     table = PokerkitTable(seed=0, starting_stack=100)

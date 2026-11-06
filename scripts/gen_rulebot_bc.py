@@ -70,8 +70,8 @@ and ``metadata.json`` are replaced only with ``--force``.
 on (environment mask, then ``policy_action_mask``). ``env_legal_mask`` is
 the environment mask before that drop. Token fields match the tokenizer.
 ``probs`` is a one-hot of the target id so a later KL run can treat the rule
-bot as a deterministic teacher. ``train_bc.py``'s current transformer loader
-still expects c_1048 ``meta_json``; this file does not call it.
+bot as a deterministic teacher. ``scripts/alphanl_control/train_bc.py`` still
+rebuilds transformer rows from c_1048 ``meta_json``; this file does not call it.
 
 Legality is whatever ``src/alphanl/botzone/legal.py`` is on the tree you run.
 ``metadata.env_version.legal_py_sha256`` is the sha256 of that file.
@@ -591,9 +591,13 @@ def _metadata(
             "raw_response": "int64 [N], response_for_action of raw_action_id",
         },
         "elapsed_seconds": float(elapsed),
+        # New datasets name the control-group script. The checked-in
+        # tests/fixtures/bc_rulebot sample still says scripts/train_bc.py,
+        # because that sentence is embedded in decisions.npz and must match
+        # metadata.json. Do not edit the fixture sentence by itself.
         "bc_training": (
             "Not run by this script. A later KL run should load these token fields "
-            "and probs. scripts/train_bc.py still rebuilds transformer rows from "
+            "and probs. scripts/alphanl_control/train_bc.py still rebuilds transformer rows from "
             "c_1048 meta_json and will not load this npz unchanged."
         ),
     }

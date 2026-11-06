@@ -18,9 +18,13 @@
 | Botzone TexasHoldem2p | botzone.org.cn/game/ranklist/63dcfaddee1bce5e6c8f4b53 | — | — | 天梯对战 | 交互协议/时限需读规则【未核实】 |
 | Transformer 尝试：AlphaExploitem / PokerGPT / Poker_Transformers | AlphaExploitem 的仓库地址此次未查到【未核实】；PokerGPT 为 arXiv 论文(2024)【代码未核实】 | — | — | 动作历史序列建模、对手建模思路 | Poker_Transformers 曾坍缩为 always-fold：需熵正则、混合策略输出 |
 
+## 和当前仓库的关系
+
+这页是 2026-10-13 的调研笔记，不是架构说明。后来落地的主线是独立实现的 SD-CFR、下注历史 Transformer、Stage 2 和 Botzone 内核，见根目录 README 与 `NOTICE`。AlphaNLHoldem 留在子模块 `third_party/AlphaNLHoldem` 和包 `src/alphanl_control/`。下面第 2、5 条里的「保持私有」和「只替换编码器」是当时的计划，不是现在的代码结构。仓库许可证是 AGPL-3.0。
+
 ## 建议
 1. 环境：pokerkit 做规则与手牌历史；RLCard 只用于小游戏快速验证。
-2. 基线：跑通 AlphaNLHoldem 权重 + 评测（注意 AGPL，保持私有）。
+2. 基线：跑通 AlphaNLHoldem 权重 + 评测（当时写的是保持私有；仓库现已使用 AGPL-3.0，见 `LICENSE`）。
 3. 正确性：Leduc 上用 OpenSpiel 算 exploitability 验证算法实现。
 4. 评测：Slumbot API（需处理 50bb/200bb 差异）+ Botzone；做 AIVAT/大样本降方差。
 5. 改造：只替换编码器为小 Transformer（下注历史 token），保留 PPO 与概率策略头，加熵项防坍缩。

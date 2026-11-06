@@ -9,7 +9,7 @@ import random
 
 import pytest
 
-from alphanl.bots import RuleBot
+from alphanl_control.bots import RuleBot
 from alphanl.botzone.actions import (
     ALL_IN_ACTION,
     CHECK_CALL_ACTION,

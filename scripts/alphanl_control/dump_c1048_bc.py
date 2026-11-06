@@ -6,7 +6,7 @@ cannot share a process.
 
     conda activate alphanl
     export PYTHONPATH=src
-    python scripts/dump_c1048_bc.py --hands 200 --opponent self --out data/c1048_bc.npz
+    python scripts/alphanl_control/dump_c1048_bc.py --hands 200 --opponent self --out data/c1048_bc.npz
 
 ``--opponent pool`` plays c_1048 against other pickles in ``--pool``. Each
 extra pickle is its own TF graph. ``--opponent random`` uses a uniform legal
@@ -23,13 +23,13 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from alphanl.inference import AlphaNLHoldemAgent  # noqa: E402
-from alphanl.nl_obs import encode_observation  # noqa: E402
-from alphanl.paths import DEFAULT_WEIGHTS  # noqa: E402
-from alphanl.tf_teacher import teacher_distribution  # noqa: E402
+from alphanl_control.inference import AlphaNLHoldemAgent  # noqa: E402
+from alphanl_control.nl_obs import encode_observation  # noqa: E402
+from alphanl_control.paths import DEFAULT_WEIGHTS  # noqa: E402
+from alphanl_control.tf_teacher import teacher_distribution  # noqa: E402
 
 
 def _raw(env):

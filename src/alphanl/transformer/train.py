@@ -60,7 +60,7 @@ def set_seed(seed: int) -> None:
 
 def build_model(cfg: ExperimentConfig) -> torch.nn.Module:
     if cfg.encoder == "alphanl_conv":
-        from .conv_net import AlphaNLConvNet
+        from alphanl_control.conv_net import AlphaNLConvNet
 
         return AlphaNLConvNet()
     if cfg.encoder != "transformer":
@@ -80,7 +80,7 @@ def observer_for(cfg: ExperimentConfig):
     """Conv runs see the TF card/history tensors. The transformer keeps tokens."""
 
     if cfg.encoder == "alphanl_conv":
-        from .conv_obs import AlphaNLObserver
+        from alphanl_control.conv_obs import AlphaNLObserver
 
         return AlphaNLObserver()
     return None

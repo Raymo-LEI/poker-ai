@@ -204,9 +204,11 @@ class AbstractRandomAgent(Agent):
 
 
 class AlphaNLAgent(Agent):
-    """AlphaNLHoldem in a Python 3.7 / TF1.15 subprocess (eval/alphanl_worker.py), JSON lines over stdin/stdout."""
+    """AlphaNLHoldem in a Python 3.7 / TF1.15 subprocess (eval/alphanl_control/alphanl_worker.py), JSON lines over stdin/stdout."""
     def __init__(self, python, repo, weights=None):
-        worker = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alphanl_worker.py")
+        worker = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "alphanl_control", "alphanl_worker.py"
+        )
         cmd = [python, worker, "--repo", repo] + (["--weights", weights] if weights else [])
         self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         ready = self.p.stdout.readline()

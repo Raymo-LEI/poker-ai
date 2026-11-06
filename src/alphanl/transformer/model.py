@@ -219,9 +219,10 @@ def shared_trunk_parameters(model: nn.Module) -> list:
 
     Excluded: ``policy_head`` and ``value_head``.
 
-    ``AlphaNLConvNet`` uses the same rule: exclude the policy head
-    ``conv_fuse`` and the value head ``value_out``. The conv towers and the
-    shared 256-128-64 stack stay in the trunk.
+    The historical conv control group in ``alphanl_control`` uses the same
+    helper. Its heads are ``conv_fuse`` and ``value_out``. The conv towers
+    and the shared 256-128-64 stack stay in the trunk. ``PokerTransformer``
+    does not define those names.
     """
 
     selected = []

@@ -2,8 +2,8 @@
 
 Files:
 - `eval/slumbot_client.py`: the client. Modern Python 3.9+ with `requests`. It plays Slumbot (200bb), applies the 50bb cap, logs to jsonl, resumes, and summarizes.
-- `eval/alphanl_worker.py`: AlphaNLHoldem inference in a separate Python 3.7 / TF1.15 / Ray 0.8.3 process. It talks JSON lines over stdin/stdout and loads `src/alphanl.AlphaNLHoldemAgent` from poker-ai PR #2.
-- `tests/fake_repo/`: a stand-in AlphaNLHoldemAgent that needs no TF. It is only for testing the subprocess path.
+- `eval/alphanl_control/alphanl_worker.py`: AlphaNLHoldem inference in a separate Python 3.7 / TF1.15 / Ray 0.8.3 process. It talks JSON lines over stdin/stdout and loads `alphanl_control.inference.AlphaNLHoldemAgent`.
+- `tests/fake_repo/`: a stand-in `AlphaNLHoldemAgent` that needs no TF. It is only for testing the subprocess path. The double lives at `tests/fake_repo/src/alphanl_control/inference.py`.
 
 ## Stack mapping (`--stack-bb 50`, the default)
 - Both players' effective stack is capped at 5000 chips (50bb). The agent never sees, and can never bet, past `cap - committed`.
@@ -33,7 +33,7 @@ The model runs on CPU. The run is limited by the network (~1–5 s/hand per work
    git submodule update --init --recursive
    conda create -n alphanl python=3.7 -y && conda activate alphanl
    pip install -r requirements-alphanl.txt
-   PYTHONPATH=src python eval/eval_step1.py --hands 200     # sanity check from PR #2
+   PYTHONPATH=src python eval/alphanl_control/eval_step1.py --hands 200     # sanity check from PR #2
    ```
    Get that env's interpreter path: Linux `conda run -n alphanl which python`, Windows `conda run -n alphanl where python`
    (e.g. `C:\Users\<you>\miniconda3\envs\alphanl\python.exe`).

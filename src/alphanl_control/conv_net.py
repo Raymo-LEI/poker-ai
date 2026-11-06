@@ -28,9 +28,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .model import masked_log_probs, policy_act
-from .schema import NUM_ACTIONS
-from .tokenizer import TensorBatch
+from alphanl.transformer.model import masked_log_probs, policy_act
+from alphanl.transformer.schema import NUM_ACTIONS
+from alphanl.transformer.tokenizer import TensorBatch
 
 CARD_FLAT = 64
 HISTORY_FLAT = 64

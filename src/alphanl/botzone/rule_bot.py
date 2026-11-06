@@ -1,8 +1,9 @@
 """Weak Botzone rule opponent on the five policy ids.
 
-Strength bands are the ones in ``alphanl.bots.RuleBot``. This module does
-not call ``RuleBot.make_action``: that method speaks rlcard's observation
-and its own bet sizes. Here the same integers select among
+Strength bands match the step-1 ``alphanl_control.bots.RuleBot`` cut
+points. This module does not call ``RuleBot.make_action``: that method
+speaks rlcard's observation and its own bet sizes. Here the same integers
+select among
 
 ``fold / check_call / raise_min / raise_large / all_in``.
 

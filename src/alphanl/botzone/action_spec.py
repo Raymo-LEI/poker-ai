@@ -375,14 +375,14 @@ def hardcoded_width_audit(repo: Optional[str] = None) -> List[dict]:
     rows = [
         ("src/alphanl/botzone/actions.py", "NUM_ACTIONS = 5", frozen),
         ("src/alphanl/transformer/schema.py", "NUM_ACTIONS = 5", frozen),
-        ("src/alphanl/nl_obs.py", "NUM_ACTIONS = 5", frozen),
-        ("src/alphanl/transformer/conv_net.py", "conv head width NUM_ACTIONS", frozen),
-        ("src/alphanl/transformer/conv_obs.py", "legal_mask width 5", frozen),
+        ("src/alphanl_control/nl_obs.py", "NUM_ACTIONS = 5", frozen),
+        ("src/alphanl_control/conv_net.py", "conv head width NUM_ACTIONS", frozen),
+        ("src/alphanl_control/conv_obs.py", "legal_mask width 5", frozen),
         ("src/alphanl/stage2/policy.py", "delta_head width 5", frozen),
         ("src/alphanl/exploiter/policy.py", "delta_head width 5", frozen),
         ("src/alphanl/cfr/fidelity.py", "target width 5", frozen),
         ("src/alphanl/cfr/parallel.py", "regret width 5", frozen),
-        ("src/alphanl/tf_teacher.py", "reshape(-1, 5)", frozen),
+        ("src/alphanl_control/tf_teacher.py", "reshape(-1, 5)", frozen),
         ("src/alphanl/botzone/action_spec.py", "width from ActionSchema", "table_driven"),
         ("src/alphanl/cfr/kuhn.py", "width 5", "not_botzone_action_schema"),
     ]

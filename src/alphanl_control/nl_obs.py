@@ -1,8 +1,10 @@
 """AlphaNLHoldem observation tensors. NumPy only, so the Python 3.7 dump can import it.
 
 This is a direct port of ``NlHoldemEnvWrapper._get_observation`` in
-``third_party/AlphaNLHoldem/agi/nl_holdem_env.py``. Do not import torch,
-tensorflow, or ``alphanl.transformer`` from here.
+``third_party/AlphaNLHoldem/agi/nl_holdem_env.py``. It belongs to the
+historical control group, not to the mainline Transformer or SD-CFR
+observation. Do not import torch, tensorflow, or ``alphanl.transformer``
+from here.
 """
 
 from __future__ import annotations

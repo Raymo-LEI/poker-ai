@@ -6,13 +6,13 @@ Python 3.7 env, then compare in the PyTorch env. Target: max abs diff < 1e-4.
 
     # Python 3.7
     export PYTHONPATH=src
-    python scripts/compare_c1048_probs.py dump-tf \
+    python scripts/alphanl_control/compare_c1048_probs.py dump-tf \
         --weights third_party/AlphaNLHoldem/weights/c_1048.pkl \
         --hands 20 --out data/c1048_probs.npz
 
     # Python 3.10+
     export PYTHONPATH=src
-    python scripts/compare_c1048_probs.py compare \
+    python scripts/alphanl_control/compare_c1048_probs.py compare \
         --weights third_party/AlphaNLHoldem/weights/c_1048.pkl \
         --data data/c1048_probs.npz
 
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 
@@ -62,8 +62,8 @@ def dump_tf(args) -> int:
     if not args.weights.is_file():
         return _unverified("weights not found at %s" % args.weights)
     try:
-        from alphanl.inference import AlphaNLHoldemAgent
-        from alphanl.tf_teacher import teacher_distribution
+        from alphanl_control.inference import AlphaNLHoldemAgent
+        from alphanl_control.tf_teacher import teacher_distribution
     except Exception as exc:
         return _unverified("TF teacher import failed (%s)" % exc)
     try:
@@ -111,7 +111,7 @@ def compare(args) -> int:
     if not args.data.is_file():
         return _unverified("TF probability dump not found at %s" % args.data)
     try:
-        from alphanl.transformer.conv_net import AlphaNLConvNet, load_tf_weights
+        from alphanl_control.conv_net import AlphaNLConvNet, load_tf_weights
     except Exception as exc:
         return _unverified("PyTorch control net failed to import (%s)" % exc)
     model = AlphaNLConvNet()

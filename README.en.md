@@ -42,7 +42,7 @@ Offline compression: [distillation prep](docs/cfr_distillation.md). It covers fr
 
 ## Transformer PPO
 
-A betting-history token encoder, policy and value heads, self-play, and PFSP. Backends are `rlcard`, `pokerkit`, and the Botzone rules. A convolution control, behavior cloning, and an adapter for the older [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) baseline are included. See [Transformer path](docs/step3_transformer.md), [controls and baseline](docs/bc_and_baseline.md), and [Botzone milestones M1–M12](docs/botzone_transformer_milestones.md).
+A betting-history token encoder, policy and value heads, self-play, and PFSP. Backends are `rlcard`, `pokerkit`, and the Botzone rules. This encoder was written in this repository. It is not the [AlphaNLHoldem](https://github.com/bupticybee/AlphaNLHoldem) convolution net. The convolution control, `c_1048` behavior cloning, and the older baseline adapter live in `src/alphanl_control/`. Mainline training does not load them. See [Transformer path](docs/step3_transformer.md), [controls and baseline](docs/bc_and_baseline.md), and [Botzone milestones M1–M12](docs/botzone_transformer_milestones.md).
 
 Configs live in `configs/transformer/`. Resume: [training notes](docs/training.md). After a killed process on Windows, `tools/train_autoresume.ps1` restarts only from a fully written PPO checkpoint. See [autoresume](docs/train_autoresume.md).
 
@@ -152,7 +152,7 @@ PYTHONPATH=src python scripts/smoke_stage2.py --out-dir runs/stage2_smoke
 
 That smoke states that it checks interfaces and CPU execution only. Its output is not a Stage 1 or Stage 2 strength result.
 
-The older AlphaNLHoldem stack is a separate Python 3.7 / TensorFlow 1.15 environment, with `requirements-alphanl.txt`. To fetch the upstream code or the `c_1048` weights:
+The CFR, Transformer, Stage 2, and Botzone paths do not need the AlphaNLHoldem submodule. The historical control group is a separate Python 3.7 / TensorFlow 1.15 environment, with `requirements-alphanl.txt`. To fetch the upstream code or the `c_1048` weights:
 
 ```bash
 git submodule update --init --recursive
@@ -172,12 +172,13 @@ PYTHONPATH=src python -m alphanl.cfr.kuhn --iterations 1000
 Kuhn is a tabular external-sampling CFR toy, used to check sampling and an exploitability drop. Its numbers are not a Hold'em convergence result. R06 records one CPU run of 1000 iterations at seed 1.
 
 - `src/alphanl/cfr/`: SD-CFR, reservoirs, parallel sampling, historical strategies, distillation, evaluation, and checkpoints.
-- `src/alphanl/transformer/`: table adapters, observation encoding, PPO, PFSP, and the model.
+- `src/alphanl/transformer/`: table adapters, betting-history encoding, PPO, PFSP, and the mainline model. The convolution control is not here.
 - `src/alphanl/botzone/`: official-referee kernel, legal responses, the A5/A6 schema, and the rule bot.
 - `src/alphanl/stage2/`: the 50-hand environment, residual policy, opponent pool, export, deployment guard, and blueprint subgame search.
 - `src/alphanl/exploiter/`: the earlier 50-hand residual prototype.
-- `scripts/`: training, evaluation, benchmarks, the monitor, and smokes.
-- `configs/cfr/`, `configs/transformer/`, `configs/stage2/`: configs for those paths.
+- `src/alphanl_control/`: the historical AlphaNLHoldem control group. The PyTorch port of `NlHoldemNet`, the observation port, the TensorFlow teacher, and the step-1 baseline. The package name `alphanl` is historical. It does not mean the main model is built on that code.
+- `scripts/`: training, evaluation, benchmarks, the monitor, and smokes. `scripts/alphanl_control/` is the `c_1048` dump, comparison, and cloning entry.
+- `configs/cfr/`, `configs/transformer/`, `configs/stage2/`: mainline configs. `configs/alphanl_control/` is the convolution control.
 - `eval/`: the Slumbot client, the GTO Wizard scaffold, and the R02–R06 and R08 results and manifests.
 - `botzone_bots/`, `tools/`: uploadable entries and packers.
 - `docs/`: rules, algorithms, training, and deployment notes. The [survey](docs/reference_survey.md) records the early baselines.
@@ -186,4 +187,4 @@ Kuhn is a tabular external-sampling CFR toy, used to check sampling and an explo
 
 ## License and third-party code
 
-The repository root currently has no `LICENSE` file. `third_party/AlphaNLHoldem` is its own Git submodule. When using that code or the other dependencies, read the upstream license for each project. The public GTO Wizard client likewise has no license shipped with this repository, so its source is not vendored here.
+This repository is licensed under the [GNU AGPL-3.0](LICENSE). [NOTICE](NOTICE) separates original mainline code, the AlphaNLHoldem ports, the `third_party/AlphaNLHoldem` submodule, and other third-party material. The public GTO Wizard client ships no license, so its source is not vendored here. `tests/fixtures/botzone_judge.py` is the unmodified official referee fixture. It keeps its own terms and is not original code of this repository.

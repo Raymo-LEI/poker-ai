@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from alphanl.bots import RuleBot
+from alphanl_control.bots import RuleBot
 from alphanl.botzone.rule_bot import postflop_strength
 from alphanl.botzone.table import parse_card
 

@@ -188,13 +188,13 @@ Colab L4/T4 若要加速，只加大 `num_envs` 和 rollout，**不加宽** v1 �
 
 ### 5.1 先不要做行为克隆
 
-现成的教师是 `c_1048`：卷积网、5 档、50bb、rlcard 没有这条最小加注、价值是 IMPALA 的筹码尺度。导出脚本在 Python 3.7 里打 rlcard（`scripts/dump_c1048_bc.py`），`train_bc.py` 用 KL 去拟合。这些数据里的动作 id 和本方案的响应不是一回事。拿来热启动会把「半池」教成「安全最小加注」。
+现成的教师是 `c_1048`：卷积网、5 档、50bb、rlcard 没有这条最小加注、价值是 IMPALA 的筹码尺度。导出脚本在 Python 3.7 里打 rlcard（`scripts/alphanl_control/dump_c1048_bc.py`），`scripts/alphanl_control/train_bc.py` 用 KL 去拟合。这些数据里的动作 id 和本方案的响应不是一回事。拿来热启动会把「半池」教成「安全最小加注」。
 
 Slumbot 是标准最小加注、翻牌后大盲先动，客户端还把我方截在 50bb。不能当 Botzone 教师，也不能当 v1 的过关对手。
 
-**倾向：v1 从现有的小初始化直接 PPO。** 合法动作上的初始策略已经接近均匀，熵系数留 `0.01`。只有第 6 节判定「塌成弃牌」之后，才加一步行为克隆，教师是**本仓库的 Botzone 规则 bot** 在新牌桌上打出来的牌谱，走现有 `train_bc.py` 的 KL。不为此去跑 TF 1.15。
+**倾向：v1 从现有的小初始化直接 PPO。** 合法动作上的初始策略已经接近均匀，熵系数留 `0.01`。只有第 6 节判定「塌成弃牌」之后，才加一步行为克隆，教师是**本仓库的 Botzone 规则 bot** 在新牌桌上打出来的牌谱，走 `scripts/train_bc_rulebot.py` 的 KL（损失在 `alphanl.transformer.bc`）。不为此去跑 TF 1.15，也不调用 `scripts/alphanl_control/train_bc.py`。
 
-`c_1048` 仍保留为 50bb rlcard 上的历史对照，用现有 `eval/eval_step1.py`。不写一个「把 Botzone 状态硬填进卷积观测」的适配器，那个数字没有意义。
+`c_1048` 仍保留为 50bb rlcard 上的历史对照，用 `eval/alphanl_control/eval_step1.py`。不写一个「把 Botzone 状态硬填进卷积观测」的适配器，那个数字没有意义。
 
 ### 5.2 PPO 自我对弈
 
@@ -222,7 +222,7 @@ Slumbot 是标准最小加注、翻牌后大盲先动，客户端还把我方截
 | Slumbot | 不作为 v1 过关线 | 规则不同。以后若另训一版标准 200bb，再用现有客户端，并分开报告截断和未截断 |
 | 池里的旧快照 | 训练对手 | 现有 PFSP |
 
-规则 bot 按 `src/alphanl/bots.py` 里 `RuleBot` 的强度分档，但动作改成新的 5 档。翻前用那份点数表（对子、高张、同花连张）。翻牌后先比牌型；比牌函数还没落地时，用它已有的对子/两对/三条计数。在**当前合法集合**里按优先级选：
+规则 bot 按 `src/alphanl_control/bots.py` 里 `RuleBot` 的强度分档，但动作改成新的 5 档。实现在 `src/alphanl/botzone/rule_bot.py`，不调用那份 rlcard `make_action`。翻前用那份点数表（对子、高张、同花连张）。翻牌后先比牌型；比牌函数还没落地时，用它已有的对子/两对/三条计数。在**当前合法集合**里按优先级选：
 
 | 强度 | 优先级 |
 |------|--------|
@@ -266,7 +266,7 @@ Slumbot 是标准最小加注、翻牌后大盲先动，客户端还把我方截
 | M7 | 规则 bot + 评测脚本（bb/100、区间、50 手一场） | 简单 bot。优先级表以本文为准，不要自己发明强度 | 规则 bot 对随机能打出一份带区间的 bb/100 |
 | M8 | 一份新 json：backend、盲注 50/100、起始 20000，网络宽度与 `laptop_8gb.json` 的 `model` 相同 | 简单 bot | `--dry-run` 参数量仍是 592,390 这一档 |
 | M9 | 笔记本跑 200 个 update | 人。agent 不改算法 | 第 5.4 节第 3 条。塌了才做 M10 |
-| M10 | 只在塌缩时：规则 bot 的牌谱 + 现有 `train_bc.py` | 复杂 agent | KL 下降，且载入后熵回到 0.2 以上 |
+| M10 | 只在塌缩时：规则 bot 的牌谱 + `scripts/train_bc_rulebot.py` | 复杂 agent | KL 下降，且载入后熵回到 0.2 以上 |
 | M11 | 正式 PPO | 人在笔记本或 Colab 上跑小网络 | 第 5.4 节第 4 条 |
 | M12 | NumPy 前向，对拍 logits，量 RSS 和单步耗时 | 复杂 agent | 误差 < 1e-4；本机 RSS 和耗时写进文档。不在这一步注册 Botzone 账号或提交排名 |
 
@@ -313,6 +313,6 @@ M2 可以在没有真实对局的情况下做完。有对局之后，若下界�
 | 256MB 里跑 PyTorch | 1 秒是 wiki 写的。256MB 是任务给定，这次抓取的 wiki 页没写。镜像里有没有 torch【未核实】 | 提交用 NumPy 小网络。先量 RSS，再谈提交 |
 | 速度数字对不上 | 仓库：PR #7 为 CPU rollout 约 6.2 s/步、GPU 更新约 0.45 s/步、峰值 0.331 GB（10 步，小网络，AMP）。PR #8 为缓存后笔记本 CPU rollout 从 7.41 s 到 5.26 s，对手加载降到 0。`docs/training.md` 估计每步 7–9 秒。这些都不是 1.2 s，也不是 8 个进程 | 以 `--profile-rollout` 在新牌桌上重新量。多进程单独开里程碑。用户那组 1.2 s 在有同样的命令和日志之前，不当作已实现的基线 |
 | 奇数底池的 1 点筹码、A-5 顺子、烧牌 | wiki 没写死 | 测试里写死当前约定，对拍失败只改那一行 |
-| AGPL | AlphaNLHoldem 是 AGPL，仓库因此保持私有 | Botzone 牌桌自己写，不把上游裁判或 TF 图打进提交物 |
+| AGPL | 仓库使用 AGPL-3.0，与 AlphaNLHoldem 相同。见 `LICENSE` 与 `NOTICE` | Botzone 牌桌自己写，不把上游裁判或 TF 图打进提交物 |
 
 未解决、但不阻塞 M1–M8 的只有一件事：还没有一条裁判回放，因此下界 A 和 B 谁才是真规则还不知道。阻塞长训结论的是第 5.4 节的过关线，不是缺一个更大的网络。

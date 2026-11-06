@@ -7,9 +7,11 @@
 
 ## 做了什么
 
-用一条 **PyTorch** 路径换掉 AlphaNLHoldem 的卷积编码器。保留的是算法形态，不是 TensorFlow 1.15 那份 IMPALA 图：
+这条路径是本仓库自己的 PyTorch 训练器：下注历史 token、策略头、价值头、PPO。它不是 AlphaNLHoldem 的卷积网，也不是那份 TensorFlow 1.15 IMPALA 图的改写。
 
-| 保留 | 换掉 |
+和上游 50bb 基线共用的是 `rlcard` 后端上的 5 个抽象动作。编码器、损失和训练循环是这里写的。把 `NlHoldemNet` 移植到 PyTorch 的控制组在 `src/alphanl_control/`，用 `encoder=alphanl_conv` 才加载。默认 `encoder=transformer` 不导入它。
+
+| 本路径自己实现 | 不从上游搬进来 |
 |------|------|
 | 5 个抽象动作上的概率策略（softmax） | `NlHoldemNet` 的牌面 / 历史卷积 |
 | 独立的 value head | Ray RLlib 的 IMPALA / V-trace 训练循环 |
@@ -21,7 +23,7 @@
 
 ## 为什么用 PyTorch，而不是在 TF 1.15 里换编码器
 
-上游训练脚本是 Ray 0.8.3 + `ImpalaTrainer` + `VTraceTFPolicy`（`third_party/AlphaNLHoldem/train_league.py`）。README 和 AlphaHoldem 论文写的是 PPO。本步按 README：PPO、概率策略头、熵正则，并且只换编码器。
+上游训练脚本是 Ray 0.8.3 + `ImpalaTrainer` + `VTraceTFPolicy`（`third_party/AlphaNLHoldem/train_league.py`）。本步没有改那张图。PPO、概率策略头和熵正则是按公开算法说明在 PyTorch 里另写的。
 
 TF 1.15 没有可维护的 Transformer 实现，也装不到当前的 Python / 笔记本驱动上。把新编码器焊回那张图，等于继续把 3070 和 Colab 绑在 2019 年的 CUDA 上。PyTorch 的 `TransformerEncoder` 在 RTX 3070 Laptop 和 Colab L4/T4 上是同一份代码。
 
@@ -208,7 +210,7 @@ python3 -m pytest -q
 
 ## 和 Step 1 的边界
 
-- `src/alphanl/__init__.py` **不**导入 `transformer`。Step 1 评测不需要 PyTorch。
+- `src/alphanl/__init__.py` **不**导入 `transformer`，也不导入 `alphanl_control`。Step 1 评测不需要 PyTorch，主线训练也不需要 Step 1。
 - 没有改 `third_party/AlphaNLHoldem` 里的网络和训练脚本。
 - `NlEnvTracker` 可以在 TF 环境里读现有 wrapper，但新训练器自己调用 rlcard，这样 PyTorch 环境不必安装 Ray / TF 1.15。
 

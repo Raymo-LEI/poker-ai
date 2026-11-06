@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from alphanl.nl_obs import masked_softmax_tf
+from alphanl_control.nl_obs import masked_softmax_tf
 
 
 def teacher_distribution(agent, obs):
